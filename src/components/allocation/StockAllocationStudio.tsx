@@ -54,8 +54,8 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
       currentOrder.items.forEach(it => {
         const rem = Math.max(0, it.required_qty - it.allocated_qty)
         initialChoices[it.item_id] = {
-          lotId: 'AUTO_FIFO',
-          qty: rem,
+          lotId: rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO',
+          qty: rem === 0 ? it.allocated_qty : rem,
         }
       })
       setBatchChoices(initialChoices)
@@ -249,8 +249,9 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                 const isSelected = item.item_id === selectedItemId
                 const unalloc = Math.max(0, item.required_qty - item.allocated_qty)
                 const isComplete = unalloc === 0
-                const itemLots = masterStock.filter(s => s.item_id === item.item_id && s.available_qty > 0)
-                const itemYoms = Array.from(new Set(itemLots.map(l => l.yom).filter(Boolean))).sort()
+                const allItemLots = masterStock.filter(s => s.item_id === item.item_id)
+                const availItemLots = allItemLots.filter(s => s.available_qty > 0)
+                const itemYoms = Array.from(new Set(allItemLots.map(l => l.yom).filter(Boolean))).sort()
 
                 return (
                   <div
@@ -276,7 +277,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       <span>Allocated: <strong className="text-emerald-700">{item.allocated_qty} PCS</strong></span>
                     </div>
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-500 flex justify-between">
-                      <span>{itemLots.length} Heat(s) in Stock</span>
+                      <span>{availItemLots.length} Free / {allItemLots.length} Heat(s)</span>
                       {itemYoms.length > 0 && <span className="font-semibold text-blue-700">YOM: {itemYoms.join(', ')}</span>}
                     </div>
                   </div>
@@ -373,14 +374,18 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       <tbody className="divide-y divide-slate-100">
                         {currentOrder.items.map(line => {
                           const rem = Math.max(0, line.required_qty - line.allocated_qty)
-                          const itemLots = masterStock.filter(s => s.item_id === line.item_id && s.available_qty > 0)
-                          const itemYoms = Array.from(new Set(itemLots.map(l => l.yom).filter(Boolean))).sort()
-                          const choice = batchChoices[line.item_id] || { lotId: 'AUTO_FIFO', qty: rem }
-                          const chosenLot = itemLots.find(l => l.id === choice.lotId)
+                          const allItemLots = masterStock.filter(s => s.item_id === line.item_id)
+                          const availItemLots = allItemLots.filter(s => s.available_qty > 0)
+                          const lineAllocs = currentOrder.allocations.filter(a => allItemLots.some(l => l.id === a.stock_lot_id))
+                          const itemYoms = Array.from(new Set(allItemLots.map(l => l.yom).filter(Boolean))).sort()
+                          const defaultLotId = rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO'
+                          const choice = batchChoices[line.item_id] || { lotId: defaultLotId, qty: rem }
+                          const selectableLots = rem === 0 ? allItemLots : availItemLots
+                          const chosenLot = selectableLots.find(l => l.id === choice.lotId)
                           const autoPlan = getFIFOPreview(line.item_id, rem)
 
                           return (
-                            <tr key={line.id} className={rem === 0 ? 'bg-slate-50/60 opacity-75' : 'hover:bg-slate-50'}>
+                            <tr key={line.id} className={rem === 0 ? 'bg-emerald-50/20 hover:bg-slate-50' : 'hover:bg-slate-50'}>
                               <td className="p-2.5 align-top">
                                 <div className="font-mono font-bold text-slate-900">{line.item_code}</div>
                                 <div className="text-[10px] text-slate-500 line-clamp-1 max-w-[180px]" title={line.item_description}>
@@ -391,66 +396,54 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     Req: {line.required_qty} | Need: {rem}
                                   </span>
                                   <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-semibold">
-                                    {itemLots.length} Heat(s){itemYoms.length > 0 ? ` • YOM: ${itemYoms.join(', ')}` : ''}
+                                    {allItemLots.length} Heat(s){itemYoms.length > 0 ? ` • YOM: ${itemYoms.join(', ')}` : ''}
                                   </span>
                                 </div>
                               </td>
 
                               <td className="p-2.5 align-top">
-                                {rem === 0 ? (
-                                  <span className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-1 rounded">
-                                    ✓ Fully Allocated
-                                  </span>
-                                ) : (
-                                  <select
-                                    value={choice.lotId}
-                                    onChange={(e) => {
-                                      const val = e.target.value
-                                      const lotObj = itemLots.find(l => l.id === val)
-                                      setBatchChoices(prev => ({
-                                        ...prev,
-                                        [line.item_id]: {
-                                          lotId: val,
-                                          qty: lotObj ? Math.min(rem, lotObj.available_qty) : rem,
-                                        },
-                                      }))
-                                    }}
-                                    className="w-full max-w-[230px] border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white font-semibold text-slate-800"
-                                  >
-                                    <option value="AUTO_FIFO">
-                                      ⚡ All Heats (Auto FIFO — {itemLots.length} avail)
+                                <select
+                                  value={choice.lotId}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    const lotObj = selectableLots.find(l => l.id === val)
+                                    setBatchChoices(prev => ({
+                                      ...prev,
+                                      [line.item_id]: {
+                                        lotId: val,
+                                        qty: rem === 0 ? line.allocated_qty : (lotObj ? Math.min(rem, lotObj.available_qty) : rem),
+                                      },
+                                    }))
+                                  }}
+                                  className={`w-full max-w-[240px] border rounded-lg px-2 py-1.5 text-xs font-semibold ${
+                                    rem === 0 && choice.lotId === 'ALLOCATED'
+                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                                      : 'border-slate-300 bg-white text-slate-800'
+                                  }`}
+                                >
+                                  {rem === 0 ? (
+                                    <option value="ALLOCATED">
+                                      ✓ Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
                                     </option>
-                                    {itemLots.map(lot => (
-                                      <option key={lot.id} value={lot.id}>
-                                        🔥 {lot.heat_number} ({lot.available_qty} PCS • YOM {lot.yom || 'N/A'})
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
+                                  ) : (
+                                    <option value="AUTO_FIFO">
+                                      ⚡ All Heats (Auto FIFO — {availItemLots.length} avail)
+                                    </option>
+                                  )}
+                                  {selectableLots.map(lot => (
+                                    <option key={lot.id} value={lot.id}>
+                                      🔥 {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
+                                    </option>
+                                  ))}
+                                </select>
                               </td>
 
                               <td className="p-2.5 align-top text-[11px]">
-                                {rem === 0 ? (
-                                  <span className="text-slate-400">—</span>
-                                ) : choice.lotId === 'AUTO_FIFO' ? (
-                                  autoPlan.length > 0 ? (
-                                    <div className="space-y-1">
-                                      {autoPlan.map((p, i) => (
-                                        <div key={i} className="bg-slate-50 border border-slate-200 rounded px-2 py-1">
-                                          <div className="font-mono font-bold text-slate-800">
-                                            {p.lot.heat_number} ({p.take} PCS)
-                                          </div>
-                                          <div className="text-[10px] text-slate-600">
-                                            Cert: <strong>{p.lot.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{p.lot.yom || 'N/A'}</strong>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <span className="text-red-600 font-semibold">No stock available</span>
-                                  )
-                                ) : chosenLot ? (
+                                {chosenLot ? (
                                   <div className="bg-blue-50/70 border border-blue-200 rounded px-2 py-1 space-y-0.5">
+                                    <div className="font-mono font-bold text-slate-800">
+                                      🔥 {chosenLot.heat_number}
+                                    </div>
                                     <div className="text-blue-950">
                                       Cert #: <strong className="font-mono">{chosenLot.certificate_number || 'Pending'}</strong>
                                     </div>
@@ -459,7 +452,42 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     </div>
                                     <div className="text-[10px] text-blue-700">Loc: {chosenLot.warehouse_location}</div>
                                   </div>
-                                ) : null}
+                                ) : rem === 0 ? (
+                                  lineAllocs.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {lineAllocs.map(a => {
+                                        const lotInfo = masterStock.find(s => s.id === a.stock_lot_id)
+                                        return (
+                                          <div key={a.id} className="bg-emerald-50/70 border border-emerald-200 rounded px-2 py-1 space-y-0.5">
+                                            <div className="font-mono font-bold text-emerald-950">
+                                              🔥 {a.heat_number} ({a.allocated_qty} PCS)
+                                            </div>
+                                            <div className="text-[10px] text-emerald-900">
+                                              Cert #: <strong className="font-mono">{lotInfo?.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{lotInfo?.yom || 'N/A'}</strong>
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400">No reservation record</span>
+                                  )
+                                ) : autoPlan.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {autoPlan.map((p, i) => (
+                                      <div key={i} className="bg-slate-50 border border-slate-200 rounded px-2 py-1">
+                                        <div className="font-mono font-bold text-slate-800">
+                                          {p.lot.heat_number} ({p.take} PCS)
+                                        </div>
+                                        <div className="text-[10px] text-slate-600">
+                                          Cert: <strong>{p.lot.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{p.lot.yom || 'N/A'}</strong>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-red-600 font-semibold">No stock available</span>
+                                )}
                               </td>
 
                               <td className="p-2.5 align-top text-center">
