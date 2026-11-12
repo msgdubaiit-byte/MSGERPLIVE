@@ -108,9 +108,14 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
   const handleExecuteBatchAll = () => {
     if (!currentOrder) return
-    const unallocatedLines = currentOrder.items.filter(it => it.required_qty - it.allocated_qty > 0)
-    if (unallocatedLines.length === 0) {
-      alert('All lines in this Sales Order are already fully allocated!')
+    const linesToProcess = currentOrder.items.filter(it => {
+      const rem = Math.max(0, it.required_qty - it.allocated_qty)
+      const choice = batchChoices[it.item_id]
+      return rem > 0 || (choice && choice.lotId !== 'ALLOCATED')
+    })
+
+    if (linesToProcess.length === 0) {
+      alert('All lines are already allocated and no heat changes were selected.')
       return
     }
 
@@ -118,10 +123,17 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
     const errors: string[] = []
     const userEmail = currentUser?.email || 'sales@msgoilfield.ae'
 
-    for (const line of unallocatedLines) {
+    for (const line of linesToProcess) {
       const rem = Math.max(0, line.required_qty - line.allocated_qty)
-      const choice = batchChoices[line.item_id] || { lotId: 'AUTO_FIFO', qty: rem }
-      const qtyToAlloc = choice.qty > 0 ? Math.min(choice.qty, rem) : rem
+      const choice = batchChoices[line.item_id] || { lotId: 'AUTO_FIFO', qty: line.required_qty }
+
+      // If line was already allocated and user picked a new heat / AUTO_FIFO, release old reservations first
+      if (rem === 0 && choice.lotId !== 'ALLOCATED') {
+        db.deallocateLine(currentOrder.id, line.item_id, userEmail)
+      }
+
+      const targetRem = rem === 0 ? line.required_qty : rem
+      const qtyToAlloc = choice.qty > 0 ? Math.min(choice.qty, targetRem) : targetRem
 
       if (qtyToAlloc <= 0) continue
 
@@ -350,14 +362,52 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
             {/* MODE 0: BATCH ALL LINES (ALL HEATS BY DEFAULT) */}
             {allocationMode === 'batch_all' && (
               <div className="space-y-4">
-                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start space-x-2.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-bold">Bulk Order Allocation — All Heats Selected by Default</div>
-                    <p className="text-[11px] text-emerald-800 mt-0.5">
-                      Saves time by pre-selecting all available heats for every order line automatically. If required, use any line's <strong>Heat Number Dropdown</strong> to switch to a specific heat (Certificate # &amp; YOM update live).
-                    </p>
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start space-x-2.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">Bulk Order Allocation — All Heats Selected by Default</div>
+                      <p className="text-[11px] text-emerald-800 mt-0.5">
+                        Saves time by pre-selecting all available heats for every order line automatically. Use the dropdowns below to switch any line&apos;s heat (Certificate # &amp; YOM update live).
+                      </p>
+                    </div>
                   </div>
+                  <select
+                    value={
+                      currentOrder.items.every(it => (batchChoices[it.item_id]?.lotId || (it.required_qty - it.allocated_qty <= 0 ? 'ALLOCATED' : 'AUTO_FIFO')) === 'AUTO_FIFO')
+                        ? 'AUTO_FIFO'
+                        : 'CUSTOM'
+                    }
+                    onChange={(e) => {
+                      const mode = e.target.value
+                      if (mode === 'AUTO_FIFO') {
+                        const updated: Record<string, BatchLineChoice> = {}
+                        currentOrder.items.forEach(it => {
+                          const rem = Math.max(0, it.required_qty - it.allocated_qty)
+                          updated[it.item_id] = {
+                            lotId: 'AUTO_FIFO',
+                            qty: rem > 0 ? rem : it.required_qty,
+                          }
+                        })
+                        setBatchChoices(updated)
+                      } else if (mode === 'KEEP_ALLOCATED') {
+                        const updated: Record<string, BatchLineChoice> = {}
+                        currentOrder.items.forEach(it => {
+                          const rem = Math.max(0, it.required_qty - it.allocated_qty)
+                          updated[it.item_id] = {
+                            lotId: rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO',
+                            qty: rem === 0 ? it.allocated_qty : rem,
+                          }
+                        })
+                        setBatchChoices(updated)
+                      }
+                    }}
+                    className="shrink-0 border border-emerald-300 bg-white text-emerald-950 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm"
+                  >
+                    <option value="AUTO_FIFO">⚡ All Lines: All Heats (Default FIFO)</option>
+                    <option value="KEEP_ALLOCATED">✓ Keep Current Allocations</option>
+                    <option value="CUSTOM">🎛️ Custom Per-Line Heat Selection</option>
+                  </select>
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -421,15 +471,14 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                       : 'border-slate-300 bg-white text-slate-800'
                                   }`}
                                 >
-                                  {rem === 0 ? (
+                                  {rem === 0 && (
                                     <option value="ALLOCATED">
                                       ✓ Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
                                     </option>
-                                  ) : (
-                                    <option value="AUTO_FIFO">
-                                      ⚡ All Heats (Auto FIFO — {availItemLots.length} avail)
-                                    </option>
                                   )}
+                                  <option value="AUTO_FIFO">
+                                    ⚡ All Heats (Auto FIFO — {availItemLots.length} avail)
+                                  </option>
                                   {selectableLots.map(lot => (
                                     <option key={lot.id} value={lot.id}>
                                       🔥 {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
@@ -452,7 +501,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     </div>
                                     <div className="text-[10px] text-blue-700">Loc: {chosenLot.warehouse_location}</div>
                                   </div>
-                                ) : rem === 0 ? (
+                                ) : rem === 0 && choice.lotId === 'ALLOCATED' ? (
                                   lineAllocs.length > 0 ? (
                                     <div className="space-y-1">
                                       {lineAllocs.map(a => {
@@ -521,7 +570,13 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleExecuteBatchAll}
-                    disabled={currentOrder.items.every(it => it.required_qty - it.allocated_qty <= 0)}
+                    disabled={
+                      !currentOrder.items.some(
+                        it =>
+                          it.required_qty - it.allocated_qty > 0 ||
+                          (batchChoices[it.item_id] && batchChoices[it.item_id].lotId !== 'ALLOCATED')
+                      )
+                    }
                     className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"
                   >
                     <span>Commit All Line Allocations (All Selected Heats)</span>

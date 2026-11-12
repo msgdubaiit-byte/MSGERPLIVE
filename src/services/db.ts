@@ -752,6 +752,42 @@ class DBService {
     }
   }
 
+  // Release existing reservations for a single order line so a new heat can be allocated
+  public deallocateLine(orderId: string, itemId: string, userEmail: string) {
+    const order = this.orders.find(o => o.id === orderId)
+    if (!order) return { success: false, message: 'Order not found' }
+
+    const orderItem = order.items.find(i => i.item_id === itemId)
+    if (!orderItem) return { success: false, message: 'Order line not found' }
+
+    const itemLotIds = new Set(this.lots.filter(l => l.item_id === itemId).map(l => l.id))
+    const toRemove = order.allocations.filter(
+      a => a.sales_order_item_id === orderItem.id || itemLotIds.has(a.stock_lot_id)
+    )
+
+    for (const alloc of toRemove) {
+      const bal = this.balances.find(b => b.stock_lot_id === alloc.stock_lot_id)
+      if (bal) {
+        bal.reserved_qty = Math.max(0, bal.reserved_qty - alloc.allocated_qty)
+        bal.available_qty += alloc.allocated_qty
+        bal.updated_at = new Date().toISOString()
+      }
+    }
+
+    const removedIds = new Set(toRemove.map(a => a.id))
+    order.allocations = order.allocations.filter(a => !removedIds.has(a.id))
+    orderItem.allocated_qty = 0
+    orderItem.line_status = 'Pending'
+
+    order.status = 'Draft'
+
+    this.saveAll()
+    this.logAudit(userEmail, 'Release Line Allocation', 'Sales Orders', order.so_number, null, { itemId })
+    this.notify()
+
+    return { success: true, message: 'Line reservations released.' }
+  }
+
   // Submit Order for Storekeeper Physical Approval
   public submitForApproval(orderId: string, userEmail: string) {
     const order = this.orders.find(o => o.id === orderId)
