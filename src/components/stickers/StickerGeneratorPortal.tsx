@@ -10,6 +10,9 @@ import {
   Sparkles,
   Layers,
   Search,
+  Plus,
+  Trash2,
+  Pencil,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import {
@@ -30,6 +33,7 @@ export const StickerGeneratorPortal: React.FC = () => {
   const [activeSourceLabel, setActiveSourceLabel] = useState<string>('')
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedPreviewIdx, setSelectedPreviewIdx] = useState<number>(0)
 
   // 1. AUTO-DETECT ACTIVE ORDER ON MOUNT (Zero manual upload needed!)
   useEffect(() => {
@@ -190,20 +194,63 @@ export const StickerGeneratorPortal: React.FC = () => {
     }
   }
 
-  const filteredItems = items.filter(it => {
-    if (!searchTerm) return true
-    const term = searchTerm.toLowerCase()
-    return (
-      String(it.sl_no).toLowerCase().includes(term) ||
-      (it.client_po_item_no && it.client_po_item_no.toLowerCase().includes(term)) ||
-      it.description.toLowerCase().includes(term) ||
-      it.heat_number.toLowerCase().includes(term) ||
-      it.make.toLowerCase().includes(term) ||
-      (it.remarks && it.remarks.toLowerCase().includes(term))
-    )
-  })
+  const handleUpdateStickerItem = (index: number, field: keyof StickerItem, value: string | number) => {
+    setItems(prev => {
+      const updated = prev.map((it, idx) => (idx === index ? { ...it, [field]: value } : it))
+      setDocData(prevDoc => (prevDoc ? { ...prevDoc, items: updated } : null))
+      return updated
+    })
+  }
 
-  const previewItem = items[0] || {
+  const handleAddStickerItem = () => {
+    const nextNo = items.length + 1
+    const newItem: StickerItem = {
+      sl_no: nextNo,
+      client_po_item_no: String(nextNo),
+      description: '',
+      po_qty: 1,
+      uom: 'Ea',
+      heat_number: '',
+      make: '',
+      certificate_number: '',
+      remarks: 'LOCATION-1',
+      po_number: docData?.po_number || '',
+      client_name: docData?.client_name || '',
+    }
+    setItems(prev => {
+      const updated = [...prev, newItem]
+      setDocData(prevDoc => (prevDoc ? { ...prevDoc, items: updated } : null))
+      return updated
+    })
+    setSelectedPreviewIdx(items.length)
+  }
+
+  const handleRemoveStickerItem = (index: number) => {
+    setItems(prev => {
+      const updated = prev.filter((_, idx) => idx !== index)
+      setDocData(prevDoc => (prevDoc ? { ...prevDoc, items: updated } : null))
+      return updated
+    })
+    setSelectedPreviewIdx(prev => (prev >= index && prev > 0 ? prev - 1 : prev))
+  }
+
+  const filteredItems = items
+    .map((it, origIdx) => ({ it, origIdx }))
+    .filter(({ it }) => {
+      if (!searchTerm) return true
+      const term = searchTerm.toLowerCase()
+      return (
+        String(it.sl_no).toLowerCase().includes(term) ||
+        (it.client_po_item_no && it.client_po_item_no.toLowerCase().includes(term)) ||
+        it.description.toLowerCase().includes(term) ||
+        it.heat_number.toLowerCase().includes(term) ||
+        it.make.toLowerCase().includes(term) ||
+        (it.certificate_number && it.certificate_number.toLowerCase().includes(term)) ||
+        (it.remarks && it.remarks.toLowerCase().includes(term))
+      )
+    })
+
+  const previewItem = items[selectedPreviewIdx] || items[0] || {
     sl_no: '17',
     client_po_item_no: '17',
     description: '1.1/2" 90 DEGREE ELBOW, ASME B16.11, ASTM A105N, SW ENDS, 6000 LBS',
@@ -387,68 +434,154 @@ export const StickerGeneratorPortal: React.FC = () => {
         {/* Right Column: Line Items Table */}
         <div className="lg:col-span-7">
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col h-full min-h-[460px]">
-            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2">
                 <Layers className="w-5 h-5 text-indigo-600" />
                 <h3 className="font-bold text-slate-800 text-sm">
                   Active Material Items ({filteredItems.length} lines)
                 </h3>
+                <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                  <Pencil className="w-3 h-3" />
+                  <span>Inline Editable</span>
+                </span>
               </div>
 
-              <div className="relative w-48">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Filter items..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+              <div className="flex items-center space-x-2">
+                <div className="relative w-44">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                  <input
+                    type="text"
+                    placeholder="Filter items..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddStickerItem}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center space-x-1 transition-colors cursor-pointer"
+                  title="Add a new editable sticker row"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Row</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-x-auto border border-slate-100 rounded-2xl max-h-[400px]">
+            <div className="flex-1 overflow-x-auto border border-slate-100 rounded-2xl max-h-[420px]">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 text-slate-600 font-bold sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">Item #</th>
-                    <th className="py-2.5 px-3">Description</th>
-                    <th className="py-2.5 px-3 text-center">Qty</th>
-                    <th className="py-2.5 px-3">Heat #</th>
-                    <th className="py-2.5 px-3">Make</th>
-                    <th className="py-2.5 px-3">Cert #</th>
-                    <th className="py-2.5 px-3">Remarks</th>
+                    <th className="py-2.5 px-2 w-16">Item #</th>
+                    <th className="py-2.5 px-2 min-w-[180px]">Description</th>
+                    <th className="py-2.5 px-2 text-center w-28">Qty / UOM</th>
+                    <th className="py-2.5 px-2 w-24">Heat #</th>
+                    <th className="py-2.5 px-2 w-28">Make</th>
+                    <th className="py-2.5 px-2 w-28">Cert #</th>
+                    <th className="py-2.5 px-2 w-28">Remarks</th>
+                    <th className="py-2.5 px-2 w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredItems.map((it, idx) => (
-                    <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                      <td className="py-2 px-3 font-bold text-indigo-700">
-                        {it.client_po_item_no || it.sl_no}
-                      </td>
-                      <td className="py-2 px-3 max-w-[220px] truncate text-slate-800" title={it.description}>
-                        {it.description}
-                      </td>
-                      <td className="py-2 px-3 text-center font-bold text-slate-700">
-                        {it.po_qty} {it.uom}
-                      </td>
-                      <td className="py-2 px-3 font-mono font-bold text-slate-900">
-                        {it.heat_number}
-                      </td>
-                      <td className="py-2 px-3 text-slate-600 truncate max-w-[120px]">
-                        {it.make}
-                      </td>
-                      <td className="py-2 px-3 font-mono text-slate-500 text-[11px]">
-                        {it.certificate_number}
-                      </td>
-                      <td className="py-2 px-3 font-medium text-slate-700">
-                        {it.remarks || 'LOCATION-1'}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredItems.map(({ it, origIdx }) => {
+                    const isSelected = origIdx === selectedPreviewIdx
+                    return (
+                      <tr
+                        key={origIdx}
+                        onClick={() => setSelectedPreviewIdx(origIdx)}
+                        className={`transition-colors cursor-pointer ${
+                          isSelected ? 'bg-indigo-50/70' : 'hover:bg-blue-50/40'
+                        }`}
+                      >
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.client_po_item_no ?? it.sl_no ?? ''}
+                            onChange={e => {
+                              handleUpdateStickerItem(origIdx, 'client_po_item_no', e.target.value)
+                              handleUpdateStickerItem(origIdx, 'sl_no', e.target.value)
+                            }}
+                            className="w-full px-1.5 py-1 text-xs font-bold text-indigo-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.description || ''}
+                            onChange={e => handleUpdateStickerItem(origIdx, 'description', e.target.value)}
+                            title={it.description}
+                            className="w-full px-1.5 py-1 text-xs text-slate-800 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <div className="flex items-center space-x-1">
+                            <input
+                              type="text"
+                              value={it.po_qty ?? ''}
+                              onChange={e => handleUpdateStickerItem(origIdx, 'po_qty', e.target.value)}
+                              className="w-12 px-1.5 py-1 text-xs text-center font-bold text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <input
+                              type="text"
+                              value={it.uom || ''}
+                              onChange={e => handleUpdateStickerItem(origIdx, 'uom', e.target.value)}
+                              className="w-12 px-1 py-1 text-xs text-center text-slate-600 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.heat_number || ''}
+                            onChange={e => handleUpdateStickerItem(origIdx, 'heat_number', e.target.value)}
+                            className="w-full px-1.5 py-1 text-xs font-mono font-bold text-slate-900 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.make || ''}
+                            onChange={e => handleUpdateStickerItem(origIdx, 'make', e.target.value)}
+                            className="w-full px-1.5 py-1 text-xs text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.certificate_number || ''}
+                            onChange={e => handleUpdateStickerItem(origIdx, 'certificate_number', e.target.value)}
+                            className="w-full px-1.5 py-1 text-[11px] font-mono text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            type="text"
+                            value={it.remarks ?? ''}
+                            placeholder="LOCATION-1"
+                            onChange={e => handleUpdateStickerItem(origIdx, 'remarks', e.target.value)}
+                            className="w-full px-1.5 py-1 text-xs font-medium text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-1 text-center">
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleRemoveStickerItem(origIdx)
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                            title="Remove row"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {filteredItems.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-400">
+                      <td colSpan={8} className="text-center py-8 text-slate-400">
                         No material line items match your filter.
                       </td>
                     </tr>

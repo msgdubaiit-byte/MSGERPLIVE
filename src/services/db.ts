@@ -557,7 +557,8 @@ class DBService {
         dispatched_qty: bal.dispatched_qty,
         mtc_status: mtc ? (mtc.stamped_file_path ? 'Stamped & Verified' : mtc.verification_status) : 'Missing MTC',
         mtc_pages: mtc?.pages || 0,
-        mtc_id: mtc?.id
+        mtc_id: mtc?.id,
+        certificate_number: mtc?.certificate_reference || (lot as any).certificate_number || ''
       }
     })
   }
