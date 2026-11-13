@@ -94,9 +94,10 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
     })
   }
 
-  const handleSelectMTC = (rowIdx: number, selectedMtcRef: string) => {
+  const handleSelectMTC = (rowIdentifier: number | string, selectedMtcRef: string) => {
     setParsedRows(prev => prev.map((r, i) => {
-      if (i !== rowIdx) return r
+      const isTarget = typeof rowIdentifier === 'string' ? r.id === rowIdentifier : i === rowIdentifier
+      if (!isTarget) return r
       const foundCert = r.candidate_mtcs?.find((c: any) => c.certificate_reference === selectedMtcRef)
       return {
         ...r,
@@ -624,7 +625,7 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
               <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] sticky top-0 shadow-sm z-10">
                 <tr>
                   <th className="p-2.5 text-center">Valid</th>
-                  <th className="p-2.5">Row</th>
+                  <th className="p-2.5">Row / Tab</th>
                   <th className="p-2.5">Item Code (Col 1)</th>
                   <th className="p-2.5">Raw Description (Col 2)</th>
                   <th className="p-2.5">Extracted Heat #</th>
@@ -644,7 +645,7 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
                   </tr>
                 ) : (
                   filteredRows.map((r, i) => (
-                    <tr key={i} className={r.isValid ? 'hover:bg-slate-50' : 'bg-red-50/60'}>
+                    <tr key={r.id || i} className={r.isValid ? 'hover:bg-slate-50' : 'bg-red-50/60'}>
                       <td className="p-2.5 text-center">
                         {r.isValid ? (
                           <Check className="h-4 w-4 text-emerald-600 inline" />
@@ -654,7 +655,14 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
                           </span>
                         )}
                       </td>
-                      <td className="p-2.5 text-slate-400 font-mono text-[11px]">{r.rowNum}</td>
+                      <td className="p-2.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
+                        <span>#{r.rowNum}</span>
+                        {r.sheet_name && (
+                          <span className="block text-[9px] bg-slate-100 text-slate-600 px-1 py-0.5 rounded font-sans truncate max-w-[85px]" title={r.sheet_name}>
+                            {r.sheet_name}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-2.5 font-mono font-bold text-slate-900">{r.item_code}</td>
                       <td className="p-2.5 text-slate-600 max-w-xs truncate" title={r.raw_description}>
                         {r.raw_description}
@@ -701,7 +709,7 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
                             </div>
                             <select
                               value={r.selected_mtc_ref || ''}
-                              onChange={(e) => handleSelectMTC(r.rowNum - 2, e.target.value)}
+                              onChange={(e) => handleSelectMTC(r.id || (r.rowNum - 2), e.target.value)}
                               className="bg-amber-50 border border-amber-400 text-amber-950 text-[11px] font-semibold rounded px-2 py-1 w-full max-w-[220px] focus:ring-1 focus:ring-amber-500 shadow-sm"
                             >
                               <option value="">-- Choose Matching MTC --</option>

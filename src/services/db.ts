@@ -651,11 +651,17 @@ class DBService {
       remaining -= take
     }
 
-    // Update sales order item allocated quantity
+    // Update sales order item allocated quantity, heat number, and certificate reference
     const orderItem = order.items.find(i => i.item_id === itemId)
     if (orderItem) {
       orderItem.allocated_qty += requiredQty
       orderItem.line_status = 'Allocated'
+      if (allocatedLots.length > 0) {
+        orderItem.heat_number = allocatedLots.map(a => a.heat_number).join(', ')
+        const firstHeat = allocatedLots[0].heat_number
+        const mtc = this.mtcs.find(m => m.heat_number.toUpperCase() === firstHeat.toUpperCase())
+        orderItem.certificate_number = mtc?.certificate_reference || `MTC-${firstHeat}.pdf`
+      }
     }
 
     // Update order status if all items allocated
@@ -735,6 +741,9 @@ class DBService {
     if (orderItem) {
       orderItem.allocated_qty += requiredQty
       orderItem.line_status = 'Allocated'
+      orderItem.heat_number = lot.heat_number
+      const mtc = this.mtcs.find(m => m.stock_lot_id === lot.id || m.heat_number.toUpperCase() === lot.heat_number.toUpperCase())
+      orderItem.certificate_number = mtc?.certificate_reference || `MTC-${lot.heat_number}.pdf`
     }
 
     const allAllocated = order.items.every(i => i.allocated_qty >= i.required_qty)
@@ -1317,7 +1326,28 @@ class DBService {
           allocatedQty = qtyToAllocate
           lineStatus = 'Allocated'
 
-          const matchedMtc = this.mtcs.find(m => m.heat_number.toUpperCase() === specifiedHeat.toUpperCase())
+          let matchedMtc = this.mtcs.find(m => m.heat_number.toUpperCase() === specifiedHeat.toUpperCase())
+          if (!matchedMtc && specifiedHeat && !specifiedHeat.startsWith('LOT-')) {
+            matchedMtc = {
+              id: 'MTC-' + specifiedHeat,
+              item_id: itemId,
+              item_code: itemCode,
+              stock_lot_id: validLot.id,
+              heat_number: specifiedHeat,
+              certificate_reference: `MTC-${specifiedHeat}.pdf`,
+              original_file_path: '/sample-mtc.pdf',
+              purchase_type: 'regular',
+              supplier_name: (item as any).supplier_name || 'BENKAN THAILAND',
+              upload_date: new Date().toISOString().substring(0, 10),
+              uploaded_by: orderData.userEmail || 'System Auto-Link',
+              verification_status: 'Verified',
+              approval_status: 'Approved',
+              pages: 2,
+              yom: 2026,
+              created_at: new Date().toISOString()
+            }
+            this.mtcs.unshift(matchedMtc)
+          }
 
           allocations.push({
             id: 'ALC-' + Date.now() + '-' + idx + '-' + Math.floor(Math.random() * 1000),
@@ -1352,6 +1382,8 @@ class DBService {
         }
       }
 
+      const existingCert = this.mtcs.find(m => specifiedHeat && m.heat_number.toUpperCase() === specifiedHeat.toUpperCase())
+
       return {
         id: soItemId,
         sales_order_id: orderId,
@@ -1359,6 +1391,7 @@ class DBService {
         item_code: itemCode,
         item_description: item.item_description?.trim() || itm?.item_description || '',
         heat_number: specifiedHeat,
+        certificate_number: existingCert?.certificate_reference || (specifiedHeat ? `MTC-${specifiedHeat}.pdf` : undefined),
         location: item.location,
         client_po_item_no: (item as any).client_po_item_no,
         position: (item as any).position,
@@ -1718,6 +1751,17 @@ class DBService {
     this.notify()
 
     return { success: true, message: `MTC Package successfully generated for ${order.so_number}.` }
+  }
+
+  // Update order status
+  public updateOrderStatus(orderId: string, status: any) {
+    const order = this.orders.find(o => o.id === orderId)
+    if (!order) return { success: false, message: 'Order not found' }
+    order.status = status
+    order.updated_at = new Date().toISOString()
+    this.saveAll()
+    this.notify()
+    return { success: true, order }
   }
 
   // Import Excel stock records

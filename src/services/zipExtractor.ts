@@ -21,6 +21,8 @@ export type { StoredCertificateEntry }
 export interface ExtractedCertificate {
   id: string
   fileName: string
+  folderPath?: string
+  relativePath?: string
   fileSizeKB: number
   heatNumber: string
   detectedItemCode?: string
@@ -49,7 +51,7 @@ export function detectHeatNumberFromFilename(fileName: string): string {
   return clean.trim()
 }
 
-// Process a .zip archive containing certificates
+// Process a .zip archive containing certificates, recursively traversing all folders
 export async function extractCertificatesFromZip(
   zipFile: File,
   candidateHeats: string[] = []
@@ -59,28 +61,53 @@ export async function extractCertificatesFromZip(
   const masterStock = db.getMasterStockView()
   const results: ExtractedCertificate[] = []
 
+  // Combine provided candidate heats with all master stock heats for maximum match accuracy
+  const stockHeats = masterStock.map(s => s.heat_number).filter(Boolean)
+  const combinedCandidateHeats = Array.from(new Set([...candidateHeats, ...stockHeats]))
+
   const filePromises: Promise<void>[] = []
 
-  loadedZip.forEach((relativePath, zipEntry) => {
-    // Ignore folders and non-PDF files (e.g. __MACOSX, .DS_Store)
-    if (zipEntry.dir || relativePath.startsWith('__MACOSX') || !relativePath.toLowerCase().endsWith('.pdf')) {
+  loadedZip.forEach((rawRelativePath, zipEntry) => {
+    const relativePath = rawRelativePath.replace(/\\/g, '/')
+    // Ignore directories and system artifacts (e.g. __MACOSX, .DS_Store)
+    if (
+      zipEntry.dir ||
+      relativePath.includes('__MACOSX') ||
+      relativePath.includes('.DS_Store') ||
+      !relativePath.toLowerCase().endsWith('.pdf')
+    ) {
       return
     }
 
     const p = (async () => {
-      const fileName = relativePath.split('/').pop() || relativePath
+      const segments = relativePath.split('/')
+      const fileName = segments[segments.length - 1]
+      const folderSegments = segments.slice(0, -1)
+      const folderPath = folderSegments.join('/')
       const fileData = await zipEntry.async('uint8array')
 
       // Detect Heat from filename
       let detectedHeat = detectHeatNumberFromFilename(fileName)
 
+      // If fileName is generic (e.g. "cert.pdf", "MTC.pdf", "1.pdf", "scan.pdf"), check parent folders
+      const isGeneric = !detectedHeat || /^(?:cert|mtc|document|scan|file|pdf|folder|page|stock|test|1|2|3|4|5)$/i.test(detectedHeat)
+      if (isGeneric && folderSegments.length > 0) {
+        for (let idx = folderSegments.length - 1; idx >= 0; idx--) {
+          const folderHeat = detectHeatNumberFromFilename(folderSegments[idx])
+          if (folderHeat && folderHeat.length >= 3 && !/^(?:cert|mtc|document|scan|file|pdf|folder|page|stock|fittings|flanges|pipes)$/i.test(folderHeat)) {
+            detectedHeat = folderHeat
+            break
+          }
+        }
+      }
+
       // Inspect text and content stream inside PDF bytes
-      const inspection = extractTextAndHeatsFromPDFBytes(fileData, candidateHeats)
-      if (inspection.detectedHeat && (!detectedHeat || detectedHeat.length < 2)) {
+      const inspection = extractTextAndHeatsFromPDFBytes(fileData, combinedCandidateHeats)
+      if (inspection.detectedHeat && (!detectedHeat || detectedHeat.length < 2 || isGeneric)) {
         detectedHeat = inspection.detectedHeat
       }
 
-      // Store in memory cache to preserve original format byte-for-byte
+      // Store in memory cache to preserve original format byte-for-byte across multiple keys
       const blobUrl = registerUploadedCertificate(
         fileName,
         fileData,
@@ -88,17 +115,39 @@ export async function extractCertificatesFromZip(
         detectedHeat,
         inspection.textSnippet
       )
+      // Also register full path and folder name
+      registerUploadedCertificate(relativePath, fileData, fileName, detectedHeat, inspection.textSnippet)
+      if (folderSegments.length > 0) {
+        folderSegments.forEach(seg => {
+          registerUploadedCertificate(seg, fileData, fileName, detectedHeat, inspection.textSnippet)
+        })
+      }
 
       // Try exact or fuzzy match with master stock
       const matchedLot = masterStock.find(s => {
         const h1 = s.heat_number.trim().toUpperCase()
         const h2 = detectedHeat.trim().toUpperCase()
-        return h1 === h2 || (h2.length >= 3 && h1.includes(h2)) || (h1.length >= 3 && h2.includes(h1))
+        const fileUp = fileName.toUpperCase()
+        const relUp = relativePath.toUpperCase()
+        return (
+          h1 === h2 ||
+          (h2.length >= 3 && h1.includes(h2)) ||
+          (h1.length >= 3 && h2.includes(h1)) ||
+          fileUp.includes(h1) ||
+          relUp.includes(h1)
+        )
       })
+
+      if (matchedLot) {
+        registerUploadedCertificate(matchedLot.heat_number, fileData, fileName, matchedLot.heat_number, inspection.textSnippet)
+        registerUploadedCertificate(matchedLot.item_code, fileData, fileName, matchedLot.heat_number, inspection.textSnippet)
+      }
 
       results.push({
         id: 'EXT-' + Math.random().toString(36).substring(2, 9),
         fileName,
+        folderPath,
+        relativePath,
         fileSizeKB: Math.round(fileData.length / 1024),
         heatNumber: matchedLot ? matchedLot.heat_number : (detectedHeat || 'UNMATCHED'),
         detectedItemCode: matchedLot?.item_code,

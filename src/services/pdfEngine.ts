@@ -1204,7 +1204,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
         if (nextPos === (pos || 0) + 1) {
           break
         }
-        if (i + 1 < lines.length && /^(?:#|Item)/i.test(lines[i + 1])) {
+        if (i + 1 < lines.length && /^(?:#|Item|Sub\s*Total|Total|Amount)/i.test(lines[i + 1])) {
           break
         }
       }
@@ -1259,34 +1259,53 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     let qty = 1
     let rate = 0
 
-    if (numTokens.length >= 4) {
-      clientPoItemNo = numTokens[0]
-      qty = Math.round(parseFloat(numTokens[1])) || 1
-      rate = parseFloat(numTokens[2]) || 0
-    } else if (numTokens.length === 3) {
-      const n0 = parseFloat(numTokens[0])
-      const n1 = parseFloat(numTokens[1])
-      const n2 = parseFloat(numTokens[2])
-      if (Math.abs(n0 * n1 - n2) < 0.1 || (n0 > 0 && n0 < 1000 && n1 > 0 && n2 >= n1)) {
-        qty = Math.round(n0) || 1
-        rate = n1
-      } else {
-        clientPoItemNo = numTokens[0]
-        qty = Math.round(n1) || 1
-        rate = n2
+    // Strict mathematical validation: find (qty * rate = amount)
+    let foundMathMatch = false
+    for (let k = 0; k <= numTokens.length - 3; k++) {
+      const qCand = parseFloat(numTokens[k])
+      const rCand = parseFloat(numTokens[k + 1])
+      const aCand = parseFloat(numTokens[k + 2])
+      if (qCand > 0 && rCand > 0 && aCand > 0 && Math.abs(qCand * rCand - aCand) < 0.5) {
+        qty = Math.round(qCand) || 1
+        rate = rCand
+        if (k > 0) {
+          clientPoItemNo = numTokens[k - 1]
+        }
+        foundMathMatch = true
+        break
       }
-    } else if (numTokens.length === 2) {
-      const n0 = parseFloat(numTokens[0])
-      const n1 = parseFloat(numTokens[1])
-      if (Number.isInteger(n0) && n0 <= 500 && n1 <= 1000) {
+    }
+
+    if (!foundMathMatch) {
+      if (numTokens.length >= 4) {
         clientPoItemNo = numTokens[0]
-        qty = Math.round(n1) || 1
-      } else {
-        qty = Math.round(n0) || 1
-        rate = n1
+        qty = Math.round(parseFloat(numTokens[1])) || 1
+        rate = parseFloat(numTokens[2]) || 0
+      } else if (numTokens.length === 3) {
+        const n0 = parseFloat(numTokens[0])
+        const n1 = parseFloat(numTokens[1])
+        const n2 = parseFloat(numTokens[2])
+        if (Math.abs(n0 * n1 - n2) < 0.5) {
+          qty = Math.round(n0) || 1
+          rate = n1
+        } else {
+          clientPoItemNo = numTokens[0]
+          qty = Math.round(n1) || 1
+          rate = n2
+        }
+      } else if (numTokens.length === 2) {
+        const n0 = parseFloat(numTokens[0])
+        const n1 = parseFloat(numTokens[1])
+        if (Number.isInteger(n0) && n0 <= 500 && n1 <= 1000) {
+          clientPoItemNo = numTokens[0]
+          qty = Math.round(n1) || 1
+        } else {
+          qty = Math.round(n0) || 1
+          rate = n1
+        }
+      } else if (numTokens.length === 1) {
+        qty = Math.round(parseFloat(numTokens[0])) || 1
       }
-    } else if (numTokens.length === 1) {
-      qty = Math.round(parseFloat(numTokens[0])) || 1
     }
 
     let itemDesc = descLines.join(' ').replace(/\s{2,}/g, ' ').trim()

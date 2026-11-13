@@ -213,133 +213,143 @@ export function parseExcelBuffer(data: Uint8Array | ArrayBuffer): {
   validationErrors: string[]
   validCount: number
   invalidCount: number
+  sheetNames: string[]
 } {
   const workbook = XLSX.read(data, { type: 'array' })
-  const sheetName = workbook.SheetNames[0]
-  const sheet = workbook.Sheets[sheetName]
-  const rawJson: any[] = XLSX.utils.sheet_to_json(sheet)
+  const sheetNames = workbook.SheetNames || []
 
   const rows: any[] = []
   const validationErrors: string[] = []
   let validCount = 0
   let invalidCount = 0
+  let globalRowCounter = 0
 
-  rawJson.forEach((row, idx) => {
-    const rowNum = idx + 2
+  sheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName]
+    if (!sheet) return
+    const rawJson: any[] = XLSX.utils.sheet_to_json(sheet)
+    if (!rawJson || rawJson.length === 0) return
 
-    // Detect columns:
-    // Format 1: Exact MSG 6-Column Format
-    // "Item Name", "Description", "Rate", "Account", "Purchase Rate", "Stock On Hand"
-    const rawItemName = getRowValue(row, ['Item Name', 'ItemName', 'Item Code', 'item_code', 'item_name'])
-    const rawDescription = String(getRowValue(row, ['Description', 'Item Description', 'desc', 'description']) || '')
+    rawJson.forEach((row, idx) => {
+      globalRowCounter++
+      const rowNum = idx + 2
 
-    // Rates & Quantities
-    const rawRate = getRowValue(row, ['Rate', 'Unit Price', 'Unit Price AED', 'rate', 'unit_price'])
-    const rawAccount = getRowValue(row, ['Account', 'account', 'Account Name']) || 'Sales'
-    const rawPurchaseRate = getRowValue(row, ['Purchase Rate', 'PurchaseRate', 'purchase_rate'])
-    const rawQty = getRowValue(row, ['Stock On Hand', 'StockOnHand', 'Quantity', 'Stock on Hand', 'stock_on_hand', 'Qty'])
+      // Detect columns:
+      // Format 1: Exact MSG 6-Column Format
+      // "Item Name", "Description", "Rate", "Account", "Purchase Rate", "Stock On Hand"
+      const rawItemName = getRowValue(row, ['Item Name', 'ItemName', 'Item Code', 'item_code', 'item_name', 'Item'])
+      const rawDescription = String(getRowValue(row, ['Description', 'Item Description', 'desc', 'description']) || '')
 
-    // Explicit columns if present
-    const explicitHeat = getRowValue(row, ['Heat Number', 'HeatNumber', 'heat_number', 'Heat No'])
-    const explicitYom = getRowValue(row, ['YOM', 'Year of Manufacturing', 'yom'])
-    const explicitSupplier = getRowValue(row, ['Supplier', 'Make', 'make', 'Manufacturer'])
-    const explicitLocation = getRowValue(row, ['Warehouse Location', 'Location', 'location', 'Bay'])
-    const explicitLCode = getRowValue(row, ['L Code', 'l_code', 'LCode'])
-    const explicitPurchaseType = getRowValue(row, ['Purchase Type', 'purchase_type', 'Type'])
+      // Rates & Quantities
+      const rawRate = getRowValue(row, ['Rate', 'Unit Price', 'Unit Price AED', 'rate', 'unit_price'])
+      const rawAccount = getRowValue(row, ['Account', 'account', 'Account Name']) || 'Sales'
+      const rawPurchaseRate = getRowValue(row, ['Purchase Rate', 'PurchaseRate', 'purchase_rate'])
+      const rawQty = getRowValue(row, ['Stock On Hand', 'StockOnHand', 'Quantity', 'Stock on Hand', 'stock_on_hand', 'Qty', 'Qty In Stock'])
 
-    let itemCode = String(rawItemName || '').trim().toUpperCase()
-    let description = rawDescription
-    let heatNumber = explicitHeat ? String(explicitHeat).trim() : ''
-    let yom = explicitYom ? Number(explicitYom) : 2024
-    let supplier = explicitSupplier ? String(explicitSupplier).trim() : 'WMASS GERMANY'
-    let location = explicitLocation ? String(explicitLocation).trim() : 'LN-EB1'
-    let lCode = explicitLCode ? String(explicitLCode).trim() : ''
-    let purchaseType = explicitPurchaseType ? (String(explicitPurchaseType).toLowerCase().includes('local') ? 'local_purchase' : 'regular') : 'regular'
-    let isExtracted = false
+      // Explicit columns if present
+      const explicitHeat = getRowValue(row, ['Heat Number', 'HeatNumber', 'heat_number', 'Heat No', 'Heat#'])
+      const explicitYom = getRowValue(row, ['YOM', 'Year of Manufacturing', 'yom', 'Year'])
+      const explicitSupplier = getRowValue(row, ['Supplier', 'Make', 'make', 'Manufacturer'])
+      const explicitLocation = getRowValue(row, ['Warehouse Location', 'Location', 'location', 'Bay', 'LN'])
+      const explicitLCode = getRowValue(row, ['L Code', 'l_code', 'LCode'])
+      const explicitPurchaseType = getRowValue(row, ['Purchase Type', 'purchase_type', 'Type'])
 
-    // Smart parser if Description contains embedded MAKE / HEAT NUMBER / LN
-    if (!explicitHeat && rawDescription) {
-      const parsed = parseMSGDescription(rawDescription)
-      description = parsed.cleanDesc
-      heatNumber = parsed.heatNumber
-      supplier = parsed.make
-      location = parsed.location
-      yom = parsed.yom
-      isExtracted = true
-      if (parsed.isLocal || itemCode.endsWith('-LOC')) {
-        purchaseType = 'local_purchase'
-        if (!lCode) {
-          lCode = `L-${itemCode.replace('-LOC', '')}-${rowNum}`
+      let itemCode = String(rawItemName || '').trim().toUpperCase()
+      let description = rawDescription
+      let heatNumber = explicitHeat ? String(explicitHeat).trim() : ''
+      let yom = explicitYom ? Number(explicitYom) : 2024
+      let supplier = explicitSupplier ? String(explicitSupplier).trim() : 'WMASS GERMANY'
+      let location = explicitLocation ? String(explicitLocation).trim() : 'LN-EB1'
+      let lCode = explicitLCode ? String(explicitLCode).trim() : ''
+      let purchaseType = explicitPurchaseType ? (String(explicitPurchaseType).toLowerCase().includes('local') ? 'local_purchase' : 'regular') : 'regular'
+      let isExtracted = false
+
+      // Smart parser if Description contains embedded MAKE / HEAT NUMBER / LN
+      if (!explicitHeat && rawDescription) {
+        const parsed = parseMSGDescription(rawDescription)
+        description = parsed.cleanDesc
+        heatNumber = parsed.heatNumber
+        supplier = parsed.make
+        location = parsed.location
+        yom = parsed.yom
+        isExtracted = true
+        if (parsed.isLocal || itemCode.endsWith('-LOC')) {
+          purchaseType = 'local_purchase'
+          if (!lCode) {
+            lCode = `L-${itemCode.replace('-LOC', '')}-${rowNum}`
+          }
         }
       }
-    }
 
-    // Default heat fallback for gaskets / non-heat bulk items if not specified
-    if (!heatNumber && itemCode) {
-      heatNumber = `LOT-${itemCode.slice(0, 8)}`
-    }
+      // Default heat fallback for gaskets / non-heat bulk items if not specified
+      if (!heatNumber && itemCode) {
+        heatNumber = `LOT-${itemCode.slice(0, 8)}`
+      }
 
-    // Parse numeric values
-    const rateVal = rawRate !== undefined ? parseFloat(String(rawRate).replace(/[^0-9.]/g, '')) || 0 : 0
-    const purchaseRateVal = rawPurchaseRate !== undefined ? parseFloat(String(rawPurchaseRate).replace(/[^0-9.]/g, '')) || 0 : 0
-    const qtyVal = rawQty !== undefined ? parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) || 0 : 0
+      // Parse numeric values
+      const rateVal = rawRate !== undefined ? parseFloat(String(rawRate).replace(/[^0-9.]/g, '')) || 0 : 0
+      const purchaseRateVal = rawPurchaseRate !== undefined ? parseFloat(String(rawPurchaseRate).replace(/[^0-9.]/g, '')) || 0 : 0
+      const qtyVal = rawQty !== undefined ? parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) || 0 : 0
 
-    const errs: string[] = []
-    if (!itemCode) errs.push('Missing Item Name')
-    if (rawQty === undefined || isNaN(qtyVal)) errs.push('Invalid Stock On Hand quantity')
+      const errs: string[] = []
+      if (!itemCode) errs.push('Missing Item Name')
+      if (rawQty === undefined || isNaN(qtyVal)) errs.push('Invalid Stock On Hand quantity')
 
-    if (errs.length > 0) {
-      invalidCount++
-      validationErrors.push(`Row ${rowNum} (${itemCode || 'Unnamed'}): ${errs.join(', ')}`)
-    } else {
-      validCount++
-    }
+      if (errs.length > 0) {
+        invalidCount++
+        validationErrors.push(`[${sheetName}] Row ${rowNum} (${itemCode || 'Unnamed'}): ${errs.join(', ')}`)
+      } else {
+        validCount++
+      }
 
-    // Auto-match MTC certificates by Heat Number
-    const candidateMTCs = matchCertificatesForHeat(heatNumber, itemCode)
-    let mtcMatchStatus: 'auto_matched' | 'multiple_found' | 'missing' = 'missing'
-    let selectedMtcRef = ''
-    let selectedMtcId = ''
+      // Auto-match MTC certificates by Heat Number and Item Code
+      const candidateMTCs = matchCertificatesForHeat(heatNumber, itemCode)
+      let mtcMatchStatus: 'auto_matched' | 'multiple_found' | 'missing' = 'missing'
+      let selectedMtcRef = ''
+      let selectedMtcId = ''
 
-    if (candidateMTCs.length === 1) {
-      mtcMatchStatus = 'auto_matched'
-      selectedMtcRef = candidateMTCs[0].certificate_reference
-      selectedMtcId = candidateMTCs[0].id
-    } else if (candidateMTCs.length > 1) {
-      mtcMatchStatus = 'multiple_found'
-      selectedMtcRef = '' // User will choose: which one is it?
-      selectedMtcId = ''
-    } else {
-      mtcMatchStatus = 'missing'
-    }
+      if (candidateMTCs.length === 1) {
+        mtcMatchStatus = 'auto_matched'
+        selectedMtcRef = candidateMTCs[0].certificate_reference
+        selectedMtcId = candidateMTCs[0].id
+      } else if (candidateMTCs.length > 1) {
+        mtcMatchStatus = 'multiple_found'
+        selectedMtcRef = ''
+        selectedMtcId = ''
+      } else {
+        mtcMatchStatus = 'missing'
+      }
 
-    rows.push({
-      rowNum,
-      item_code: itemCode,
-      description: description,
-      raw_description: rawDescription,
-      heat_number: heatNumber,
-      is_extracted_heat: isExtracted,
-      yom: yom,
-      quantity: qtyVal,
-      rate: rateVal,
-      purchase_rate: purchaseRateVal,
-      account: rawAccount,
-      purchase_type: purchaseType,
-      supplier: supplier,
-      location: location,
-      l_code: lCode,
-      unit_price: rateVal,
-      candidate_mtcs: candidateMTCs,
-      mtc_match_status: mtcMatchStatus,
-      selected_mtc_ref: selectedMtcRef,
-      selected_mtc_id: selectedMtcId,
-      isValid: errs.length === 0,
-      errors: errs
+      rows.push({
+        id: `ROW-${globalRowCounter}`,
+        rowNum,
+        sheet_name: sheetName,
+        item_code: itemCode,
+        description: description,
+        raw_description: rawDescription,
+        heat_number: heatNumber,
+        is_extracted_heat: isExtracted,
+        yom: yom,
+        quantity: qtyVal,
+        rate: rateVal,
+        purchase_rate: purchaseRateVal,
+        account: rawAccount,
+        purchase_type: purchaseType,
+        supplier: supplier,
+        location: location,
+        l_code: lCode,
+        unit_price: rateVal,
+        candidate_mtcs: candidateMTCs,
+        mtc_match_status: mtcMatchStatus,
+        selected_mtc_ref: selectedMtcRef,
+        selected_mtc_id: selectedMtcId,
+        isValid: errs.length === 0,
+        errors: errs
+      })
     })
   })
 
-  return { rows, validationErrors, validCount, invalidCount }
+  return { rows, validationErrors, validCount, invalidCount, sheetNames }
 }
 
 export function parseExcelFile(file: File): Promise<{
@@ -569,6 +579,7 @@ export function parseSalesOrderExcel(file: File): Promise<{
   itemCode: string
   requiredQty: number
   deliveryDate?: string
+  sheetName?: string
 }[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -576,24 +587,32 @@ export function parseSalesOrderExcel(file: File): Promise<{
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array' })
-        const sheet = wb.Sheets[wb.SheetNames[0]]
-        const json: any[] = XLSX.utils.sheet_to_json(sheet)
+        const sheetNames = wb.SheetNames || []
+        const rows: any[] = []
 
-        const rows = json.map(r => {
-          const cust = r['Customer Name'] || r['Customer'] || r['customer_name'] || 'General Client'
-          const po = r['Customer P.O.'] || r['PO Number'] || r['P.O. Number'] || r['po_number'] || 'PO-ONLINE'
-          const item = r['Item Name'] || r['Item Code'] || r['item_code'] || r['Item'] || ''
-          const qty = parseInt(String(r['Required Qty'] || r['Quantity'] || r['Qty'] || 1).replace(/[^0-9]/g, ''), 10) || 1
-          const date = r['Required Delivery Date'] || r['Delivery Date'] || r['delivery_date'] || ''
+        sheetNames.forEach(sheetName => {
+          const sheet = wb.Sheets[sheetName]
+          if (!sheet) return
+          const json: any[] = XLSX.utils.sheet_to_json(sheet)
+          json.forEach(r => {
+            const cust = r['Customer Name'] || r['Customer'] || r['customer_name'] || 'General Client'
+            const po = r['Customer P.O.'] || r['PO Number'] || r['P.O. Number'] || r['po_number'] || 'PO-ONLINE'
+            const item = r['Item Name'] || r['Item Code'] || r['item_code'] || r['Item'] || ''
+            const qty = parseInt(String(r['Required Qty'] || r['Quantity'] || r['Qty'] || 1).replace(/[^0-9]/g, ''), 10) || 1
+            const date = r['Required Delivery Date'] || r['Delivery Date'] || r['delivery_date'] || ''
 
-          return {
-            customerName: String(cust).trim(),
-            poNumber: String(po).trim(),
-            itemCode: String(item).trim().toUpperCase(),
-            requiredQty: qty,
-            deliveryDate: date ? String(date).trim() : undefined
-          }
-        }).filter(r => r.itemCode.length > 0)
+            if (String(item).trim()) {
+              rows.push({
+                customerName: String(cust).trim(),
+                poNumber: String(po).trim(),
+                itemCode: String(item).trim().toUpperCase(),
+                requiredQty: qty,
+                deliveryDate: date ? String(date).trim() : undefined,
+                sheetName
+              })
+            }
+          })
+        })
 
         resolve(rows)
       } catch (err) {

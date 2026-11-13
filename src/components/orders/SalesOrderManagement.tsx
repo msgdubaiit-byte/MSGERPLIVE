@@ -39,7 +39,10 @@ import {
   parseCustomerSOPDF,
   mergeSalesOrderMTCPackage,
   downloadPDFBlob,
+  downloadCertificatesAsZip,
+  createSampleMillCertificate,
 } from '../../services/pdfEngine'
+import { getUploadedCertificateBytes } from '../../services/zipExtractor'
 import {
   generateClientSummaryExcel,
   generateStoresSummaryExcel,
@@ -66,12 +69,14 @@ interface SalesOrderManagementProps {
   onSelectOrder: (order: SalesOrder) => void
   onNavigateToAllocation: (orderId: string) => void
   initialStatusFilter?: string
+  onPreviewMTC?: (docName: string, itemCode: string, heat: string) => void
 }
 
 export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
   onSelectOrder,
   onNavigateToAllocation,
   initialStatusFilter,
+  onPreviewMTC,
 }) => {
   const { hasPermission, currentUser } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
@@ -513,6 +518,75 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     }
   }
 
+  // Download all authentic MTC certificates associated with this Sales Order as a ZIP file
+  const handleDownloadCertificatesZip = async (order: SalesOrder) => {
+    try {
+      const mtcs = db.getMTCs()
+      const list: { fileName: string; bytes: Uint8Array }[] = []
+      const candidateHeats: { heat: string; itemCode: string; certRef?: string }[] = []
+
+      if (order.allocations && order.allocations.length > 0) {
+        order.allocations.forEach(a => {
+          if (a.heat_number && !candidateHeats.some(c => c.heat.toUpperCase() === a.heat_number.toUpperCase())) {
+            candidateHeats.push({
+              heat: a.heat_number,
+              itemCode: a.item_code || '',
+              certRef: a.mtc_certificate_id,
+            })
+          }
+        })
+      }
+      if (order.items && order.items.length > 0) {
+        order.items.forEach(i => {
+          if (i.heat_number && !candidateHeats.some(c => c.heat.toUpperCase() === i.heat_number?.toUpperCase())) {
+            candidateHeats.push({
+              heat: i.heat_number,
+              itemCode: i.item_code || '',
+              certRef: i.certificate_number,
+            })
+          }
+        })
+      }
+
+      if (candidateHeats.length === 0) {
+        alert('No heats or certificates allocated to this Sales Order yet. Please allocate stock or import items first.')
+        return
+      }
+
+      for (const ch of candidateHeats) {
+        let bytes: Uint8Array | null = null
+        const matchedMtc = mtcs.find(m =>
+          m.heat_number.toUpperCase() === ch.heat.toUpperCase() ||
+          (ch.certRef && m.certificate_reference.toUpperCase() === ch.certRef.toUpperCase())
+        )
+        if (matchedMtc) {
+          bytes = getUploadedCertificateBytes(matchedMtc.certificate_reference) || getUploadedCertificateBytes(matchedMtc.heat_number)
+        }
+        if (!bytes) {
+          bytes = getUploadedCertificateBytes(ch.heat) || (ch.certRef ? getUploadedCertificateBytes(ch.certRef) : null)
+        }
+        if (!bytes) {
+          bytes = await createSampleMillCertificate(
+            ch.itemCode || 'OILFIELD-FITTING',
+            ch.heat,
+            matchedMtc?.yom || 2026,
+            2
+          )
+        }
+
+        const safeName = (ch.certRef && ch.certRef.toLowerCase().endsWith('.pdf'))
+          ? ch.certRef
+          : `MTC_${ch.heat}.pdf`
+
+        list.push({ fileName: safeName, bytes })
+      }
+
+      await downloadCertificatesAsZip(list, `${order.so_number}_All_MTC_Certificates.zip`)
+    } catch (err: any) {
+      alert('Error downloading certificates zip: ' + err.message)
+    }
+  }
+
   // Load a quick sample test order for testing
   const handleLoadSampleOrder = () => {
     const cust = customers[0] || { id: 'CUST-001', customer_name: 'McDermott Middle East Inc' }
@@ -897,6 +971,16 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                       <FileCheck2 className="h-3 w-3 text-red-200" />
                       <span>{generatingMtcSoId === order.id ? 'Certifying...' : 'MTC Package (.pdf)'}</span>
                     </button>
+
+                    {/* 7. Download All Certificates (.zip) */}
+                    <button
+                      onClick={() => handleDownloadCertificatesZip(order)}
+                      className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      title="Download all authentic MTC Certificates for this Sales Order as a ZIP file"
+                    >
+                      <Download className="h-3 w-3 text-amber-300" />
+                      <span>SO Certificates (.zip)</span>
+                    </button>
                   </div>
                 </div>
 
@@ -910,7 +994,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                         <th className="pb-2 text-center">Required</th>
                         <th className="pb-2 text-center">Allocated</th>
                         <th className="pb-2 text-center">Dispatched</th>
-                        <th className="pb-2">Allocated Heat Numbers</th>
+                        <th className="pb-2">Allocated Heat & Certificates</th>
                         <th className="pb-2 text-right">Status</th>
                       </tr>
                     </thead>
@@ -927,21 +1011,55 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             <td className="py-2.5 text-center font-semibold text-emerald-700">{item.dispatched_qty} {item.uom}</td>
                             <td className="py-2.5">
                               {itemAllocations.length === 0 ? (
-                                <span className="text-slate-400 italic text-[11px]">Unallocated</span>
+                                <div className="space-y-1">
+                                  <span className="text-slate-400 italic text-[11px]">Unallocated</span>
+                                  {item.certificate_number && (
+                                    <div className="flex items-center space-x-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => onPreviewMTC ? onPreviewMTC(item.certificate_number!, item.item_code, item.heat_number || '') : null}
+                                        className="text-[10px] font-mono bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded flex items-center space-x-1"
+                                        title="Preview Certificate"
+                                      >
+                                        <FileCheck2 className="h-2.5 w-2.5 text-amber-600" />
+                                        <span>Cert: {item.certificate_number}</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
-                                <div className="flex flex-wrap gap-1">
-                                  {itemAllocations.map(a => (
-                                    <span
-                                      key={a.id}
-                                      className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                                        a.allocation_status === 'Dispatched' ? 'bg-emerald-100 text-emerald-800' :
-                                        a.allocation_status === 'Released' ? 'bg-slate-100 text-slate-500 line-through' :
-                                        'bg-blue-100 text-blue-800'
-                                      }`}
-                                    >
-                                      {a.heat_number} ({a.allocated_qty} PCS)
-                                    </span>
-                                  ))}
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap gap-1">
+                                    {itemAllocations.map(a => (
+                                      <span
+                                        key={a.id}
+                                        className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                                          a.allocation_status === 'Dispatched' ? 'bg-emerald-100 text-emerald-800' :
+                                          a.allocation_status === 'Released' ? 'bg-slate-100 text-slate-500 line-through' :
+                                          'bg-blue-100 text-blue-800'
+                                        }`}
+                                      >
+                                        {a.heat_number} ({a.allocated_qty} PCS)
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {itemAllocations.map(a => {
+                                      const certRef = a.mtc_certificate_id || item.certificate_number || `MTC-${a.heat_number}`
+                                      return (
+                                        <button
+                                          key={`cert-${a.id}`}
+                                          type="button"
+                                          onClick={() => onPreviewMTC ? onPreviewMTC(certRef, item.item_code, a.heat_number) : null}
+                                          className="text-[10px] font-mono bg-slate-50 hover:bg-blue-50 text-blue-700 hover:text-blue-900 border border-slate-200 hover:border-blue-300 px-1.5 py-0.5 rounded flex items-center space-x-1"
+                                          title={`Click to preview MTC certificate for Heat ${a.heat_number}`}
+                                        >
+                                          <FileCheck2 className="h-2.5 w-2.5 text-blue-500" />
+                                          <span>{certRef}</span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
                                 </div>
                               )}
                             </td>

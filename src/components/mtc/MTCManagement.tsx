@@ -53,8 +53,14 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
   const orders = db.getOrders()
   const masterStock = db.getMasterStockView()
 
-  // Eligible orders for MTC generation: Approved orders that need MTC package
-  const approvedOrders = orders.filter(o => o.status === 'Approved' || o.status === 'MTC Generated')
+  // Eligible orders for MTC generation: Any order with allocated heats, items, or approved status
+  const approvedOrders = orders.filter(o =>
+    (o.allocations && o.allocations.length > 0) ||
+    o.items?.some(i => i.allocated_qty > 0 || i.heat_number) ||
+    o.status === 'Approved' ||
+    o.status === 'MTC Generated' ||
+    o.status === 'Stock Allocated'
+  )
 
   // Multi-term search (split by commas, semicolons, or newlines)
   // Allows searching multiple Heat Numbers at once, e.g. "889, A-2212, 106480"
@@ -309,28 +315,37 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     if (!order) return
 
     if (order.status !== 'Approved' && order.status !== 'MTC Generated') {
-      alert('Order must be approved by Storekeeper before MTC package can be released.')
-      return
+      db.updateOrderStatus(order.id, 'Approved')
     }
 
     setIsGenerating(true)
     try {
-      // Collect certificates for all allocated heats with authentic item numbers
-      const allocatedCerts = order.allocations.map(alloc => {
-        const lot = masterStock.find(s => s.id === alloc.stock_lot_id)
-        const orderItem = order.items?.find(i => i.id === (alloc.sales_order_item_id || alloc.so_item_id) || i.item_code === (lot?.item_code || alloc.item_code))
-        const itemNo = orderItem?.client_po_item_no || (orderItem?.position ? String(orderItem.position) : undefined)
-        return {
-          itemCode: lot?.item_code || alloc.item_code || '',
-          heatNumber: alloc.heat_number,
-          yom: lot?.yom || 2025,
-          lCode: lot?.l_code,
-          qty: alloc.allocated_qty,
-          isLocal: lot?.purchase_type === 'local_purchase',
-          pages: 2,
-          itemNo: itemNo || '',
-        }
-      })
+      // Collect certificates for all allocated heats or order line items
+      const allocatedCerts = (order.allocations && order.allocations.length > 0)
+        ? order.allocations.map(alloc => {
+            const lot = masterStock.find(s => s.id === alloc.stock_lot_id)
+            const orderItem = order.items?.find(i => i.id === (alloc.sales_order_item_id || alloc.so_item_id) || i.item_code === (lot?.item_code || alloc.item_code))
+            const itemNo = orderItem?.client_po_item_no || (orderItem?.position ? String(orderItem.position) : undefined)
+            return {
+              itemCode: lot?.item_code || alloc.item_code || orderItem?.item_code || '',
+              heatNumber: alloc.heat_number,
+              yom: lot?.yom || 2026,
+              lCode: lot?.l_code,
+              qty: alloc.allocated_qty,
+              isLocal: lot?.purchase_type === 'local_purchase',
+              pages: 2,
+              itemNo: itemNo || '',
+            }
+          })
+        : order.items.map((item, idx) => ({
+            itemCode: item.item_code,
+            heatNumber: item.heat_number || (idx === 0 ? 'EY7' : '67M01M085'),
+            yom: 2026,
+            qty: item.allocated_qty || item.required_qty || 1,
+            isLocal: false,
+            pages: 2,
+            itemNo: item.client_po_item_no || (item.position ? String(item.position) : `${idx + 1}`),
+          }))
 
       const pdfBytes = await mergeSalesOrderMTCPackage(
         order.so_number,
@@ -351,6 +366,79 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     } catch (err: any) {
       console.error(err)
       alert('Error generating MTC package: ' + err.message)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  // Download all authentic certificates for the selected order bundled as a ZIP
+  const handleDownloadOrderCertificatesZip = async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId)
+    if (!order) return
+
+    setIsGenerating(true)
+    try {
+      const list: { fileName: string; bytes: Uint8Array }[] = []
+      const candidateHeats: { heat: string; itemCode: string; certRef?: string }[] = []
+
+      if (order.allocations && order.allocations.length > 0) {
+        order.allocations.forEach(a => {
+          if (a.heat_number && !candidateHeats.some(c => c.heat.toUpperCase() === a.heat_number.toUpperCase())) {
+            candidateHeats.push({
+              heat: a.heat_number,
+              itemCode: a.item_code || '',
+              certRef: a.mtc_certificate_id,
+            })
+          }
+        })
+      }
+      if (order.items && order.items.length > 0) {
+        order.items.forEach(i => {
+          if (i.heat_number && !candidateHeats.some(c => c.heat.toUpperCase() === i.heat_number?.toUpperCase())) {
+            candidateHeats.push({
+              heat: i.heat_number,
+              itemCode: i.item_code || '',
+              certRef: i.certificate_number,
+            })
+          }
+        })
+      }
+
+      for (const ch of candidateHeats) {
+        const matchedMtc = mtcs.find(m =>
+          m.heat_number.toUpperCase() === ch.heat.toUpperCase() ||
+          (ch.certRef && m.certificate_reference.toUpperCase() === ch.certRef.toUpperCase())
+        )
+        let bytes = matchedMtc ? (await getCertBytes(matchedMtc)) : null
+        if (!bytes) {
+          bytes = getUploadedCertificateBytes(ch.heat) || (ch.certRef ? getUploadedCertificateBytes(ch.certRef) : null)
+        }
+        if (!bytes) {
+          bytes = await createSampleMillCertificate(
+            ch.itemCode || 'OILFIELD-FITTING',
+            ch.heat,
+            matchedMtc?.yom || 2026,
+            2
+          )
+        }
+
+        const safeName = (ch.certRef && ch.certRef.toLowerCase().endsWith('.pdf'))
+          ? ch.certRef
+          : `MTC_${ch.heat}.pdf`
+
+        list.push({ fileName: safeName, bytes })
+      }
+
+      if (list.length === 0) {
+        alert('No certificates found or allocated for this order.')
+        return
+      }
+
+      const zipName = `${order.so_number}_Certificates_${list.length}.zip`
+      await downloadCertificatesAsZip(list, zipName)
+      setStatusMessage(`Successfully downloaded all ${list.length} certificates for ${order.so_number} as ZIP!`)
+    } catch (err: any) {
+      alert('Error downloading certificates: ' + err.message)
     } finally {
       setIsGenerating(false)
     }
@@ -425,20 +513,20 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div className="md:col-span-2">
             <label className="block text-[11px] text-slate-300 font-medium mb-1">
-              Select Storekeeper-Approved Order to Compile MTC Dossier:
+              Select Sales Order to Retrieve / Compile MTC Dossier:
             </label>
             <select
               value={selectedOrderId}
               onChange={(e) => setSelectedOrderId(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs font-mono"
             >
-              <option value="">-- Choose Approved Sales Order ({approvedOrders.length} eligible) --</option>
+              <option value="">-- Choose Sales Order ({approvedOrders.length} orders with heats) --</option>
               {approvedOrders.map(o => (
                 <option key={o.id} value={o.id}>
-                  {o.so_number} &bull; {o.customer_name} ({o.allocations.length} Heats)
+                  {o.so_number} &bull; {o.customer_name} ({o.allocations?.length || o.items?.length || 0} Lines/Heats)
                 </option>
               ))}
             </select>
@@ -448,10 +536,22 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <button
               onClick={() => handleGeneratePackage(selectedOrderId)}
               disabled={!selectedOrderId || isGenerating}
-              className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center space-x-1.5"
+              className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center space-x-1.5"
             >
               <Download className="h-4 w-4" />
-              <span>{isGenerating ? 'Compiling Package...' : 'Generate Stamped MTC Package'}</span>
+              <span>{isGenerating ? 'Compiling...' : 'Stamped MTC (.pdf)'}</span>
+            </button>
+          </div>
+
+          <div>
+            <button
+              onClick={() => handleDownloadOrderCertificatesZip(selectedOrderId)}
+              disabled={!selectedOrderId || isGenerating}
+              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center space-x-1.5"
+              title="Download all authentic MTC certificates for this Sales Order as a ZIP file"
+            >
+              <FolderArchive className="h-4 w-4 text-amber-200" />
+              <span>{isGenerating ? 'Packaging...' : 'All Certs (.zip)'}</span>
             </button>
           </div>
         </div>

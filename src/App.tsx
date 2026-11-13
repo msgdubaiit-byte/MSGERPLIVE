@@ -141,6 +141,9 @@ const MainApp: React.FC = () => {
                   setPreselectedAllocationOrderId(orderId)
                   setActiveTab('allocation')
                 }}
+                onPreviewMTC={(docName, itemCode, heat) =>
+                  setActivePdfPreview({ docName, itemCode, heatNumber: heat })
+                }
               />
             )}
 
