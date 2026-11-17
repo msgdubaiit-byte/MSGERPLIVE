@@ -33,6 +33,8 @@ import {
   BookOpen,
   PlayCircle,
   Package,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import {
   generateSalesOrderPDF,
@@ -43,6 +45,7 @@ import {
   createSampleMillCertificate,
 } from '../../services/pdfEngine'
 import { getUploadedCertificateBytes } from '../../services/zipExtractor'
+import { registerUploadedCertificate } from '../../services/certificateVault'
 import {
   generateClientSummaryExcel,
   generateStoresSummaryExcel,
@@ -84,6 +87,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
+  const [isPdfModalEnlarged, setIsPdfModalEnlarged] = useState(true)
   const [cancelModalOrder, setCancelModalOrder] = useState<SalesOrder | null>(null)
   const [cancelReason, setCancelReason] = useState('')
 
@@ -262,6 +266,37 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     }
   }
 
+  // Handle direct MTC upload for any line item (especially L-Codes or local purchase)
+  const handleUploadLineItemMtc = async (itemIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !pdfParsedData) return
+    try {
+      const arrayBuf = await file.arrayBuffer()
+      const fileData = new Uint8Array(arrayBuf)
+      const it = pdfParsedData.items[itemIdx]
+      let detectedHeat = it.heatNumber || ''
+      if (!detectedHeat) {
+        detectedHeat = file.name.replace(/\.[^/.]+$/, '').replace(/^(?:MTC|CERT|HEAT)[\s_\-]+/i, '')
+      }
+      registerUploadedCertificate(
+        file.name,
+        fileData,
+        file.name,
+        detectedHeat,
+        it.itemDescription
+      )
+      const updated = [...pdfParsedData.items]
+      ;(updated[itemIdx] as any).certificateNumber = file.name
+      if (!updated[itemIdx].heatNumber && detectedHeat) {
+        updated[itemIdx].heatNumber = detectedHeat
+      }
+      setPdfParsedData({ ...pdfParsedData, items: updated })
+      alert(`MTC Certificate "${file.name}" successfully attached to item #${it.position || itemIdx + 1}!`)
+    } catch (err: any) {
+      alert('Error uploading MTC: ' + err.message)
+    }
+  }
+
   // Commit parsed PDF Sales Order
   const handleCommitPdfSO = () => {
     if (!pdfParsedData) return
@@ -278,6 +313,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         item_code: it.itemCode,
         item_description: it.itemDescription || `${it.itemCode} Oilfield Material`,
         heat_number: it.heatNumber,
+        certificate_number: (it as any).certificateNumber,
         location: it.location,
         required_qty: it.requiredQty,
         client_po_item_no: it.clientPoItemNo || (it.position ? String(it.position) : undefined),
@@ -1351,17 +1387,30 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* UPLOAD SALES ORDER FROM CUSTOMER PDF MODAL */}
       {isPdfModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
+            isPdfModalEnlarged ? 'max-w-[97vw] h-[95vh]' : 'max-w-4xl max-h-[90vh]'
+          }`}>
+            <div className="bg-[#0B2545] p-3.5 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center space-x-2">
                 <FileText className="h-4 w-4 text-red-400" />
                 <h3 className="font-bold text-sm uppercase">Upload Customer Sales Order (PDF)</h3>
               </div>
-              <button onClick={() => { setIsPdfModalOpen(false); setPdfParsedData(null); }} className="text-slate-300 hover:text-white">✕</button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPdfModalEnlarged(!isPdfModalEnlarged)}
+                  className="text-slate-200 hover:text-white flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700 transition-colors"
+                  title={isPdfModalEnlarged ? 'Switch to Standard Size' : 'Enlarge to Full Page'}
+                >
+                  {isPdfModalEnlarged ? <Minimize2 className="h-3.5 w-3.5 text-amber-300" /> : <Maximize2 className="h-3.5 w-3.5 text-amber-300" />}
+                  <span>{isPdfModalEnlarged ? 'Standard View' : 'Enlarge Full Page'}</span>
+                </button>
+                <button onClick={() => { setIsPdfModalOpen(false); setPdfParsedData(null); }} className="text-slate-300 hover:text-white text-base ml-2">✕</button>
+              </div>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto text-xs">
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto text-xs flex-1">
               <div className="pb-2 border-b border-slate-100">
                 <span className="text-slate-600">
                   Upload incoming customer PO / Sales Order in official PDF format. The system automatically reads PO details, customer info, and line items, while preserving the authentic PDF.
@@ -1369,14 +1418,14 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
               </div>
 
               {/* PDF Dropzone */}
-              <div className="border-2 border-dashed border-slate-300 hover:border-red-500 rounded-xl p-6 text-center bg-slate-50 transition-colors relative">
+              <div className="border-2 border-dashed border-slate-300 hover:border-red-500 rounded-xl p-4 text-center bg-slate-50 transition-colors relative">
                 <input
                   type="file"
                   accept=".pdf"
                   onChange={handlePdfFileChange}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
-                <FileText className="h-9 w-9 text-red-600 mx-auto mb-1.5" />
+                <FileText className="h-8 w-8 text-red-600 mx-auto mb-1" />
                 <div className="font-bold text-slate-700">Click or Drop Customer Sales Order PDF</div>
                 <p className="text-[10px] text-slate-400 mt-0.5">
                   Accepts standard oilfield customer Purchase Orders (ADNOC, McDermott, Petrofac, Saipem, etc.)
@@ -1395,7 +1444,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
               {/* Extracted Data Form / Preview */}
               {pdfParsedData && (
-                <div className="space-y-3 bg-slate-50/80 p-4 rounded-xl border border-slate-200">
+                <div className="space-y-3 bg-slate-50/80 p-4 rounded-xl border border-slate-200 flex flex-col flex-1">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 uppercase tracking-tight text-[11px]">
                       Extracted Customer Order Details
@@ -1413,14 +1462,14 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Customer Name</label>
                       <input
                         type="text"
                         value={pdfParsedData.customerName}
                         onChange={(e) => setPdfParsedData({ ...pdfParsedData, customerName: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg p-2 bg-white text-xs"
+                        className="w-full border border-slate-300 rounded-lg p-2 bg-white text-xs font-medium"
                       />
                     </div>
                     <div>
@@ -1429,7 +1478,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                         type="text"
                         value={pdfParsedData.poNumber}
                         onChange={(e) => setPdfParsedData({ ...pdfParsedData, poNumber: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase bg-white text-xs"
+                        className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase bg-white text-xs font-bold"
                       />
                     </div>
                     <div>
@@ -1442,21 +1491,27 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                         className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase bg-orange-50/50 text-orange-900 font-bold text-xs"
                       />
                     </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Required Delivery Date</label>
+                      <input
+                        type="date"
+                        value={pdfParsedData.deliveryDate}
+                        onChange={(e) => setPdfParsedData({ ...pdfParsedData, deliveryDate: e.target.value })}
+                        className="w-full border border-slate-300 rounded-lg p-2 bg-white text-xs font-medium"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Required Delivery Date</label>
-                    <input
-                      type="date"
-                      value={pdfParsedData.deliveryDate}
-                      onChange={(e) => setPdfParsedData({ ...pdfParsedData, deliveryDate: e.target.value })}
-                      className="w-full border border-slate-300 rounded-lg p-2 bg-white text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="font-semibold text-slate-700">Detected Line Items ({pdfParsedData.items.length})</label>
+                  <div className="flex-1 flex flex-col min-h-0 pt-2">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <div className="flex items-center space-x-2">
+                        <label className="font-bold text-slate-800 uppercase tracking-tight text-[11px]">
+                          Detected Line Items ({pdfParsedData.items.length})
+                        </label>
+                        <span className="text-[10px] text-slate-500 font-normal">
+                          &bull; Full descriptions enlarged &amp; editable &bull; Attach MTC for L-Code directly
+                        </span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -1473,7 +1528,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                 itemCode: '',
                                 itemDescription: '',
                                 heatNumber: '',
-                                locationCode: '',
+                                location: '',
                                 requiredQty: 1,
                                 make: '',
                                 supplierName: '',
@@ -1484,29 +1539,33 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             ]
                           })
                         }}
-                        className="text-red-600 hover:text-red-700 font-semibold text-[11px]"
+                        className="text-red-600 hover:text-red-700 font-bold text-xs flex items-center space-x-1"
                       >
-                        + Add Item
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Item</span>
                       </button>
                     </div>
 
-                    <div className="border border-slate-200 rounded-lg overflow-hidden max-h-40 overflow-y-auto bg-white">
+                    <div className={`border border-slate-200 rounded-xl overflow-x-auto overflow-y-auto bg-white ${
+                      isPdfModalEnlarged ? 'max-h-[56vh]' : 'max-h-60'
+                    }`}>
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100 text-slate-700 font-bold text-[10px] uppercase">
+                        <thead className="bg-[#0B2545] text-white font-bold text-[10px] uppercase sticky top-0 z-10">
                           <tr>
-                            <th className="p-2 w-14 text-center">Pos #</th>
-                            <th className="p-2 w-40">Item Code</th>
-                            <th className="p-2">Description / Material Spec</th>
-                            <th className="p-2 w-32">Heat No & Location</th>
-                            <th className="p-2 text-center w-16">Qty</th>
-                            <th className="p-2 text-right w-10">Action</th>
+                            <th className="p-2.5 w-16 text-center">Pos #</th>
+                            <th className="p-2.5 w-48 min-w-[180px]">Item Code</th>
+                            <th className="p-2.5 min-w-[340px]">Description / Full Material Specification</th>
+                            <th className="p-2.5 w-36 min-w-[140px]">Heat No &amp; Loc</th>
+                            <th className="p-2.5 text-center w-20">Qty</th>
+                            <th className="p-2.5 w-52 min-w-[190px]">MTC / L-Code Certificate</th>
+                            <th className="p-2.5 text-right w-12">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {pdfParsedData.items.map((it, idx) => (
-                            <tr key={idx} className={`hover:bg-slate-50/50 ${(it as any).is_new_added ? 'bg-red-50/20' : ''}`}>
-                              <td className="p-2 text-center">
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 text-xs font-mono font-bold">
+                            <tr key={idx} className={`hover:bg-slate-50/70 ${(it as any).is_new_added ? 'bg-red-50/20' : ''}`}>
+                              <td className="p-2.5 text-center">
+                                <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-xs font-mono font-bold">
                                   #{it.position || idx + 1}
                                 </span>
                                 {(it as any).is_new_added && (
@@ -1520,7 +1579,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                   </span>
                                 )}
                               </td>
-                              <td className="p-2">
+                              <td className="p-2.5">
                                 <input
                                   type="text"
                                   value={it.itemCode}
@@ -1529,32 +1588,33 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                     updated[idx].itemCode = e.target.value
                                     setPdfParsedData({ ...pdfParsedData, items: updated })
                                   }}
-                                  className="w-full border border-slate-300 rounded px-2 py-1 font-mono uppercase text-xs font-semibold text-slate-800"
+                                  className="w-full border border-slate-300 rounded px-2 py-1 font-mono uppercase text-xs font-bold text-slate-900"
                                 />
                                 {it.purchaseType === 'local_purchase' || /^L[-_0-9]/i.test(it.itemCode) ? (
-                                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
                                     Local Purchase (L-Code)
                                   </span>
                                 ) : (
-                                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                                     Warehouse Stock
                                   </span>
                                 )}
                               </td>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  placeholder={'e.g. CONC. RED. 2" X 1.1/2", SCH.80...'}
+                              <td className="p-2.5">
+                                <textarea
+                                  rows={2}
+                                  placeholder={'Full item specification (e.g. WELDNECK RF 3", 150#, S.40...)'}
                                   value={it.itemDescription || ''}
                                   onChange={(e) => {
                                     const updated = [...pdfParsedData.items]
                                     updated[idx].itemDescription = e.target.value
                                     setPdfParsedData({ ...pdfParsedData, items: updated })
                                   }}
-                                  className="w-full border border-slate-300 rounded px-2 py-1 text-xs text-slate-700"
+                                  className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 leading-relaxed font-sans focus:ring-1 focus:ring-blue-500"
+                                  title={it.itemDescription}
                                 />
                               </td>
-                              <td className="p-2">
+                              <td className="p-2.5">
                                 <div className="space-y-1">
                                   <input
                                     type="text"
@@ -1565,7 +1625,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                       updated[idx].heatNumber = e.target.value
                                       setPdfParsedData({ ...pdfParsedData, items: updated })
                                     }}
-                                    className="w-full border border-slate-300 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold text-red-700 bg-red-50/50"
+                                    className="w-full border border-slate-300 rounded px-2 py-1 font-mono text-xs font-bold text-red-700 bg-red-50/50"
                                     title="Heat Number for MTC Certificate Allocation"
                                   />
                                   {it.location && (
@@ -1575,7 +1635,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                   )}
                                 </div>
                               </td>
-                              <td className="p-2 text-center">
+                              <td className="p-2.5 text-center">
                                 <input
                                   type="number"
                                   min="1"
@@ -1588,7 +1648,42 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                   className="w-16 border border-slate-300 rounded px-1.5 py-1 text-center font-bold text-xs"
                                 />
                               </td>
-                              <td className="p-2 text-right">
+                              {/* Direct MTC Upload for L-Code / Stock */}
+                              <td className="p-2.5">
+                                {(it as any).certificateNumber ? (
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-1 rounded flex items-center space-x-1 truncate max-w-[180px]" title={(it as any).certificateNumber}>
+                                      <FileCheck2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                                      <span className="truncate">{(it as any).certificateNumber}</span>
+                                    </div>
+                                    <label className="cursor-pointer text-[10px] text-blue-600 hover:text-blue-800 hover:underline block font-semibold">
+                                      <span>Replace MTC PDF</span>
+                                      <input
+                                        type="file"
+                                        accept=".pdf"
+                                        className="hidden"
+                                        onChange={(e) => handleUploadLineItemMtc(idx, e)}
+                                      />
+                                    </label>
+                                  </div>
+                                ) : (
+                                  <label className={`cursor-pointer inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                                    it.purchaseType === 'local_purchase' || /^L[-_0-9]/i.test(it.itemCode)
+                                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 shadow-sm'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                                  }`}>
+                                    <Paperclip className="h-3.5 w-3.5 text-amber-700 shrink-0" />
+                                    <span>{it.purchaseType === 'local_purchase' || /^L[-_0-9]/i.test(it.itemCode) ? 'Upload L-Code MTC' : 'Attach MTC (.pdf)'}</span>
+                                    <input
+                                      type="file"
+                                      accept=".pdf"
+                                      className="hidden"
+                                      onChange={(e) => handleUploadLineItemMtc(idx, e)}
+                                    />
+                                  </label>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-right">
                                 {pdfParsedData.items.length > 1 && (
                                   <button
                                     type="button"

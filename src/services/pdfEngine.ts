@@ -514,9 +514,34 @@ export function downloadPDFBlob(pdfBytes: Uint8Array, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// Merges multiple selected authentic MTC PDFs into a single combined package
+export interface MergeOptions {
+  watermarkText?: string
+}
+
+// Stamp a prominent diagonal semi-transparent watermark on every page of a PDF document
+export async function stampWatermarkOnPdf(bytes: Uint8Array, watermarkText: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const pages = doc.getPages()
+  pages.forEach(page => {
+    const { width: pW, height: pH } = page.getSize()
+    page.drawText(watermarkText, {
+      x: pW * 0.15,
+      y: pH * 0.35,
+      size: 38,
+      font: fontBold,
+      color: rgb(0.85, 0.15, 0.15),
+      opacity: 0.26,
+      rotate: degrees(45),
+    })
+  })
+  return await doc.save()
+}
+
+// Compile multiple selected raw certificates into a single unified PDF with cover sheet
 export async function mergeSelectedCertificates(
-  certificates: { fileName: string; heatNumber: string; itemCode: string; bytes: Uint8Array }[]
+  certificates: { fileName: string; heatNumber: string; itemCode?: string; bytes: Uint8Array }[],
+  options?: MergeOptions
 ): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create()
   const fontBold = await mergedPdf.embedFont(StandardFonts.HelveticaBold)
@@ -542,15 +567,16 @@ export async function mergeSelectedCertificates(
     color: rgb(1, 1, 1),
   })
 
-  coverPage.drawText(`BATCH MTC CERTIFICATE COMPILATION (${certificates.length} CERTIFICATES)`, {
+  const titlePrefix = options?.watermarkText ? 'SAMPLE / FOR CLIENT REVIEW - ' : ''
+  coverPage.drawText(`${titlePrefix}BATCH MTC CERTIFICATE COMPILATION (${certificates.length} CERTIFICATES)`, {
     x: 40,
     y: height - 75,
-    size: 10,
+    size: 9.5,
     font: fontBold,
     color: rgb(0.85, 0.2, 0.2),
   })
 
-  coverPage.drawText(`Generated on: ${new Date().toISOString().substring(0, 10)} | Direct Batch Export`, {
+  coverPage.drawText(`Generated on: ${new Date().toISOString().substring(0, 10)} | Direct Batch Export ${options?.watermarkText ? '| WATERMARKED SAMPLE' : ''}`, {
     x: 40,
     y: height - 120,
     size: 9,
@@ -594,19 +620,45 @@ export async function mergeSelectedCertificates(
     }
   }
 
+  // 3. Stamp Watermark across every page if requested
+  if (options?.watermarkText) {
+    const pages = mergedPdf.getPages()
+    pages.forEach((page) => {
+      const { width: pW, height: pH } = page.getSize()
+      page.drawText(options.watermarkText!, {
+        x: pW * 0.15,
+        y: pH * 0.35,
+        size: 38,
+        font: fontBold,
+        color: rgb(0.85, 0.15, 0.15),
+        opacity: 0.26,
+        rotate: degrees(45),
+      })
+    })
+  }
+
   return await mergedPdf.save()
 }
 
-// Download multiple selected certificates as a bundled ZIP archive
+// Download multiple selected certificates as a bundled ZIP archive with optional SAMPLE watermark
 export async function downloadCertificatesAsZip(
   certificates: { fileName: string; bytes: Uint8Array }[],
-  zipName: string = 'MSG_Selected_Certificates.zip'
+  zipName: string = 'MSG_Selected_Certificates.zip',
+  options?: { watermarkText?: string }
 ): Promise<void> {
   const zip = new JSZip()
-  certificates.forEach(c => {
+  for (const c of certificates) {
     const safeName = c.fileName.toLowerCase().endsWith('.pdf') ? c.fileName : `${c.fileName}.pdf`
-    zip.file(safeName, c.bytes)
-  })
+    let finalBytes = c.bytes
+    if (options?.watermarkText) {
+      try {
+        finalBytes = await stampWatermarkOnPdf(c.bytes, options.watermarkText)
+      } catch (e) {
+        console.warn('Error watermarking cert for zip:', c.fileName, e)
+      }
+    }
+    zip.file(safeName, finalBytes)
+  }
   const blob = await zip.generateAsync({ type: 'blob' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -1048,9 +1100,15 @@ export async function parseCustomerSOPDF(file: File): Promise<{
   // Helper: Detect Item Codes (including Mill Stock and Local Purchase L-codes & Olets)
   const isItemCode = (str: string): boolean => {
     if (!str || str.includes(' ') || str.length < 5) return false
+    // Exclude oilfield specifications, standards, and standard materials
+    if (/^(?:NACE[-_]?)?MR[-_]?0?1[07][035]$/i.test(str)) return false
+    if (/^(?:NACE|ASTM|ASME|API|MSS|BS|DIN|EN|ISO|SCH|CLASS|STD|XS|XXS)/i.test(str)) return false
+    if (/^(?:B16\.\d+|B31\.\d+|A105N?|A350|A420|A234|A182|B564|A516)/i.test(str)) return false
+    if (/^(?:HEAT|LOCATION|LOC|ITEM|LINE|PCS|UNIT|PO|REF|AMOUNT|RATE|QTY)/i.test(str)) return false
+
     return (
       /^(?:LOC[-_]?|L[-_]?)?(?:CR|RT|BL|WSO|WN|LWN|SW|TH|EL|LEL|CPL|CP|TEE|TE|RED|RD|CAP|CA|WBL|NIP|NI|FLG|FL|PIP|VAL|GSK|BOLT|TO|SO|WO|LTO|LSO|LWO)[0-9A-Z_\-\/&]{3,40}$/i.test(str) ||
-      /^[A-Z]{2,6}[0-9]{2,8}[A-Z0-9_\-\/]{2,30}$/i.test(str)
+      /^[A-Z]{2,6}[0-9]{2,8}[A-Z0-9_\-\/&]{2,30}$/i.test(str)
     )
   }
 
@@ -1218,11 +1276,13 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       }
 
       if (isItemCode(cur)) {
-        break
+        if (numTokens.length >= 3) {
+          break
+        }
       }
 
-      // Heat number detection
-      const heatMatch = cur.match(/HEAT\s*(?:NO|NUMBER|#)?[\s:]+([A-Za-z0-9\-_]+)/i)
+      // Heat number detection (support slashes e.g. 23/39490)
+      const heatMatch = cur.match(/HEAT\s*(?:NO|NUMBER|#)?[\s:]+([A-Za-z0-9\-_/]+)/i)
       if (heatMatch) heatNumber = heatMatch[1].trim()
 
       // Location detection

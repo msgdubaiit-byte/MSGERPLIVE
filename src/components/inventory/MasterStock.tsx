@@ -17,7 +17,15 @@ import {
   ExternalLink,
   FolderArchive,
   RefreshCw,
+  X,
 } from 'lucide-react'
+import {
+  mergeSelectedCertificates,
+  downloadCertificatesAsZip,
+  createSampleMillCertificate,
+  downloadPDFBlob,
+} from '../../services/pdfEngine'
+import { getUploadedCertificateBytes } from '../../services/zipExtractor'
 
 interface MasterStockProps {
   onSelectHeat: (heat: string) => void
@@ -31,6 +39,11 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
   const [typeFilter, setTypeFilter] = useState<'all' | 'regular' | 'local_purchase'>('all')
   const [missingMTCOnly, setMissingMTCOnly] = useState(false)
   const [isAddLotModalOpen, setIsAddLotModalOpen] = useState(false)
+
+  // Persistent Client Review MTC Selection Basket (persists across searches/filters)
+  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set())
+  const [sampleWatermark, setSampleWatermark] = useState<boolean>(true)
+  const [isExportingSelection, setIsExportingSelection] = useState<boolean>(false)
 
   // New lot form state
   const [newItemId, setNewItemId] = useState('')
@@ -88,6 +101,123 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
       setNewLCode('')
     } else {
       alert(res.message || 'Failed to add stock lot')
+    }
+  }
+
+  // Persistent selection basket helpers
+  const handleToggleSelectLot = (lotId: string) => {
+    setSelectedLotIds(prev => {
+      const next = new Set(prev)
+      if (next.has(lotId)) next.delete(lotId)
+      else next.add(lotId)
+      return next
+    })
+  }
+
+  const handleToggleSelectAllVisible = () => {
+    const allVisibleIds = filteredStock.map(s => s.id)
+    const allSelected = allVisibleIds.length > 0 && allVisibleIds.every(id => selectedLotIds.has(id))
+    setSelectedLotIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        allVisibleIds.forEach(id => next.delete(id))
+      } else {
+        allVisibleIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const handleClearSelectedBasket = () => {
+    setSelectedLotIds(new Set())
+  }
+
+  // Export selected certificates combined into a single merged PDF with optional SAMPLE watermark
+  const handleExportSelectedMerged = async () => {
+    if (selectedLotIds.size === 0) return
+    setIsExportingSelection(true)
+    try {
+      const allLots = stockView.filter(s => selectedLotIds.has(s.id))
+      const mtcs = db.getMTCs()
+      const certList: { fileName: string; heatNumber: string; itemCode: string; bytes: Uint8Array }[] = []
+
+      for (const lot of allLots) {
+        let bytes: Uint8Array | null = null
+        const matchedMtc = mtcs.find(m => m.stock_lot_id === lot.id || m.heat_number.toUpperCase() === lot.heat_number.toUpperCase())
+        if (matchedMtc) {
+          bytes = getUploadedCertificateBytes(matchedMtc.certificate_reference) || getUploadedCertificateBytes(matchedMtc.heat_number)
+        }
+        if (!bytes) {
+          bytes = getUploadedCertificateBytes(lot.heat_number)
+        }
+        if (!bytes) {
+          bytes = await createSampleMillCertificate(
+            lot.item_code,
+            lot.heat_number,
+            lot.yom || 2026,
+            2
+          )
+        }
+        const fileName = matchedMtc?.certificate_reference || `MTC-${lot.heat_number}.pdf`
+        certList.push({
+          fileName: fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`,
+          heatNumber: lot.heat_number,
+          itemCode: lot.item_code,
+          bytes
+        })
+      }
+
+      const watermarkStr = sampleWatermark ? 'SAMPLE - FOR CLIENT REVIEW ONLY' : undefined
+      const mergedBytes = await mergeSelectedCertificates(certList, { watermarkText: watermarkStr })
+      const docName = `MSG_MTC_Review_Dossier_${certList.length}_Certs${sampleWatermark ? '_SAMPLE' : ''}.pdf`
+      downloadPDFBlob(mergedBytes, docName)
+    } catch (err: any) {
+      alert('Error compiling certificates: ' + err.message)
+    } finally {
+      setIsExportingSelection(false)
+    }
+  }
+
+  // Export selected certificates as a bundled ZIP archive with optional SAMPLE watermark
+  const handleExportSelectedZip = async () => {
+    if (selectedLotIds.size === 0) return
+    setIsExportingSelection(true)
+    try {
+      const allLots = stockView.filter(s => selectedLotIds.has(s.id))
+      const mtcs = db.getMTCs()
+      const certList: { fileName: string; bytes: Uint8Array }[] = []
+
+      for (const lot of allLots) {
+        let bytes: Uint8Array | null = null
+        const matchedMtc = mtcs.find(m => m.stock_lot_id === lot.id || m.heat_number.toUpperCase() === lot.heat_number.toUpperCase())
+        if (matchedMtc) {
+          bytes = getUploadedCertificateBytes(matchedMtc.certificate_reference) || getUploadedCertificateBytes(matchedMtc.heat_number)
+        }
+        if (!bytes) {
+          bytes = getUploadedCertificateBytes(lot.heat_number)
+        }
+        if (!bytes) {
+          bytes = await createSampleMillCertificate(
+            lot.item_code,
+            lot.heat_number,
+            lot.yom || 2026,
+            2
+          )
+        }
+        const fileName = matchedMtc?.certificate_reference || `MTC-${lot.heat_number}.pdf`
+        certList.push({
+          fileName: fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`,
+          bytes
+        })
+      }
+
+      const watermarkStr = sampleWatermark ? 'SAMPLE - FOR CLIENT REVIEW ONLY' : undefined
+      const zipName = `MSG_MTC_Certificates_${certList.length}_Items${sampleWatermark ? '_SAMPLE' : ''}.zip`
+      await downloadCertificatesAsZip(certList, zipName, { watermarkText: watermarkStr })
+    } catch (err: any) {
+      alert('Error creating ZIP archive: ' + err.message)
+    } finally {
+      setIsExportingSelection(false)
     }
   }
 
@@ -179,6 +309,15 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
           <table className="w-full text-left text-xs">
             <thead className="bg-[#0B2545] text-white uppercase text-[10px] tracking-wider">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredStock.length > 0 && filteredStock.every(s => selectedLotIds.has(s.id))}
+                    onChange={handleToggleSelectAllVisible}
+                    className="h-4 w-4 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer"
+                    title="Select/Deselect All Visible Lots"
+                  />
+                </th>
                 <th className="py-3 px-3">Item Code & Description</th>
                 <th className="py-3 px-3">Heat Number</th>
                 <th className="py-3 px-3">YOM</th>
@@ -196,7 +335,7 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
             <tbody className="divide-y divide-slate-100">
               {filteredStock.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center">
+                  <td colSpan={13} className="py-12 text-center">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="bg-slate-100 h-12 w-12 rounded-full flex items-center justify-center mx-auto text-slate-400">
                         <FolderArchive className="h-6 w-6" />
@@ -240,9 +379,20 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                     <tr
                       key={s.id}
                       className={`hover:bg-slate-50/80 transition-colors ${
-                        idx % 2 === 1 ? 'bg-slate-50/30' : ''
+                        selectedLotIds.has(s.id) ? 'bg-red-50/40' : idx % 2 === 1 ? 'bg-slate-50/30' : ''
                       }`}
                     >
+                      {/* Checkbox for Client Review Basket */}
+                      <td className="py-2.5 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedLotIds.has(s.id)}
+                          onChange={() => handleToggleSelectLot(s.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                          title={`Select Heat ${s.heat_number} for client review MTC compilation`}
+                        />
+                      </td>
+
                       {/* Item Code & Description */}
                       <td className="py-2.5 px-3 max-w-xs">
                         <div className="font-mono font-bold text-slate-900">{s.item_code}</div>
@@ -514,6 +664,74 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Client Review MTC Basket Toolbar */}
+      {selectedLotIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 max-w-4xl w-[94vw] flex flex-wrap items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center space-x-3">
+            <span className="bg-red-600 text-white font-extrabold text-xs px-2.5 py-1 rounded-full shadow">
+              {selectedLotIds.size} Selected
+            </span>
+            <div>
+              <div className="text-xs font-bold text-white flex items-center space-x-1.5">
+                <FileCheck2 className="h-4 w-4 text-amber-400" />
+                <span>Client Review MTC Dossier Basket</span>
+              </div>
+              <div className="text-[11px] text-slate-300">
+                Persistent across searches &bull; Select items, review heats, and export together
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Watermark checkbox */}
+            <label className="flex items-center space-x-2 text-xs bg-slate-800 border border-slate-600 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-slate-750 select-none">
+              <input
+                type="checkbox"
+                checked={sampleWatermark}
+                onChange={(e) => setSampleWatermark(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-500 text-red-500 focus:ring-red-500 cursor-pointer"
+              />
+              <span className="font-semibold text-slate-200">
+                Stamp <strong className="text-red-400 font-mono">'SAMPLE'</strong> Watermark
+              </span>
+            </label>
+
+            {/* Combine & Download Merged PDF */}
+            <button
+              type="button"
+              onClick={handleExportSelectedMerged}
+              disabled={isExportingSelection}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center space-x-1.5 transition-colors"
+              title="Combine all selected MTC certificates into one PDF document with cover sheet"
+            >
+              <Download className="h-4 w-4" />
+              <span>{isExportingSelection ? 'Generating...' : 'Combine & Download (.pdf)'}</span>
+            </button>
+
+            {/* Download Selected as ZIP */}
+            <button
+              type="button"
+              onClick={handleExportSelectedZip}
+              disabled={isExportingSelection}
+              className="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center space-x-1.5 transition-colors"
+              title="Download all selected MTC certificates as a bundled ZIP file"
+            >
+              <FolderArchive className="h-4 w-4 text-amber-200" />
+              <span>Download ZIP</span>
+            </button>
+
+            {/* Clear Basket */}
+            <button
+              type="button"
+              onClick={handleClearSelectedBasket}
+              className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-1"
+            >
+              Clear
+            </button>
           </div>
         </div>
       )}

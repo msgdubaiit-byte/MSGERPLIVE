@@ -13,6 +13,8 @@ import {
   Plus,
   Trash2,
   Pencil,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import {
@@ -34,6 +36,7 @@ export const StickerGeneratorPortal: React.FC = () => {
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPreviewIdx, setSelectedPreviewIdx] = useState<number>(0)
+  const [isTableEnlarged, setIsTableEnlarged] = useState(false)
 
   // 1. AUTO-DETECT ACTIVE ORDER ON MOUNT (Zero manual upload needed!)
   useEffect(() => {
@@ -367,72 +370,74 @@ export const StickerGeneratorPortal: React.FC = () => {
       </div>
 
       {/* Main Content: Left Label Preview & Right Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className={`grid grid-cols-1 ${isTableEnlarged ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6`}>
         {/* Left Column: Exact 58mm x 39mm Sticker Label Preview */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
-                <Tag className="w-4 h-4 text-indigo-700" />
-                <span>Exact Sticker Output Preview (58mm × 39mm)</span>
-              </span>
-              <span className="text-[10px] font-mono text-slate-400">1:1 Thermal Label</span>
-            </div>
+        {!isTableEnlarged && (
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Tag className="w-4 h-4 text-indigo-700" />
+                  <span>Exact Sticker Output Preview (58mm × 39mm)</span>
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">1:1 Thermal Label</span>
+              </div>
 
-            {/* Exact 58mm x 39mm Visual Container */}
-            <div className="border border-slate-400 rounded-lg p-3 bg-white font-serif text-[11px] leading-tight shadow-sm relative min-h-[220px]">
-              {/* Header: Left client info, Right Logo */}
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <div className="font-bold text-[12px] text-black">
-                    {previewItem.client_name || 'STS Bahrain'}
+              {/* Exact 58mm x 39mm Visual Container */}
+              <div className="border border-slate-400 rounded-lg p-3 bg-white font-serif text-[11px] leading-tight shadow-sm relative min-h-[220px]">
+                {/* Header: Left client info, Right Logo */}
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="font-bold text-[12px] text-black">
+                      {previewItem.client_name || 'STS Bahrain'}
+                    </div>
+                    <div className="font-bold text-[11px] text-black">
+                      PO Number: {previewItem.po_number || 'BSTSPO260300029-Location-1'}
+                    </div>
+                    <div className="font-bold text-[11px] text-black">
+                      ITEM NO: {previewItem.client_po_item_no || previewItem.sl_no}
+                    </div>
                   </div>
-                  <div className="font-bold text-[11px] text-black">
-                    PO Number: {previewItem.po_number || 'BSTSPO260300029-Location-1'}
-                  </div>
-                  <div className="font-bold text-[11px] text-black">
-                    ITEM NO: {previewItem.client_po_item_no || previewItem.sl_no}
+                  <img
+                    src="/logo.png"
+                    alt="MSG Logo"
+                    className="h-8 w-auto object-contain"
+                  />
+                </div>
+
+                {/* Description (Bold all-caps wrapped) */}
+                <div className="font-bold text-[11px] text-black uppercase mb-3 pr-2">
+                  {previewItem.description}
+                </div>
+
+                {/* Specifications */}
+                <div className="space-y-0.5 text-[10.5px] font-bold text-black">
+                  <div>PO QTY: {previewItem.po_qty} {previewItem.uom}</div>
+                  <div>HEAT NUMBER: {previewItem.heat_number}</div>
+                  <div>MAKE: {previewItem.make}</div>
+                  <div>CERTIFICATE NO: {previewItem.certificate_number}</div>
+                  <div>Remarks: {previewItem.remarks || 'LOCATION-1'}</div>
+                </div>
+
+                {/* QR Code in Bottom Right */}
+                <div className="absolute bottom-2 right-2 flex flex-col items-center">
+                  <div className="p-1 bg-white border border-slate-300 rounded">
+                    <QrCode className="w-7 h-7 text-black" />
                   </div>
                 </div>
-                <img
-                  src="/logo.png"
-                  alt="MSG Logo"
-                  className="h-8 w-auto object-contain"
-                />
               </div>
 
-              {/* Description (Bold all-caps wrapped) */}
-              <div className="font-bold text-[11px] text-black uppercase mb-3 pr-2">
-                {previewItem.description}
+              <div className="mt-3 text-center">
+                <span className="text-[11px] text-slate-500">
+                  1 Label per page at 58mm × 39mm with embedded high-resolution QR traceability.
+                </span>
               </div>
-
-              {/* Specifications */}
-              <div className="space-y-0.5 text-[10.5px] font-bold text-black">
-                <div>PO QTY: {previewItem.po_qty} {previewItem.uom}</div>
-                <div>HEAT NUMBER: {previewItem.heat_number}</div>
-                <div>MAKE: {previewItem.make}</div>
-                <div>CERTIFICATE NO: {previewItem.certificate_number}</div>
-                <div>Remarks: {previewItem.remarks || 'LOCATION-1'}</div>
-              </div>
-
-              {/* QR Code in Bottom Right */}
-              <div className="absolute bottom-2 right-2 flex flex-col items-center">
-                <div className="p-1 bg-white border border-slate-300 rounded">
-                  <QrCode className="w-7 h-7 text-black" />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 text-center">
-              <span className="text-[11px] text-slate-500">
-                1 Label per page at 58mm × 39mm with embedded high-resolution QR traceability.
-              </span>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Right Column: Line Items Table */}
-        <div className="lg:col-span-7">
+        {/* Right Column / Full Width Table */}
+        <div className={isTableEnlarged ? 'col-span-1' : 'lg:col-span-7'}>
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col h-full min-h-[460px]">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2">
@@ -459,6 +464,15 @@ export const StickerGeneratorPortal: React.FC = () => {
                 </div>
                 <button
                   type="button"
+                  onClick={() => setIsTableEnlarged(!isTableEnlarged)}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title={isTableEnlarged ? 'Switch to split view with sticker label preview' : 'Enlarge table to full page view'}
+                >
+                  {isTableEnlarged ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  <span>{isTableEnlarged ? 'Split View' : 'Enlarge Full Page'}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleAddStickerItem}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center space-x-1 transition-colors cursor-pointer"
                   title="Add a new editable sticker row"
@@ -469,17 +483,17 @@ export const StickerGeneratorPortal: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-x-auto border border-slate-100 rounded-2xl max-h-[420px]">
+            <div className={`flex-1 overflow-x-auto border border-slate-100 rounded-2xl ${isTableEnlarged ? 'max-h-[680px]' : 'max-h-[460px]'}`}>
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 text-slate-600 font-bold sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-2 w-16">Item #</th>
-                    <th className="py-2.5 px-2 min-w-[180px]">Description</th>
-                    <th className="py-2.5 px-2 text-center w-28">Qty / UOM</th>
-                    <th className="py-2.5 px-2 w-24">Heat #</th>
-                    <th className="py-2.5 px-2 w-28">Make</th>
-                    <th className="py-2.5 px-2 w-28">Cert #</th>
-                    <th className="py-2.5 px-2 w-28">Remarks</th>
+                    <th className="py-2.5 px-3 w-16">Item #</th>
+                    <th className="py-2.5 px-3 min-w-[260px]">Description</th>
+                    <th className="py-2.5 px-3 text-center min-w-[150px]">Qty / UOM</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">Heat #</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">Make</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">Cert #</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">Remarks</th>
                     <th className="py-2.5 px-2 w-8"></th>
                   </tr>
                 </thead>
@@ -494,7 +508,7 @@ export const StickerGeneratorPortal: React.FC = () => {
                           isSelected ? 'bg-indigo-50/70' : 'hover:bg-blue-50/40'
                         }`}
                       >
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.client_po_item_no ?? it.sl_no ?? ''}
@@ -502,68 +516,68 @@ export const StickerGeneratorPortal: React.FC = () => {
                               handleUpdateStickerItem(origIdx, 'client_po_item_no', e.target.value)
                               handleUpdateStickerItem(origIdx, 'sl_no', e.target.value)
                             }}
-                            className="w-full px-1.5 py-1 text-xs font-bold text-indigo-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-14 px-2 py-1 text-xs font-bold text-indigo-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.description || ''}
                             onChange={e => handleUpdateStickerItem(origIdx, 'description', e.target.value)}
                             title={it.description}
-                            className="w-full px-1.5 py-1 text-xs text-slate-800 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full min-w-[250px] px-2.5 py-1 text-xs text-slate-800 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-2">
-                          <div className="flex items-center space-x-1">
+                        <td className="py-2 px-2.5">
+                          <div className="flex items-center space-x-1.5 min-w-[140px] justify-center">
                             <input
                               type="text"
                               value={it.po_qty ?? ''}
                               onChange={e => handleUpdateStickerItem(origIdx, 'po_qty', e.target.value)}
-                              className="w-12 px-1.5 py-1 text-xs text-center font-bold text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="w-16 min-w-[60px] px-2 py-1 text-xs text-center font-bold text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             <input
                               type="text"
                               value={it.uom || ''}
                               onChange={e => handleUpdateStickerItem(origIdx, 'uom', e.target.value)}
-                              className="w-12 px-1 py-1 text-xs text-center text-slate-600 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="w-16 min-w-[60px] px-2 py-1 text-xs text-center text-slate-600 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                           </div>
                         </td>
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.heat_number || ''}
                             onChange={e => handleUpdateStickerItem(origIdx, 'heat_number', e.target.value)}
-                            className="w-full px-1.5 py-1 text-xs font-mono font-bold text-slate-900 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full min-w-[130px] px-2.5 py-1 text-xs font-mono font-bold text-slate-900 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.make || ''}
                             onChange={e => handleUpdateStickerItem(origIdx, 'make', e.target.value)}
-                            className="w-full px-1.5 py-1 text-xs text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full min-w-[130px] px-2.5 py-1 text-xs text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.certificate_number || ''}
                             onChange={e => handleUpdateStickerItem(origIdx, 'certificate_number', e.target.value)}
-                            className="w-full px-1.5 py-1 text-[11px] font-mono text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full min-w-[130px] px-2.5 py-1 text-[11px] font-mono text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-2">
+                        <td className="py-2 px-2.5">
                           <input
                             type="text"
                             value={it.remarks ?? ''}
                             placeholder="LOCATION-1"
                             onChange={e => handleUpdateStickerItem(origIdx, 'remarks', e.target.value)}
-                            className="w-full px-1.5 py-1 text-xs font-medium text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full min-w-[130px] px-2.5 py-1 text-xs font-medium text-slate-700 bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </td>
-                        <td className="py-1.5 px-1 text-center">
+                        <td className="py-2 px-1 text-center">
                           <button
                             type="button"
                             onClick={e => {
