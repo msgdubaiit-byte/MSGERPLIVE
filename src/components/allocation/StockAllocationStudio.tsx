@@ -29,45 +29,58 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
   const orders = db.getOrders()
   const masterStock = db.getMasterStockView()
 
-  // Eligible orders (Draft or Stock Allocated)
-  const allocatableOrders = orders.filter(o => o.status === 'Draft' || o.status === 'Stock Allocated')
+  // Eligible orders (Draft, Partially Allocated, Stock Allocated, or Pending Storekeeper Approval)
+  const allocatableOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Dispatched')
   const [selectedOrderId, setSelectedOrderId] = useState<string>(preselectedOrderId || allocatableOrders[0]?.id || '')
 
   const currentOrder = orders.find(o => o.id === selectedOrderId)
 
-  // Selected item line to allocate (for single-line modes)
-  const [selectedItemId, setSelectedItemId] = useState<string>(currentOrder?.items[0]?.item_id || '')
+  // Selected item line to allocate (keyed by unique line id: orderItem.id)
+  const [selectedLineId, setSelectedLineId] = useState<string>(currentOrder?.items[0]?.id || '')
   const [allocationMode, setAllocationMode] = useState<'batch_all' | 'fifo' | 'manual'>('batch_all')
   const [manualLotId, setManualLotId] = useState<string>('')
   const [manualQty, setManualQty] = useState<number>(1)
 
-  // Batch choices per item_id (default 'AUTO_FIFO' so it takes all heats automatically)
+  // Batch choices per line.id (default 'AUTO_FIFO' so it takes all heats automatically)
   const [batchChoices, setBatchChoices] = useState<Record<string, BatchLineChoice>>({})
 
-  // Sync selectedItemId & batchChoices when order changes
+  // Sync selectedLineId & batchChoices when order changes
   useEffect(() => {
     if (currentOrder) {
-      if (currentOrder.items[0] && !currentOrder.items.some(i => i.item_id === selectedItemId)) {
-        setSelectedItemId(currentOrder.items[0].item_id)
+      if (currentOrder.items[0] && !currentOrder.items.some(i => i.id === selectedLineId)) {
+        setSelectedLineId(currentOrder.items[0].id)
       }
       const initialChoices: Record<string, BatchLineChoice> = {}
       currentOrder.items.forEach(it => {
-        const rem = Math.max(0, it.required_qty - it.allocated_qty)
-        initialChoices[it.item_id] = {
+        const lineAllocs = (currentOrder.allocations || []).filter(
+          a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released'
+        )
+        const realAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+        const rem = Math.max(0, it.required_qty - realAllocated)
+        initialChoices[it.id] = {
           lotId: rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO',
-          qty: rem === 0 ? it.allocated_qty : rem,
+          qty: rem === 0 ? (realAllocated || it.allocated_qty) : rem,
         }
       })
       setBatchChoices(initialChoices)
     }
-  }, [selectedOrderId, currentOrder?.items.length])
+  }, [selectedOrderId, currentOrder?.id, currentOrder?.items.length])
 
   // Find unallocated quantity for the selected item line
-  const currentLine = currentOrder?.items.find(i => i.item_id === selectedItemId)
-  const remainingNeeded = currentLine ? Math.max(0, currentLine.required_qty - currentLine.allocated_qty) : 0
+  const currentLine = currentOrder?.items.find(i => i.id === selectedLineId) || currentOrder?.items[0]
+  const currentLineAllocs = currentOrder?.allocations.filter(
+    a => (a.sales_order_item_id === currentLine?.id || (a as any).so_item_id === currentLine?.id) && a.allocation_status !== 'Released'
+  ) || []
+  const currentLineAllocatedQty = currentLineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+  const remainingNeeded = currentLine ? Math.max(0, currentLine.required_qty - currentLineAllocatedQty) : 0
 
-  // Matching lots for the selected item
-  const matchingLots = masterStock.filter(s => s.item_id === selectedItemId && s.available_qty > 0)
+  // Matching lots for the selected item (robust matching by item_id AND item_code)
+  const currentItemCode = currentLine?.item_code?.toUpperCase().trim() || ''
+  const matchingLots = masterStock.filter(s =>
+    ((currentLine?.item_id && s.item_id === currentLine.item_id) ||
+     (s.item_code && s.item_code.toUpperCase().trim() === currentItemCode)) &&
+    s.available_qty > 0
+  )
   const selectedManualLot = matchingLots.find(l => l.id === manualLotId)
   const uniqueYoms = Array.from(new Set(matchingLots.map(l => l.yom).filter(Boolean))).sort()
 
@@ -77,11 +90,16 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
       setManualLotId(matchingLots[0].id)
       setManualQty(Math.min(remainingNeeded || matchingLots[0].available_qty, matchingLots[0].available_qty))
     }
-  }, [allocationMode, selectedItemId, matchingLots.length])
+  }, [allocationMode, selectedLineId, matchingLots.length])
 
-  // FIFO Preview computation
-  const getFIFOPreview = (itemId: string, needed: number) => {
-    const lots = masterStock.filter(s => s.item_id === itemId && s.available_qty > 0)
+  // FIFO Preview computation (by line)
+  const getFIFOPreview = (line: any, needed: number) => {
+    const itemCode = line?.item_code?.toUpperCase().trim() || ''
+    const lots = masterStock.filter(s =>
+      ((line?.item_id && s.item_id === line.item_id) ||
+       (s.item_code && s.item_code.toUpperCase().trim() === itemCode)) &&
+      s.available_qty > 0
+    )
     if (!needed || lots.length === 0) return []
     const sorted = [...lots].sort((a, b) => {
       if (a.stock_receipt_date !== b.stock_receipt_date) return a.stock_receipt_date.localeCompare(b.stock_receipt_date)
@@ -104,13 +122,17 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
     return plan
   }
 
-  const fifoPlan = getFIFOPreview(selectedItemId, remainingNeeded)
+  const fifoPlan = currentLine ? getFIFOPreview(currentLine, remainingNeeded) : []
 
   const handleExecuteBatchAll = () => {
     if (!currentOrder) return
     const linesToProcess = currentOrder.items.filter(it => {
-      const rem = Math.max(0, it.required_qty - it.allocated_qty)
-      const choice = batchChoices[it.item_id]
+      const lineAllocs = (currentOrder.allocations || []).filter(
+        a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released'
+      )
+      const realAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+      const rem = Math.max(0, it.required_qty - realAllocated)
+      const choice = batchChoices[it.id]
       return rem > 0 || (choice && choice.lotId !== 'ALLOCATED')
     })
 
@@ -124,12 +146,16 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
     const userEmail = currentUser?.email || 'sales@msgoilfield.ae'
 
     for (const line of linesToProcess) {
-      const rem = Math.max(0, line.required_qty - line.allocated_qty)
-      const choice = batchChoices[line.item_id] || { lotId: 'AUTO_FIFO', qty: line.required_qty }
+      const lineAllocs = (currentOrder.allocations || []).filter(
+        a => (a.sales_order_item_id === line.id || (a as any).so_item_id === line.id) && a.allocation_status !== 'Released'
+      )
+      const realAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+      const rem = Math.max(0, line.required_qty - realAllocated)
+      const choice = batchChoices[line.id] || { lotId: 'AUTO_FIFO', qty: line.required_qty }
 
       // If line was already allocated and user picked a new heat / AUTO_FIFO, release old reservations first
       if (rem === 0 && choice.lotId !== 'ALLOCATED') {
-        db.deallocateLine(currentOrder.id, line.item_id, userEmail)
+        db.deallocateLine(currentOrder.id, line.id, userEmail)
       }
 
       const targetRem = rem === 0 ? line.required_qty : rem
@@ -138,11 +164,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
       if (qtyToAlloc <= 0) continue
 
       if (choice.lotId === 'AUTO_FIFO') {
-        const res = db.allocateFIFO(currentOrder.id, line.item_id, qtyToAlloc, userEmail)
+        const res = db.allocateFIFO(currentOrder.id, line.id, qtyToAlloc, userEmail)
         if (res.success) successCount++
         else errors.push(`${line.item_code}: ${res.message}`)
       } else {
-        const res = db.allocateManual(currentOrder.id, line.item_id, choice.lotId, qtyToAlloc, userEmail)
+        const res = db.allocateManual(currentOrder.id, line.id, choice.lotId, qtyToAlloc, userEmail)
         if (res.success) successCount++
         else errors.push(`${line.item_code}: ${res.message}`)
       }
@@ -157,14 +183,14 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
   }
 
   const handleExecuteFIFO = () => {
-    if (!currentOrder || !selectedItemId || remainingNeeded <= 0) {
+    if (!currentOrder || !currentLine || remainingNeeded <= 0) {
       alert('No remaining quantity needed or item not selected.')
       return
     }
 
     const res = db.allocateFIFO(
       currentOrder.id,
-      selectedItemId,
+      currentLine.id,
       remainingNeeded,
       currentUser?.email || 'sales@msgoilfield.ae'
     )
@@ -178,14 +204,14 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
   }
 
   const handleExecuteManual = () => {
-    if (!currentOrder || !selectedItemId || !manualLotId || manualQty <= 0) {
+    if (!currentOrder || !currentLine || !manualLotId || manualQty <= 0) {
       alert('Please select a specific heat number and quantity.')
       return
     }
 
     const res = db.allocateManual(
       currentOrder.id,
-      selectedItemId,
+      currentLine.id,
       manualLotId,
       manualQty,
       currentUser?.email || 'sales@msgoilfield.ae'
@@ -224,12 +250,12 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
             onChange={(e) => {
               setSelectedOrderId(e.target.value)
               const ord = orders.find(o => o.id === e.target.value)
-              if (ord && ord.items[0]) setSelectedItemId(ord.items[0].item_id)
+              if (ord && ord.items[0]) setSelectedLineId(ord.items[0].id)
             }}
             className="border border-slate-300 rounded-lg px-3 py-2 text-xs bg-white font-bold text-[#0B2545] shadow-sm"
           >
             {allocatableOrders.length === 0 ? (
-              <option value="">No draft or unallocated orders</option>
+              <option value="">No active orders</option>
             ) : (
               allocatableOrders.map(o => (
                 <option key={o.id} value={o.id}>
@@ -258,17 +284,25 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
             <div className="space-y-2">
               {currentOrder.items.map(item => {
-                const isSelected = item.item_id === selectedItemId
-                const unalloc = Math.max(0, item.required_qty - item.allocated_qty)
+                const isSelected = item.id === selectedLineId
+                const lineAllocs = (currentOrder.allocations || []).filter(
+                  a => (a.sales_order_item_id === item.id || (a as any).so_item_id === item.id) && a.allocation_status !== 'Released'
+                )
+                const realAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                const unalloc = Math.max(0, item.required_qty - realAllocated)
                 const isComplete = unalloc === 0
-                const allItemLots = masterStock.filter(s => s.item_id === item.item_id)
+                const isPartial = realAllocated > 0 && !isComplete
+                const allItemLots = masterStock.filter(s =>
+                  (item.item_id && s.item_id === item.item_id) ||
+                  (s.item_code && s.item_code.toUpperCase().trim() === item.item_code.toUpperCase().trim())
+                )
                 const availItemLots = allItemLots.filter(s => s.available_qty > 0)
                 const itemYoms = Array.from(new Set(allItemLots.map(l => l.yom).filter(Boolean))).sort()
 
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setSelectedItemId(item.item_id)}
+                    onClick={() => setSelectedLineId(item.id)}
                     className={`p-3 rounded-xl border cursor-pointer transition-all ${
                       isSelected
                         ? 'border-red-500 bg-red-50/40 ring-1 ring-red-400'
@@ -278,15 +312,17 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                     <div className="flex justify-between items-start">
                       <span className="font-mono font-bold text-xs text-slate-900">{item.item_code}</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        isComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        isComplete ? 'bg-emerald-100 text-emerald-800' :
+                        isPartial ? 'bg-amber-100 text-amber-800' :
+                        'bg-red-100 text-red-800'
                       }`}>
-                        {isComplete ? 'Fully Allocated' : `${unalloc} Needed`}
+                        {isComplete ? 'Fully Allocated' : isPartial ? `Partial: ${realAllocated}/${item.required_qty}` : `Unallocated (${unalloc} Needed)`}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1 line-clamp-1">{item.item_description}</div>
                     <div className="mt-2 text-xs flex justify-between text-slate-600">
                       <span>Required: <strong>{item.required_qty} PCS</strong></span>
-                      <span>Allocated: <strong className="text-emerald-700">{item.allocated_qty} PCS</strong></span>
+                      <span>Allocated: <strong className={realAllocated > 0 ? 'text-emerald-700' : 'text-slate-400'}>{realAllocated} PCS</strong></span>
                     </div>
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-500 flex justify-between">
                       <span>{availItemLots.length} Free / {allItemLots.length} Heat(s)</span>
@@ -374,7 +410,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                   </div>
                   <select
                     value={
-                      currentOrder.items.every(it => (batchChoices[it.item_id]?.lotId || (it.required_qty - it.allocated_qty <= 0 ? 'ALLOCATED' : 'AUTO_FIFO')) === 'AUTO_FIFO')
+                      currentOrder.items.every(it => {
+                        const lineAllocs = (currentOrder.allocations || []).filter(a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released')
+                        const realAlloc = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                        return (batchChoices[it.id]?.lotId || (it.required_qty - realAlloc <= 0 ? 'ALLOCATED' : 'AUTO_FIFO')) === 'AUTO_FIFO'
+                      })
                         ? 'AUTO_FIFO'
                         : 'CUSTOM'
                     }
@@ -383,8 +423,10 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       if (mode === 'AUTO_FIFO') {
                         const updated: Record<string, BatchLineChoice> = {}
                         currentOrder.items.forEach(it => {
-                          const rem = Math.max(0, it.required_qty - it.allocated_qty)
-                          updated[it.item_id] = {
+                          const lineAllocs = (currentOrder.allocations || []).filter(a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released')
+                          const realAlloc = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                          const rem = Math.max(0, it.required_qty - realAlloc)
+                          updated[it.id] = {
                             lotId: 'AUTO_FIFO',
                             qty: rem > 0 ? rem : it.required_qty,
                           }
@@ -393,10 +435,12 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       } else if (mode === 'KEEP_ALLOCATED') {
                         const updated: Record<string, BatchLineChoice> = {}
                         currentOrder.items.forEach(it => {
-                          const rem = Math.max(0, it.required_qty - it.allocated_qty)
-                          updated[it.item_id] = {
+                          const lineAllocs = (currentOrder.allocations || []).filter(a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released')
+                          const realAlloc = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                          const rem = Math.max(0, it.required_qty - realAlloc)
+                          updated[it.id] = {
                             lotId: rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO',
-                            qty: rem === 0 ? it.allocated_qty : rem,
+                            qty: rem === 0 ? realAlloc : rem,
                           }
                         })
                         setBatchChoices(updated)
@@ -423,30 +467,45 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {currentOrder.items.map(line => {
-                          const rem = Math.max(0, line.required_qty - line.allocated_qty)
-                          const allItemLots = masterStock.filter(s => s.item_id === line.item_id)
+                          const lineAllocs = (currentOrder.allocations || []).filter(
+                            a => (a.sales_order_item_id === line.id || (a as any).so_item_id === line.id) && a.allocation_status !== 'Released'
+                          )
+                          const realAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                          const isFullyAllocated = line.required_qty > 0 && realAllocated >= line.required_qty
+                          const rem = Math.max(0, line.required_qty - realAllocated)
+
+                          const allItemLots = masterStock.filter(s =>
+                            (line.item_id && s.item_id === line.item_id) ||
+                            (s.item_code && s.item_code.toUpperCase().trim() === line.item_code.toUpperCase().trim())
+                          )
                           const availItemLots = allItemLots.filter(s => s.available_qty > 0)
-                          const lineAllocs = currentOrder.allocations.filter(a => allItemLots.some(l => l.id === a.stock_lot_id))
                           const itemYoms = Array.from(new Set(allItemLots.map(l => l.yom).filter(Boolean))).sort()
-                          const defaultLotId = rem === 0 ? 'ALLOCATED' : 'AUTO_FIFO'
-                          const choice = batchChoices[line.item_id] || { lotId: defaultLotId, qty: rem }
-                          const selectableLots = rem === 0 ? allItemLots : availItemLots
+                          const defaultLotId = isFullyAllocated ? 'ALLOCATED' : 'AUTO_FIFO'
+                          const choice = batchChoices[line.id] || { lotId: defaultLotId, qty: isFullyAllocated ? realAllocated : rem }
+                          const selectableLots = isFullyAllocated ? allItemLots : availItemLots
                           const chosenLot = selectableLots.find(l => l.id === choice.lotId)
-                          const autoPlan = getFIFOPreview(line.item_id, rem)
+                          const autoPlan = getFIFOPreview(line, rem)
 
                           return (
-                            <tr key={line.id} className={rem === 0 ? 'bg-emerald-50/20 hover:bg-slate-50' : 'hover:bg-slate-50'}>
+                            <tr key={line.id} className={isFullyAllocated ? 'bg-emerald-50/20 hover:bg-slate-50' : 'hover:bg-slate-50'}>
                               <td className="p-2.5 align-top">
                                 <div className="font-mono font-bold text-slate-900">{line.item_code}</div>
-                                <div className="text-[10px] text-slate-500 line-clamp-1 max-w-[180px]" title={line.item_description}>
+                                <div className="text-[10px] text-slate-500 line-clamp-1 max-w-[200px]" title={line.item_description}>
                                   {line.item_description}
                                 </div>
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                  <span className={`px-1.5 py-0.5 rounded font-bold ${
+                                    isFullyAllocated ? 'bg-emerald-100 text-emerald-800' :
+                                    realAllocated > 0 ? 'bg-amber-100 text-amber-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                    {isFullyAllocated ? '✓ Fully Allocated' : realAllocated > 0 ? `Partial: ${realAllocated}/${line.required_qty}` : '⭕ Unallocated'}
+                                  </span>
                                   <span className="bg-slate-100 px-1.5 py-0.5 rounded font-semibold text-slate-700">
                                     Req: {line.required_qty} | Need: {rem}
                                   </span>
                                   <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-semibold">
-                                    {allItemLots.length} Heat(s){itemYoms.length > 0 ? ` • YOM: ${itemYoms.join(', ')}` : ''}
+                                    {availItemLots.length} Avail / {allItemLots.length} Heat(s){itemYoms.length > 0 ? ` • YOM: ${itemYoms.join(', ')}` : ''}
                                   </span>
                                 </div>
                               </td>
@@ -459,29 +518,33 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     const lotObj = selectableLots.find(l => l.id === val)
                                     setBatchChoices(prev => ({
                                       ...prev,
-                                      [line.item_id]: {
+                                      [line.id]: {
                                         lotId: val,
-                                        qty: rem === 0 ? line.allocated_qty : (lotObj ? Math.min(rem, lotObj.available_qty) : rem),
+                                        qty: isFullyAllocated ? realAllocated : (lotObj ? Math.min(rem, lotObj.available_qty) : rem),
                                       },
                                     }))
                                   }}
-                                  className={`w-full max-w-[240px] border rounded-lg px-2 py-1.5 text-xs font-semibold ${
-                                    rem === 0 && choice.lotId === 'ALLOCATED'
+                                  className={`w-full max-w-[250px] border rounded-lg px-2 py-1.5 text-xs font-semibold ${
+                                    isFullyAllocated && choice.lotId === 'ALLOCATED'
                                       ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
                                       : 'border-slate-300 bg-white text-slate-800'
                                   }`}
                                 >
-                                  {rem === 0 && (
+                                  {isFullyAllocated ? (
                                     <option value="ALLOCATED">
-                                      ✓ Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
+                                      ✓ Fully Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
                                     </option>
-                                  )}
+                                  ) : realAllocated > 0 ? (
+                                    <option value="ALLOCATED">
+                                      ⚠️ Partially Allocated: {lineAllocs.map(a => a.heat_number).join(', ')} ({realAllocated}/{line.required_qty} PCS)
+                                    </option>
+                                  ) : null}
                                   <option value="AUTO_FIFO">
                                     ⚡ All Heats (Auto FIFO — {availItemLots.length} avail)
                                   </option>
                                   {selectableLots.map(lot => (
                                     <option key={lot.id} value={lot.id}>
-                                      🔥 {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
+                                      🔥 Heat {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
                                     </option>
                                   ))}
                                 </select>
@@ -491,7 +554,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                 {chosenLot ? (
                                   <div className="bg-blue-50/70 border border-blue-200 rounded px-2 py-1 space-y-0.5">
                                     <div className="font-mono font-bold text-slate-800">
-                                      🔥 {chosenLot.heat_number}
+                                      🔥 Heat {chosenLot.heat_number}
                                     </div>
                                     <div className="text-blue-950">
                                       Cert #: <strong className="font-mono">{chosenLot.certificate_number || 'Pending'}</strong>
@@ -501,7 +564,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     </div>
                                     <div className="text-[10px] text-blue-700">Loc: {chosenLot.warehouse_location}</div>
                                   </div>
-                                ) : rem === 0 && choice.lotId === 'ALLOCATED' ? (
+                                ) : (isFullyAllocated || realAllocated > 0) && choice.lotId === 'ALLOCATED' ? (
                                   lineAllocs.length > 0 ? (
                                     <div className="space-y-1">
                                       {lineAllocs.map(a => {
@@ -509,7 +572,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                         return (
                                           <div key={a.id} className="bg-emerald-50/70 border border-emerald-200 rounded px-2 py-1 space-y-0.5">
                                             <div className="font-mono font-bold text-emerald-950">
-                                              🔥 {a.heat_number} ({a.allocated_qty} PCS)
+                                              🔥 Heat {a.heat_number} ({a.allocated_qty} PCS)
                                             </div>
                                             <div className="text-[10px] text-emerald-900">
                                               Cert #: <strong className="font-mono">{lotInfo?.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{lotInfo?.yom || 'N/A'}</strong>
@@ -523,10 +586,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                   )
                                 ) : autoPlan.length > 0 ? (
                                   <div className="space-y-1">
+                                    <div className="text-[10px] text-slate-500 font-semibold mb-0.5">Proposed FIFO Heats:</div>
                                     {autoPlan.map((p, i) => (
                                       <div key={i} className="bg-slate-50 border border-slate-200 rounded px-2 py-1">
                                         <div className="font-mono font-bold text-slate-800">
-                                          {p.lot.heat_number} ({p.take} PCS)
+                                          🔥 Heat {p.lot.heat_number} ({p.take} PCS)
                                         </div>
                                         <div className="text-[10px] text-slate-600">
                                           Cert: <strong>{p.lot.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{p.lot.yom || 'N/A'}</strong>
@@ -535,13 +599,15 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     ))}
                                   </div>
                                 ) : (
-                                  <span className="text-red-600 font-semibold">No stock available</span>
+                                  <span className="text-red-600 font-bold bg-red-50 border border-red-200 px-2 py-1 rounded inline-block text-[11px]">
+                                    ⚠️ No warehouse stock available
+                                  </span>
                                 )}
                               </td>
 
                               <td className="p-2.5 align-top text-center">
-                                {rem === 0 ? (
-                                  <span className="font-bold text-emerald-700">{line.allocated_qty}</span>
+                                {isFullyAllocated && choice.lotId === 'ALLOCATED' ? (
+                                  <span className="font-bold text-emerald-700">{realAllocated}</span>
                                 ) : (
                                   <input
                                     type="number"
@@ -552,7 +618,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                       const val = Math.max(0, Number(e.target.value))
                                       setBatchChoices(prev => ({
                                         ...prev,
-                                        [line.item_id]: { ...choice, qty: val },
+                                        [line.id]: { ...choice, qty: val },
                                       }))
                                     }}
                                     className="w-16 border border-slate-300 rounded-lg p-1 text-center font-bold text-xs"
@@ -572,9 +638,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                     onClick={handleExecuteBatchAll}
                     disabled={
                       !currentOrder.items.some(
-                        it =>
-                          it.required_qty - it.allocated_qty > 0 ||
-                          (batchChoices[it.item_id] && batchChoices[it.item_id].lotId !== 'ALLOCATED')
+                        it => {
+                          const lineAllocs = (currentOrder.allocations || []).filter(a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released')
+                          const realAlloc = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                          return it.required_qty - realAlloc > 0 || (batchChoices[it.id] && batchChoices[it.id].lotId !== 'ALLOCATED')
+                        }
                       )
                     }
                     className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"

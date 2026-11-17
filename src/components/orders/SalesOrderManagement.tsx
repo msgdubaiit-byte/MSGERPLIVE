@@ -853,15 +853,38 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                      isCancelled ? 'bg-red-100 text-red-800' :
-                      isDispatched ? 'bg-emerald-100 text-emerald-800' :
-                      order.status === 'Approved' ? 'bg-blue-100 text-blue-800' :
-                      order.status === 'MTC Generated' ? 'bg-indigo-100 text-indigo-800' :
-                      order.status === 'Pending Storekeeper Approval' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-800'
-                    }`}>
-                      {order.status}
-                    </span>
+                    {(() => {
+                      const totalReq = order.items.reduce((sum, i) => sum + (i.required_qty || 0), 0)
+                      const totalAlloc = order.items.reduce((sum, i) => sum + (i.allocated_qty || 0), 0)
+                      const allLinesAllocated = order.items.length > 0 && order.items.every(i => (i.allocated_qty || 0) >= i.required_qty && i.required_qty > 0)
+                      const someLinesAllocated = (order.items.some(i => (i.allocated_qty || 0) > 0) || (order.allocations && order.allocations.length > 0)) && !allLinesAllocated
+
+                      const displayOrderStatus = 
+                        isCancelled ? 'Cancelled' :
+                        isDispatched ? 'Dispatched' :
+                        order.status === 'Approved' ? 'Approved' :
+                        order.status === 'MTC Generated' ? 'MTC Generated' :
+                        order.status === 'Pending Storekeeper Approval' ? 'Pending Storekeeper Approval' :
+                        order.status === 'Ready for Dispatch' ? 'Ready for Dispatch' :
+                        allLinesAllocated ? 'Stock Allocated' :
+                        someLinesAllocated ? `Partially Allocated (${totalAlloc}/${totalReq} PCS)` :
+                        'Draft (Unallocated)'
+
+                      return (
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                          isCancelled ? 'bg-red-100 text-red-800' :
+                          isDispatched ? 'bg-emerald-100 text-emerald-800' :
+                          order.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
+                          order.status === 'MTC Generated' ? 'bg-indigo-100 text-indigo-800' :
+                          order.status === 'Pending Storekeeper Approval' ? 'bg-amber-100 text-amber-800' :
+                          allLinesAllocated ? 'bg-blue-100 text-blue-800' :
+                          someLinesAllocated ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                          'bg-slate-200 text-slate-800'
+                        }`}>
+                          {displayOrderStatus}
+                        </span>
+                      )
+                    })()}
 
                     {/* Official MSG Sales Order Confirmation PDF Download */}
                     <button
@@ -902,10 +925,11 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                       </button>
                     )}
 
-                    {canAllocate && order.status === 'Draft' && (
+                    {!isCancelled && !isDispatched && (
                       <button
                         onClick={() => onNavigateToAllocation(order.id)}
                         className="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow"
+                        title="Open Stock Allocation Studio to allocate or adjust heats"
                       >
                         <Flame className="h-3.5 w-3.5" />
                         <span>Allocate Stock (FIFO / Manual)</span>
@@ -1036,19 +1060,47 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {order.items.map(item => {
-                        const itemAllocations = order.allocations.filter(a => a.sales_order_item_id === item.id)
+                        const itemAllocations = (order.allocations || []).filter(
+                          a => (a.sales_order_item_id === item.id || (a as any).so_item_id === item.id) && a.allocation_status !== 'Released'
+                        )
+                        const lineAllocQty = itemAllocations.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+                        const isLineDispatched = (item.dispatched_qty || 0) >= item.required_qty && item.required_qty > 0
+                        const isLineAllocated = (item.required_qty > 0 && lineAllocQty >= item.required_qty) || (item.allocated_qty >= item.required_qty && item.allocated_qty > 0)
+                        const isLinePartial = lineAllocQty > 0 && !isLineAllocated
+
+                        const displayLineStatus = isLineDispatched
+                          ? 'Dispatched'
+                          : isLineAllocated
+                          ? 'Allocated'
+                          : isLinePartial
+                          ? `Partially Allocated (${lineAllocQty}/${item.required_qty})`
+                          : 'Unallocated'
 
                         return (
-                          <tr key={item.id}>
+                          <tr key={item.id} className={!isLineAllocated && !isLineDispatched ? 'bg-slate-50/40' : ''}>
                             <td className="py-2.5 font-mono font-bold text-slate-800">{item.item_code}</td>
                             <td className="py-2.5 text-slate-600">{item.item_description}</td>
                             <td className="py-2.5 text-center font-bold text-slate-900">{item.required_qty} {item.uom}</td>
-                            <td className="py-2.5 text-center font-semibold text-blue-700">{item.allocated_qty} {item.uom}</td>
+                            <td className={`py-2.5 text-center font-bold ${lineAllocQty > 0 ? 'text-blue-700' : 'text-slate-400'}`}>
+                              {lineAllocQty} {item.uom}
+                            </td>
                             <td className="py-2.5 text-center font-semibold text-emerald-700">{item.dispatched_qty} {item.uom}</td>
                             <td className="py-2.5">
                               {itemAllocations.length === 0 ? (
                                 <div className="space-y-1">
-                                  <span className="text-slate-400 italic text-[11px]">Unallocated</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-red-600 font-bold text-[10px] bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                                      ⭕ Unallocated
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => onNavigateToAllocation(order.id)}
+                                      className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline"
+                                      title="Open Heat Allocation Studio for this line"
+                                    >
+                                      Allocate Heat
+                                    </button>
+                                  </div>
                                   {item.certificate_number && (
                                     <div className="flex items-center space-x-1">
                                       <button
@@ -1101,10 +1153,12 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             </td>
                             <td className="py-2.5 text-right">
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                                item.line_status === 'Dispatched' ? 'bg-emerald-100 text-emerald-800' :
-                                item.line_status === 'Allocated' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                                displayLineStatus === 'Dispatched' ? 'bg-emerald-100 text-emerald-800' :
+                                displayLineStatus === 'Allocated' ? 'bg-blue-100 text-blue-800' :
+                                displayLineStatus.startsWith('Partially') ? 'bg-amber-100 text-amber-800' :
+                                'bg-slate-100 text-slate-600'
                               }`}>
-                                {item.line_status}
+                                {displayLineStatus}
                               </span>
                             </td>
                           </tr>

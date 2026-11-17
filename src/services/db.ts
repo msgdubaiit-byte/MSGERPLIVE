@@ -492,6 +492,31 @@ class DBService {
         this.orders[idx].status = initOrder.status
       }
     }
+
+    // Self-healing sanitizer: verify every order item's allocated_qty against real active allocations
+    for (const order of this.orders) {
+      if (order.status === 'Cancelled' || order.status === 'Dispatched') continue
+      for (const item of order.items) {
+        const lineAllocs = (order.allocations || []).filter(
+          a => (a.sales_order_item_id === item.id || (a as any).so_item_id === item.id) && a.allocation_status !== 'Released'
+        )
+        const totalLineAllocated = lineAllocs.reduce((sum, a) => sum + (a.allocated_qty || 0), 0)
+        item.allocated_qty = totalLineAllocated
+        if (item.dispatched_qty >= item.required_qty && item.required_qty > 0) {
+          item.line_status = 'Dispatched'
+        } else if (totalLineAllocated >= item.required_qty && item.required_qty > 0) {
+          item.line_status = 'Allocated'
+        } else {
+          item.line_status = 'Pending'
+        }
+      }
+      const allLinesAllocated = order.items.length > 0 && order.items.every(i => (i.allocated_qty || 0) >= i.required_qty)
+      if (allLinesAllocated && order.status === 'Draft') {
+        order.status = 'Stock Allocated'
+      } else if (!allLinesAllocated && order.status === 'Stock Allocated') {
+        order.status = 'Draft'
+      }
+    }
     this.mtcs = loadFromStorage('mtcs', initialMTCs)
     this.localPurchases = loadFromStorage('localPurchases', initialLocalPurchases)
     this.movements = loadFromStorage('movements', initialMovements)
@@ -563,17 +588,23 @@ class DBService {
     })
   }
 
-  // FIFO Allocation Engine
-  public allocateFIFO(orderId: string, itemId: string, requiredQty: number, userEmail: string) {
+  // FIFO Allocation Engine (targets specific line by unique order item id or item_id)
+  public allocateFIFO(orderId: string, lineId: string, requiredQty: number, userEmail: string) {
     const order = this.orders.find(o => o.id === orderId)
     if (!order) return { success: false, message: 'Order not found' }
 
-    const item = this.items.find(i => i.id === itemId)
-    if (!item) return { success: false, message: 'Item not found' }
+    const orderItem = order.items.find(i => i.id === lineId) || order.items.find(i => i.item_id === lineId)
+    if (!orderItem) return { success: false, message: 'Order line not found' }
 
-    // Find available lots for this item
+    const item = this.items.find(i => i.id === orderItem.item_id || i.item_code.toUpperCase() === orderItem.item_code.toUpperCase())
+    const itemCode = orderItem.item_code?.toUpperCase().trim() || item?.item_code?.toUpperCase().trim() || ''
+
+    // Find available lots for this item by catalog ID or by item_code
     const matchingLots = this.lots
-      .filter(l => l.item_id === itemId)
+      .filter(l => 
+        (orderItem.item_id && l.item_id === orderItem.item_id) ||
+        (l.item_code && l.item_code.toUpperCase().trim() === itemCode)
+      )
       .map(lot => {
         const bal = this.balances.find(b => b.stock_lot_id === lot.id)
         return { lot, balance: bal }
@@ -592,7 +623,7 @@ class DBService {
     if (totalAvailable < requiredQty) {
       return {
         success: false,
-        message: `Insufficient stock for ${item.item_code}. Required: ${requiredQty} PCS, Total Available: ${totalAvailable} PCS.`
+        message: `Insufficient stock for ${orderItem.item_code}. Required: ${requiredQty} PCS, Total Available: ${totalAvailable} PCS.`
       }
     }
 
@@ -608,11 +639,11 @@ class DBService {
       match.balance!.available_qty -= take
       match.balance!.updated_at = new Date().toISOString()
 
-      // Record Allocation
+      // Record Allocation directly for this order line
       const allocId = 'ALC-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
       order.allocations.push({
         id: allocId,
-        sales_order_item_id: order.items.find(i => i.item_id === itemId)?.id || '',
+        sales_order_item_id: orderItem.id,
         sales_order_id: order.id,
         stock_lot_id: match.lot.id,
         heat_number: match.lot.heat_number,
@@ -628,7 +659,7 @@ class DBService {
       this.movements.unshift({
         id: 'MOV-' + Date.now() + '-' + Math.floor(Math.random() * 100),
         stock_lot_id: match.lot.id,
-        item_code: item.item_code,
+        item_code: orderItem.item_code,
         heat_number: match.lot.heat_number,
         movement_type: 'Reservation',
         quantity: take,
@@ -638,7 +669,7 @@ class DBService {
         new_balance: match.balance!.available_qty,
         performed_by: userEmail,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        remarks: `FIFO Reservation for ${order.so_number} (${take} PCS)`
+        remarks: `FIFO Reservation for ${order.so_number} Line ${orderItem.item_code} (${take} PCS)`
       })
 
       allocatedLots.push({
@@ -652,20 +683,17 @@ class DBService {
     }
 
     // Update sales order item allocated quantity, heat number, and certificate reference
-    const orderItem = order.items.find(i => i.item_id === itemId)
-    if (orderItem) {
-      orderItem.allocated_qty += requiredQty
-      orderItem.line_status = 'Allocated'
-      if (allocatedLots.length > 0) {
-        orderItem.heat_number = allocatedLots.map(a => a.heat_number).join(', ')
-        const firstHeat = allocatedLots[0].heat_number
-        const mtc = this.mtcs.find(m => m.heat_number.toUpperCase() === firstHeat.toUpperCase())
-        orderItem.certificate_number = mtc?.certificate_reference || `MTC-${firstHeat}.pdf`
-      }
+    orderItem.allocated_qty += requiredQty
+    orderItem.line_status = orderItem.allocated_qty >= orderItem.required_qty ? 'Allocated' : 'Pending'
+    if (allocatedLots.length > 0) {
+      orderItem.heat_number = allocatedLots.map(a => a.heat_number).join(', ')
+      const firstHeat = allocatedLots[0].heat_number
+      const mtc = this.mtcs.find(m => m.heat_number.toUpperCase() === firstHeat.toUpperCase())
+      orderItem.certificate_number = mtc?.certificate_reference || `MTC-${firstHeat}.pdf`
     }
 
     // Update order status if all items allocated
-    const allAllocated = order.items.every(i => i.allocated_qty >= i.required_qty)
+    const allAllocated = order.items.every(i => (i.allocated_qty || 0) >= i.required_qty && i.required_qty > 0)
     if (allAllocated) {
       order.status = 'Stock Allocated'
     }
@@ -681,13 +709,13 @@ class DBService {
     }
   }
 
-  // Manual Heat Number Selection
-  public allocateManual(orderId: string, itemId: string, stockLotId: string, requiredQty: number, userEmail: string) {
+  // Manual Heat Number Selection (targets specific line by unique order item id or item_id)
+  public allocateManual(orderId: string, lineId: string, stockLotId: string, requiredQty: number, userEmail: string) {
     const order = this.orders.find(o => o.id === orderId)
     if (!order) return { success: false, message: 'Order not found' }
 
-    const item = this.items.find(i => i.id === itemId)
-    if (!item) return { success: false, message: 'Item not found' }
+    const orderItem = order.items.find(i => i.id === lineId) || order.items.find(i => i.item_id === lineId)
+    if (!orderItem) return { success: false, message: 'Order line not found' }
 
     const lot = this.lots.find(l => l.id === stockLotId)
     if (!lot) return { success: false, message: 'Stock lot not found' }
@@ -708,7 +736,7 @@ class DBService {
     const allocId = 'ALC-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
     order.allocations.push({
       id: allocId,
-      sales_order_item_id: order.items.find(i => i.item_id === itemId)?.id || '',
+      sales_order_item_id: orderItem.id,
       sales_order_id: order.id,
       stock_lot_id: lot.id,
       heat_number: lot.heat_number,
@@ -724,7 +752,7 @@ class DBService {
     this.movements.unshift({
       id: 'MOV-' + Date.now() + '-' + Math.floor(Math.random() * 100),
       stock_lot_id: lot.id,
-      item_code: item.item_code,
+      item_code: orderItem.item_code,
       heat_number: lot.heat_number,
       movement_type: 'Reservation',
       quantity: requiredQty,
@@ -734,19 +762,16 @@ class DBService {
       new_balance: bal.available_qty,
       performed_by: userEmail,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      remarks: `Manual Heat Selection: ${lot.heat_number} reserved for ${order.so_number} (${requiredQty} PCS)`
+      remarks: `Manual Heat Selection: ${lot.heat_number} reserved for ${order.so_number} Line ${orderItem.item_code} (${requiredQty} PCS)`
     })
 
-    const orderItem = order.items.find(i => i.item_id === itemId)
-    if (orderItem) {
-      orderItem.allocated_qty += requiredQty
-      orderItem.line_status = 'Allocated'
-      orderItem.heat_number = lot.heat_number
-      const mtc = this.mtcs.find(m => m.stock_lot_id === lot.id || m.heat_number.toUpperCase() === lot.heat_number.toUpperCase())
-      orderItem.certificate_number = mtc?.certificate_reference || `MTC-${lot.heat_number}.pdf`
-    }
+    orderItem.allocated_qty += requiredQty
+    orderItem.line_status = orderItem.allocated_qty >= orderItem.required_qty ? 'Allocated' : 'Pending'
+    orderItem.heat_number = lot.heat_number
+    const mtc = this.mtcs.find(m => m.stock_lot_id === lot.id || m.heat_number.toUpperCase() === lot.heat_number.toUpperCase())
+    orderItem.certificate_number = mtc?.certificate_reference || `MTC-${lot.heat_number}.pdf`
 
-    const allAllocated = order.items.every(i => i.allocated_qty >= i.required_qty)
+    const allAllocated = order.items.every(i => (i.allocated_qty || 0) >= i.required_qty && i.required_qty > 0)
     if (allAllocated) {
       order.status = 'Stock Allocated'
     }
@@ -762,16 +787,15 @@ class DBService {
   }
 
   // Release existing reservations for a single order line so a new heat can be allocated
-  public deallocateLine(orderId: string, itemId: string, userEmail: string) {
+  public deallocateLine(orderId: string, lineId: string, userEmail: string) {
     const order = this.orders.find(o => o.id === orderId)
     if (!order) return { success: false, message: 'Order not found' }
 
-    const orderItem = order.items.find(i => i.item_id === itemId)
+    const orderItem = order.items.find(i => i.id === lineId) || order.items.find(i => i.item_id === lineId)
     if (!orderItem) return { success: false, message: 'Order line not found' }
 
-    const itemLotIds = new Set(this.lots.filter(l => l.item_id === itemId).map(l => l.id))
     const toRemove = order.allocations.filter(
-      a => a.sales_order_item_id === orderItem.id || itemLotIds.has(a.stock_lot_id)
+      a => a.sales_order_item_id === orderItem.id || (a as any).so_item_id === orderItem.id
     )
 
     for (const alloc of toRemove) {
@@ -788,10 +812,14 @@ class DBService {
     orderItem.allocated_qty = 0
     orderItem.line_status = 'Pending'
 
+    if (order.status === 'Stock Allocated') {
+      order.status = 'Draft'
+    }
+
     order.status = 'Draft'
 
     this.saveAll()
-    this.logAudit(userEmail, 'Release Line Allocation', 'Sales Orders', order.so_number, null, { itemId })
+    this.logAudit(userEmail, 'Release Line Allocation', 'Sales Orders', order.so_number, null, { lineId })
     this.notify()
 
     return { success: true, message: 'Line reservations released.' }
