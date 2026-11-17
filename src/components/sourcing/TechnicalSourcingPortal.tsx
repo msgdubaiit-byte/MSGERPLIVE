@@ -39,6 +39,8 @@ import {
   getSourcingDrafts,
   deleteSourcingDraft,
   generateStickerSummaryExcel,
+  extractQtyNumber,
+  extractTotalQtyNumber,
 } from '../../services/sourcingEngine'
 import {
   generateStickersPdf,
@@ -317,11 +319,12 @@ export const TechnicalSourcingPortal: React.FC = () => {
         const updated = { ...it, [field]: value }
 
         // Recalculate price & weights on quantity or price change
+        const numQ = extractQtyNumber(updated.qty)
         if (field === 'qty' || field === 'unit_price') {
-          updated.total_price = (updated.qty || 0) * (updated.unit_price || 0)
+          updated.total_price = numQ * (updated.unit_price || 0)
         }
         if (field === 'qty' || field === 'unit_weight_kg') {
-          updated.total_net_weight_kg = Math.round((updated.qty || 0) * (updated.unit_weight_kg || 0) * 100) / 100
+          updated.total_net_weight_kg = Math.round(numQ * (updated.unit_weight_kg || 0) * 100) / 100
           updated.total_gross_weight_kg = Math.round(updated.total_net_weight_kg * 1.15 * 100) / 100
         }
         if (field === 'description' || field === 'remarks') {
@@ -332,42 +335,85 @@ export const TechnicalSourcingPortal: React.FC = () => {
     )
   }
 
-  // Split item (Multi-heat / Partial Split)
+  // Split item (Multi-heat / Partial Split with X OF Y notation)
   const handleSplitItem = (idx: number) => {
     const parent = items[idx]
     if (!parent) return
 
-    const half1 = Math.ceil(parent.qty / 2)
-    const half2 = Math.floor(parent.qty / 2) || 1
+    const rawQty = String(parent.qty || '1').trim()
+    const currentBatchQty = extractQtyNumber(rawQty)
+    const totalQty = (parent as any).total_qty || extractTotalQtyNumber(rawQty) || currentBatchQty
+
+    if (currentBatchQty <= 1 && totalQty <= 1) {
+      alert(`Item #${parent.client_po_item_no || parent.sl_no} has total quantity of ${totalQty} ${parent.uom}. Cannot split 1 pc into multiple integer units.`)
+      return
+    }
+    if (currentBatchQty <= 1) {
+      alert(`This batch already has a quantity of 1 ${parent.uom}. Cannot split further.`)
+      return
+    }
+
+    let split1 = 1
+    let split2 = 1
+
+    if (totalQty === 2 && currentBatchQty === 2) {
+      // Direct clean split 1 OF 2 and 1 OF 2 without prompt
+      split1 = 1
+      split2 = 1
+    } else {
+      const defaultVal = Math.floor(currentBatchQty / 2) || 1
+      const inputVal = prompt(
+        `Split Item #${parent.client_po_item_no || parent.sl_no} (${currentBatchQty} ${parent.uom} available in this batch of ${totalQty} total).\n\nEnter Qty for 1st batch (e.g. ${defaultVal} for "${defaultVal} OF ${totalQty}"):`,
+        String(defaultVal)
+      )
+      if (inputVal === null) return // Cancelled
+      split1 = parseFloat(inputVal)
+      if (isNaN(split1) || split1 <= 0 || split1 >= currentBatchQty) {
+        alert(`Please enter a valid partial quantity between 1 and ${currentBatchQty - 1}`)
+        return
+      }
+      split2 = currentBatchQty - split1
+    }
+
+    const fmtTotal = Number.isInteger(totalQty) ? totalQty : Math.round(totalQty * 100) / 100
+    const fmt1 = Number.isInteger(split1) ? split1 : Math.round(split1 * 100) / 100
+    const fmt2 = Number.isInteger(split2) ? split2 : Math.round(split2 * 100) / 100
+
+    const groupId = (parent as any).group_id || `grp-${parent.client_po_item_no || parent.sl_no}`
 
     const updatedParent: SourcingLineItem = {
       ...parent,
-      qty: half1,
-      total_price: half1 * parent.unit_price,
-      total_net_weight_kg: Math.round(half1 * parent.unit_weight_kg * 100) / 100,
-      total_gross_weight_kg: Math.round(half1 * parent.unit_weight_kg * 1.15 * 100) / 100,
-      remarks: `${parent.remarks || ''} [Split Part 1]`.trim(),
+      qty: `${fmt1} OF ${fmtTotal}`,
+      split_qty: `${fmt1} OF ${fmtTotal}`,
+      total_price: split1 * parent.unit_price,
+      total_net_weight_kg: Math.round(split1 * parent.unit_weight_kg * 100) / 100,
+      total_gross_weight_kg: Math.round(split1 * parent.unit_weight_kg * 1.15 * 100) / 100,
+      group_id: groupId,
+      total_qty: fmtTotal,
     }
 
     const splitChild: SourcingLineItem = {
       ...parent,
-      id: `ITM-SPLIT-${Date.now()}`,
-      sl_no: parent.sl_no, // Keep same client item SL NO!
-      client_po_item_no: `${parent.client_po_item_no}.1`,
-      qty: half2,
-      total_price: half2 * parent.unit_price,
-      total_net_weight_kg: Math.round(half2 * parent.unit_weight_kg * 100) / 100,
-      total_gross_weight_kg: Math.round(half2 * parent.unit_weight_kg * 1.15 * 100) / 100,
+      id: `ITM-SPLIT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      sl_no: parent.sl_no,
+      client_po_item_no: parent.client_po_item_no,
+      qty: `${fmt2} OF ${fmtTotal}`,
+      split_qty: `${fmt2} OF ${fmtTotal}`,
+      total_price: split2 * parent.unit_price,
+      total_net_weight_kg: Math.round(split2 * parent.unit_weight_kg * 100) / 100,
+      total_gross_weight_kg: Math.round(split2 * parent.unit_weight_kg * 1.15 * 100) / 100,
       heat_number: '',
       certificate_number: '',
       remarks: `${parent.remarks || ''} [Split Part 2 - Alternate Heat]`.trim(),
+      group_id: groupId,
+      total_qty: fmtTotal,
       parent_sl_no: parent.sl_no,
     }
 
     const updated = [...items]
     updated.splice(idx, 1, updatedParent, splitChild)
     setItems(updated)
-    setStatusNotice(`Item #${parent.sl_no} split into 2 sub-rows for multi-heat allocation!`)
+    setStatusNotice(`Item #${parent.client_po_item_no || parent.sl_no} split into "${fmt1} OF ${fmtTotal}" and "${fmt2} OF ${fmtTotal}"!`)
   }
 
   // Add blank item
@@ -405,7 +451,44 @@ export const TechnicalSourcingPortal: React.FC = () => {
       alert('Cannot delete all items. At least 1 item is required.')
       return
     }
-    setItems(items.filter(it => it.id !== id))
+
+    const itemToRemove = items.find(it => it.id === id)
+    const remainingItems = items.filter(it => it.id !== id)
+
+    if (itemToRemove) {
+      const cNo = String(itemToRemove.client_po_item_no || '').trim()
+      const groupId = (itemToRemove as any).group_id
+
+      const siblings = remainingItems.filter(it =>
+        (groupId && (it as any).group_id === groupId) ||
+        (cNo && String(it.client_po_item_no || '').trim() === cNo)
+      )
+
+      if (siblings.length === 1) {
+        const sib = siblings[0]
+        const fullQty = (sib as any).total_qty || extractTotalQtyNumber(sib.qty) || extractQtyNumber(sib.qty)
+        sib.qty = fullQty
+        delete (sib as any).group_id
+        delete (sib as any).total_qty
+        delete (sib as any).split_qty
+      } else if (siblings.length > 1) {
+        let newTotal = 0
+        siblings.forEach(s => {
+          newTotal += extractQtyNumber(s.qty)
+        })
+        const fmtTotal = Number.isInteger(newTotal) ? newTotal : Math.round(newTotal * 100) / 100
+        siblings.forEach(s => {
+          const curr = extractQtyNumber(s.qty)
+          const fmtCurr = Number.isInteger(curr) ? curr : Math.round(curr * 100) / 100
+          s.qty = `${fmtCurr} OF ${fmtTotal}`
+          s.split_qty = `${fmtCurr} OF ${fmtTotal}`
+          ;(s as any).total_qty = fmtTotal
+        })
+      }
+    }
+
+    setItems(remainingItems)
+    setStatusNotice('Item removed successfully. View updated on this page.')
   }
 
   // Save draft
@@ -438,16 +521,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
       const unitWt = it.unit_weight_kg || estimateUnitWeight(it.description, it.uom)
       const isMach = isMeaningfulItem({ description: it.description, remarks: it.remarks })
 
-      return {
-        ...it,
-        make,
-        country_of_origin: coo,
-        hs_code: hs,
-        unit_weight_kg: unitWt,
-        total_net_weight_kg: Math.round(it.qty * unitWt * 100) / 100,
-        total_gross_weight_kg: Math.round(it.qty * unitWt * 1.15 * 100) / 100,
-        is_machined: isMach,
-      }
+        const numQ = extractQtyNumber(it.qty)
+        return {
+          ...it,
+          make,
+          country_of_origin: coo,
+          hs_code: hs,
+          unit_weight_kg: unitWt,
+          total_net_weight_kg: Math.round(numQ * unitWt * 100) / 100,
+          total_gross_weight_kg: Math.round(numQ * unitWt * 1.15 * 100) / 100,
+          is_machined: isMach,
+        }
     })
     setItems(updated)
     setStatusNotice('Auto-detected MAKE, Country of Origin, HS Codes, and Weights for all items!')

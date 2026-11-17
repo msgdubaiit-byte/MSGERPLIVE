@@ -17,6 +17,7 @@ import {
   generateStoresSummaryExcel,
   generateStickerSummaryExcel,
   generateCIPLLogisticExcel,
+  extractQtyNumber,
 } from '../../services/sourcingEngine'
 
 export type SourcingPreviewTab = 'summary' | 'stores' | 'client' | 'cipl_invoice' | 'cipl_packing'
@@ -395,8 +396,8 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
 
             {/* TAB 4: CIPL COMMERCIAL INVOICE */}
             {activeTab === 'cipl_invoice' && (() => {
-              const totalQty = items.reduce((sum, it) => sum + (it.qty || 1), 0)
-              const totalAmt = items.reduce((sum, it) => sum + (it.qty || 1) * (it.unit_price || 50), 0)
+              const totalQty = items.reduce((sum, it) => sum + extractQtyNumber(it.qty), 0)
+              const totalAmt = items.reduce((sum, it) => sum + extractQtyNumber(it.qty) * (it.unit_price || 50), 0)
               return (
                 <div className="space-y-4">
                   <div className="text-center space-y-0.5 border-b-2 border-purple-600 pb-3">
@@ -450,7 +451,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                             <td className="p-2 text-center font-bold border-r border-slate-200">{it.qty}</td>
                             <td className="p-2 text-center border-r border-slate-200">{it.uom}</td>
                             <td className="p-2 text-right font-mono border-r border-slate-200">{(it.unit_price || 50).toFixed(2)}</td>
-                            <td className="p-2 text-right font-mono font-bold text-purple-900">{((it.qty || 1) * (it.unit_price || 50)).toFixed(2)}</td>
+                            <td className="p-2 text-right font-mono font-bold text-purple-900">{(extractQtyNumber(it.qty) * (it.unit_price || 50)).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -472,7 +473,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
 
             {/* TAB 5: CIPL PACKING LIST */}
             {activeTab === 'cipl_packing' && (() => {
-              const totalQty = items.reduce((sum, it) => sum + (it.qty || 1), 0)
+              const totalQty = items.reduce((sum, it) => sum + extractQtyNumber(it.qty), 0)
               const totalNet = items.reduce((sum, it) => sum + (it.total_net_weight_kg || 10), 0)
               const totalGross = items.reduce((sum, it) => sum + (it.total_gross_weight_kg || 12), 0)
               return (

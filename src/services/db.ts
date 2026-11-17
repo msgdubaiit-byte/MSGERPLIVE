@@ -1486,34 +1486,66 @@ class DBService {
     if (updatedData.bapco_transmittal !== undefined) order.bapco_transmittal = updatedData.bapco_transmittal
 
     if (updatedData.items && updatedData.items.length > 0) {
-      updatedData.items.forEach((upItem, idx) => {
-        let existing = order.items.find(i => i.id === upItem.id || (upItem.position && i.position === upItem.position))
-        if (!existing && order.items[idx]) {
-          existing = order.items[idx]
-        }
-        if (existing) {
-          if (upItem.item_code !== undefined) existing.item_code = upItem.item_code
-          if (upItem.item_description !== undefined) existing.item_description = upItem.item_description
-          if (upItem.client_po_item_no !== undefined) existing.client_po_item_no = upItem.client_po_item_no
-          if (upItem.required_qty !== undefined) existing.required_qty = upItem.required_qty
-          if (upItem.uom !== undefined) existing.uom = upItem.uom
-          if (upItem.heat_number !== undefined) existing.heat_number = upItem.heat_number
-          if (upItem.certificate_number !== undefined) existing.certificate_number = upItem.certificate_number
-          if (upItem.make !== undefined) existing.make = upItem.make
-          if (upItem.remarks !== undefined) existing.remarks = upItem.remarks
-          if (upItem.supplier_name !== undefined) existing.supplier_name = upItem.supplier_name
-          if (upItem.supplier_po_number !== undefined) existing.supplier_po_number = upItem.supplier_po_number
-          if (upItem.package_type !== undefined) existing.package_type = upItem.package_type
-          if (upItem.package_no !== undefined) existing.package_no = upItem.package_no
+      const remainingIds = new Set(updatedData.items.map(i => i.id).filter(Boolean))
 
-          // Synchronize matching allocation with updated heat and quantity
-          const alloc = order.allocations?.find(a => (a.sales_order_item_id || a.so_item_id) === existing?.id)
-          if (alloc) {
-            if (upItem.heat_number) alloc.heat_number = upItem.heat_number
-            if (upItem.required_qty) alloc.allocated_qty = upItem.required_qty
-          }
+      // Clean up allocations for removed/deleted line items
+      if (order.allocations && order.allocations.length > 0) {
+        order.allocations = order.allocations.filter(a => {
+          const lId = a.sales_order_item_id || a.so_item_id
+          return !lId || remainingIds.has(lId)
+        })
+      }
+
+      // Rebuild order.items preserving split batches and order
+      const newItems: SalesOrderItem[] = updatedData.items.map((upItem, idx) => {
+        let existing = order.items.find(i => i.id === upItem.id)
+        if (!existing && upItem.position) {
+          existing = order.items.find(i => i.position === upItem.position && i.client_po_item_no === upItem.client_po_item_no)
         }
+
+        const fallbackItem = order.items[0]
+        const resolvedId = upItem.id || `SO-ITEM-${Date.now()}-${idx + 1}`
+        const resolvedPosition = upItem.position || idx + 1
+        const resolvedCode = upItem.item_code || existing?.item_code || fallbackItem?.item_code || `ITEM-${resolvedPosition}`
+        const resolvedItemId = existing?.item_id || fallbackItem?.item_id || `CAT-${resolvedPosition}`
+
+        const mergedItem: SalesOrderItem = {
+          id: resolvedId,
+          sales_order_id: order.id,
+          item_id: resolvedItemId,
+          item_code: resolvedCode,
+          item_description: upItem.item_description !== undefined ? upItem.item_description : (existing?.item_description || ''),
+          client_po_item_no: upItem.client_po_item_no !== undefined ? upItem.client_po_item_no : (existing?.client_po_item_no || String(resolvedPosition)),
+          position: resolvedPosition,
+          required_qty: upItem.required_qty !== undefined ? upItem.required_qty : (existing?.required_qty || 1),
+          allocated_qty: upItem.heat_number ? (upItem.required_qty || existing?.required_qty || 1) : (existing?.allocated_qty || 0),
+          dispatched_qty: existing?.dispatched_qty || 0,
+          uom: upItem.uom !== undefined ? upItem.uom : (existing?.uom || 'EA'),
+          heat_number: upItem.heat_number !== undefined ? upItem.heat_number : (existing?.heat_number || ''),
+          certificate_number: upItem.certificate_number !== undefined ? upItem.certificate_number : (existing?.certificate_number || ''),
+          make: upItem.make !== undefined ? upItem.make : (existing?.make || ''),
+          remarks: upItem.remarks !== undefined ? upItem.remarks : (existing?.remarks || ''),
+          supplier_name: upItem.supplier_name !== undefined ? upItem.supplier_name : (existing?.supplier_name || ''),
+          supplier_po_number: upItem.supplier_po_number !== undefined ? upItem.supplier_po_number : (existing?.supplier_po_number || ''),
+          package_type: upItem.package_type !== undefined ? upItem.package_type : (existing?.package_type || 'Pallet'),
+          package_no: upItem.package_no !== undefined ? upItem.package_no : (existing?.package_no || '1'),
+          split_qty: upItem.split_qty !== undefined ? upItem.split_qty : (existing?.split_qty || undefined),
+          total_qty: upItem.total_qty !== undefined ? upItem.total_qty : (existing?.total_qty || undefined),
+          group_id: upItem.group_id !== undefined ? upItem.group_id : (existing?.group_id || undefined),
+          line_status: upItem.heat_number ? 'Allocated' : (existing?.line_status || 'Pending'),
+        }
+
+        // Synchronize matching allocation with updated heat and quantity
+        const alloc = order.allocations?.find(a => (a.sales_order_item_id || a.so_item_id) === mergedItem.id)
+        if (alloc) {
+          if (mergedItem.heat_number) alloc.heat_number = mergedItem.heat_number
+          if (mergedItem.required_qty) alloc.allocated_qty = mergedItem.required_qty
+        }
+
+        return mergedItem
       })
+
+      order.items = newItems
     }
 
     order.updated_at = new Date().toISOString()

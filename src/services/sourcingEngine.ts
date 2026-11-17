@@ -6,12 +6,37 @@ import ExcelJS from 'exceljs'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import JSZip from 'jszip'
 
+export function extractQtyNumber(qtyStr: number | string | undefined | null): number {
+  if (typeof qtyStr === 'number') return isNaN(qtyStr) ? 0 : qtyStr
+  if (!qtyStr) return 0
+  const str = String(qtyStr).trim()
+  const ofMatch = str.match(/^([\d.]+)\s*(?:OF|of)/i)
+  if (ofMatch) {
+    return parseFloat(ofMatch[1]) || 0
+  }
+  return parseFloat(str.replace(/,/g, '')) || 0
+}
+
+export function extractTotalQtyNumber(qtyStr: number | string | undefined | null): number {
+  if (typeof qtyStr === 'number') return isNaN(qtyStr) ? 0 : qtyStr
+  if (!qtyStr) return 0
+  const str = String(qtyStr).trim()
+  const ofMatch = str.match(/([\d.]+)\s*(?:OF|of)\s*([\d.]+)/i)
+  if (ofMatch && ofMatch[2]) {
+    return parseFloat(ofMatch[2]) || 0
+  }
+  return extractQtyNumber(qtyStr)
+}
+
 export interface SourcingLineItem {
   id: string
   sl_no: number
   client_po_item_no: string
   description: string
-  qty: number
+  qty: number | string
+  split_qty?: string
+  total_qty?: number
+  group_id?: string
   uom: string
   heat_number: string
   certificate_number: string
@@ -30,6 +55,7 @@ export interface SourcingLineItem {
   package_no: string
   is_machined?: boolean
   parent_sl_no?: number
+  is_new_added?: boolean
 }
 
 export interface SourcingWorksheetData {
@@ -663,6 +689,7 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
     client_po_item_no: string
     description: string
     qty: number
+    display_qty?: string
     uom: string
     hs_code: string
     origin: string
@@ -732,6 +759,7 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
       client_po_item_no: clientPoIt,
       description: desc,
       qty: qtyVal,
+      display_qty: rawQty,
       uom,
       hs_code: hs,
       origin: coo,
@@ -910,9 +938,10 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
       const r = wsInv.getRow(currRowInv)
       r.height = 20
 
+      const hasOf = String(it.display_qty || '').toUpperCase().includes('OF')
       const c1 = r.getCell(1); c1.value = pIdx + 1; c1.alignment = { horizontal: 'center', vertical: 'middle' }
       const c2 = r.getCell(2); c2.value = it.description; c2.alignment = { horizontal: 'left', vertical: 'middle' }
-      const c3 = r.getCell(3); c3.value = it.qty; c3.alignment = { horizontal: 'center', vertical: 'middle' }
+      const c3 = r.getCell(3); c3.value = hasOf ? it.display_qty : it.qty; c3.alignment = { horizontal: 'center', vertical: 'middle' }
       const c4 = r.getCell(4); c4.value = it.uom; c4.alignment = { horizontal: 'center', vertical: 'middle' }
       const c5 = r.getCell(5); c5.value = it.hs_code; c5.alignment = { horizontal: 'center', vertical: 'middle' }
       const c6 = r.getCell(6); c6.value = it.origin; c6.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -923,7 +952,11 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
       c7.numFmt = '0.00'
 
       const c8 = r.getCell(8)
-      c8.value = { formula: `C${currRowInv}*G${currRowInv}` }
+      if (hasOf) {
+        c8.value = it.amount
+      } else {
+        c8.value = { formula: `C${currRowInv}*G${currRowInv}` }
+      }
       c8.alignment = { horizontal: 'right', vertical: 'middle' }
       c8.numFmt = '0.00'
 
@@ -949,7 +982,13 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
   cTotLabel.alignment = { horizontal: 'center', vertical: 'middle' }
 
   const cTotQ = wsInv.getCell(`C${currRowInv}`)
-  cTotQ.value = { formula: `SUM(C${firstInvR}:C${lastInvR})` }
+  const anyHasOfInv = processedItems.some(it => String(it.display_qty || '').toUpperCase().includes('OF'))
+  if (anyHasOfInv) {
+    const totQtyPcs = processedItems.reduce((sum, it) => sum + (it.qty || 1), 0)
+    cTotQ.value = totQtyPcs
+  } else {
+    cTotQ.value = { formula: `SUM(C${firstInvR}:C${lastInvR})` }
+  }
   cTotQ.font = fDataBold
   cTotQ.alignment = { horizontal: 'center', vertical: 'middle' }
 
@@ -1113,9 +1152,10 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
         const r = wsPk.getRow(currRowPk)
         r.height = 20
 
+        const hasOf = String(it.display_qty || '').toUpperCase().includes('OF')
         const c1 = r.getCell(1); c1.value = pIdx + 1; c1.alignment = { horizontal: 'center', vertical: 'middle' }
         const c2 = r.getCell(2); c2.value = it.description; c2.alignment = { horizontal: 'left', vertical: 'middle' }
-        const c3 = r.getCell(3); c3.value = it.qty; c3.alignment = { horizontal: 'center', vertical: 'middle' }
+        const c3 = r.getCell(3); c3.value = hasOf ? it.display_qty : it.qty; c3.alignment = { horizontal: 'center', vertical: 'middle' }
         const c4 = r.getCell(4); c4.value = it.uom; c4.alignment = { horizontal: 'center', vertical: 'middle' }
         const c5 = r.getCell(5); c5.value = it.hs_code; c5.alignment = { horizontal: 'center', vertical: 'middle' }
         const c6 = r.getCell(6); c6.value = it.origin; c6.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -1126,7 +1166,11 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
         c7.numFmt = '0.00'
 
         const c8 = r.getCell(8)
-        c8.value = { formula: `C${currRowPk}*G${currRowPk}` }
+        if (hasOf) {
+          c8.value = it.total_weight
+        } else {
+          c8.value = { formula: `C${currRowPk}*G${currRowPk}` }
+        }
         c8.alignment = { horizontal: 'right', vertical: 'middle' }
         c8.numFmt = '0.00'
 
@@ -1183,7 +1227,13 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
   // Row 1: TOTAL NET WEIGHT IN KGS.
   wsPk.mergeCells(`A${currRowPk}:B${currRowPk}`)
   const cTotPkQ = wsPk.getCell(`C${currRowPk}`)
-  cTotPkQ.value = { formula: `SUM(C${firstPkR}:C${lastPkR})` }
+  const anyHasOfPk = processedItems.some(it => String(it.display_qty || '').toUpperCase().includes('OF'))
+  if (anyHasOfPk) {
+    const totQtyPcs = processedItems.reduce((sum, it) => sum + (it.qty || 1), 0)
+    cTotPkQ.value = totQtyPcs
+  } else {
+    cTotPkQ.value = { formula: `SUM(C${firstPkR}:C${lastPkR})` }
+  }
   cTotPkQ.font = fDataBold
   cTotPkQ.alignment = { horizontal: 'center', vertical: 'middle' }
 
@@ -1575,10 +1625,15 @@ export async function generateStickerSummaryExcel(data: SourcingWorksheetData): 
     const row = ws.getRow(rIdx)
     row.height = 30
 
+    const rawQty = (it as any).split_qty || it.qty
+    const valQty = (typeof rawQty === 'string' && rawQty.toUpperCase().includes('OF'))
+      ? rawQty.toUpperCase()
+      : (typeof rawQty === 'number' ? rawQty : (parseFloat(String(rawQty).replace(/,/g, '')) || rawQty))
+
     const rowVals = [
       it.client_po_item_no || String(it.sl_no || idx + 1),
       it.description || '',
-      it.qty || 0,
+      valQty || 0,
       it.uom || 'Ea',
       it.heat_number || '-',
       it.make || autoDetectMake(it.description) || 'BENKAN, THAILAND',

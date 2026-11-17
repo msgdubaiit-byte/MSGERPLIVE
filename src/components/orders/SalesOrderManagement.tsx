@@ -125,6 +125,9 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       supplierName?: string
       packageType?: string
       packageNo?: string
+      splitQty?: string
+      totalQty?: number
+      groupId?: string
     }[]
     pdfBlobUrl: string
     fileName: string
@@ -322,6 +325,9 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         supplier_name: it.supplierName || autoDetectSupplier(it.make || '', it.itemDescription || ''),
         package_type: it.packageType || 'Pallet',
         package_no: it.packageNo || '1',
+        split_qty: it.splitQty,
+        total_qty: it.totalQty,
+        group_id: it.groupId,
       })),
       po_document_name: pdfParsedData.fileName,
       po_document_url: pdfParsedData.pdfBlobUrl,
@@ -1690,17 +1696,24 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                 </div>
                               </td>
                               <td className="p-2.5 text-center">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={it.requiredQty}
-                                  onChange={(e) => {
-                                    const updated = [...pdfParsedData.items]
-                                    updated[idx].requiredQty = Number(e.target.value)
-                                    setPdfParsedData({ ...pdfParsedData, items: updated })
-                                  }}
-                                  className="w-16 border border-slate-300 rounded px-1.5 py-1 text-center font-bold text-xs"
-                                />
+                                <div className="flex flex-col items-center space-y-1">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={it.requiredQty}
+                                    onChange={(e) => {
+                                      const updated = [...pdfParsedData.items]
+                                      updated[idx].requiredQty = Number(e.target.value)
+                                      setPdfParsedData({ ...pdfParsedData, items: updated })
+                                    }}
+                                    className="w-16 border border-slate-300 rounded px-1.5 py-1 text-center font-bold text-xs"
+                                  />
+                                  {it.splitQty && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap shadow-xs" title={`Split Batch: ${it.splitQty}`}>
+                                      {it.splitQty}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               {/* Direct MTC Upload for L-Code / Stock */}
                               <td className="p-2.5">

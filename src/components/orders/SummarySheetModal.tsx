@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Package,
   Box,
+  Scissors,
 } from 'lucide-react'
 import { SalesOrder, SalesOrderItem } from '../../types'
 import { db } from '../../services/db'
@@ -31,6 +32,8 @@ import {
   autoDetectHSCode,
   estimateUnitWeight,
   numToWords,
+  extractQtyNumber,
+  extractTotalQtyNumber,
 } from '../../services/sourcingEngine'
 import {
   generateStickersPdf,
@@ -99,12 +102,18 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
       cleanRemarks = ''
     }
 
+    const rawSplitQty = (item as any).split_qty
+    const initialQty = rawSplitQty || qty
+
     return {
       id: item.id || `ITEM-${idx + 1}`,
       sl_no: item.position || idx + 1,
       client_po_item_no: item.client_po_item_no || (item.position ? String(item.position) : `${idx + 1}`),
       description: item.item_description || item.item_code,
-      qty,
+      qty: initialQty,
+      split_qty: rawSplitQty,
+      total_qty: (item as any).total_qty,
+      group_id: (item as any).group_id,
       uom: item.uom || 'Ea',
       heat_number: heat,
       certificate_number: cert,
@@ -115,13 +124,42 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
       hs_code: hs,
       country_of_origin: origin,
       unit_price: 125,
-      total_price: 125 * qty,
+      total_price: 125 * extractQtyNumber(initialQty),
       unit_weight_kg: unitWeight,
-      total_net_weight_kg: unitWeight * qty,
-      total_gross_weight_kg: unitWeight * qty * 1.05,
+      total_net_weight_kg: unitWeight * extractQtyNumber(initialQty),
+      total_gross_weight_kg: unitWeight * extractQtyNumber(initialQty) * 1.05,
       package_type: pkgType,
       package_no: pkgNo,
       is_machined: false,
+    }
+  })
+
+  // Auto-group split batches sharing the same Client PO Item No (e.g. 9 pcs & 18 pcs -> 9 OF 27 & 18 OF 27)
+  const clientGroups: Record<string, SourcingLineItem[]> = {}
+  initialItems.forEach(it => {
+    const cNo = String(it.client_po_item_no || '').trim()
+    if (cNo) {
+      if (!clientGroups[cNo]) clientGroups[cNo] = []
+      clientGroups[cNo].push(it)
+    }
+  })
+
+  Object.keys(clientGroups).forEach(cNo => {
+    const grp = clientGroups[cNo]
+    if (grp.length > 1) {
+      let total = 0
+      grp.forEach(it => {
+        total += extractQtyNumber(it.qty)
+      })
+      const fmtTotal = Number.isInteger(total) ? total : Math.round(total * 100) / 100
+      grp.forEach(it => {
+        const curr = extractQtyNumber(it.qty)
+        const fmtCurr = Number.isInteger(curr) ? curr : Math.round(curr * 100) / 100
+        it.qty = `${fmtCurr} OF ${fmtTotal}`
+        it.split_qty = `${fmtCurr} OF ${fmtTotal}`
+        it.total_qty = fmtTotal
+        it.group_id = `grp-${cNo}`
+      })
     }
   })
 
@@ -225,22 +263,29 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
   // Apply Changes Everywhere & Save to DB
   const handleApplyEverywhere = () => {
-    const updatedItemsPayload: Partial<SalesOrderItem>[] = items.map((it, idx) => ({
-      id: it.id,
-      position: it.sl_no || idx + 1,
-      client_po_item_no: it.client_po_item_no,
-      item_description: it.description,
-      required_qty: it.qty,
-      uom: it.uom,
-      heat_number: it.heat_number,
-      certificate_number: it.certificate_number,
-      make: it.make,
-      remarks: it.remarks,
-      supplier_name: it.supplier_name,
-      supplier_po_number: it.supplier_po_number,
-      package_type: it.package_type || 'Pallet',
-      package_no: it.package_no || '1',
-    }))
+    const updatedItemsPayload: Partial<SalesOrderItem>[] = items.map((it, idx) => {
+      const numQ = extractQtyNumber(it.qty) || 1
+      const isSplitStr = typeof it.qty === 'string' && it.qty.toUpperCase().includes('OF')
+      return {
+        id: it.id,
+        position: it.sl_no || idx + 1,
+        client_po_item_no: it.client_po_item_no,
+        item_description: it.description,
+        required_qty: numQ,
+        split_qty: isSplitStr ? (it.qty as string) : (it.split_qty || undefined),
+        total_qty: it.total_qty || (isSplitStr ? extractTotalQtyNumber(it.qty) : undefined),
+        group_id: it.group_id || undefined,
+        uom: it.uom,
+        heat_number: it.heat_number,
+        certificate_number: it.certificate_number,
+        make: it.make,
+        remarks: it.remarks,
+        supplier_name: it.supplier_name,
+        supplier_po_number: it.supplier_po_number,
+        package_type: it.package_type || 'Pallet',
+        package_no: it.package_no || '1',
+      }
+    })
 
     const res = db.updateSalesOrder({
       id: order.id,
@@ -381,14 +426,144 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
     setSelectedIds([...selectedIds, newItem.id])
   }
 
+  // Split Item Row (Multi-heat / Partial Batch Split with X OF Y notation)
+  const handleSplitRow = (idx: number) => {
+    const parent = items[idx]
+    if (!parent) return
+
+    const rawQty = String(parent.qty || '1').trim()
+    const currentBatchQty = extractQtyNumber(rawQty)
+    const totalQty = (parent as any).total_qty || extractTotalQtyNumber(rawQty) || currentBatchQty
+
+    if (currentBatchQty <= 1 && totalQty <= 1) {
+      alert(`Item #${parent.client_po_item_no || parent.sl_no} has total quantity of ${totalQty} ${parent.uom}. Cannot split 1 pc into multiple integer units.`)
+      return
+    }
+    if (currentBatchQty <= 1) {
+      alert(`This batch already has a quantity of 1 ${parent.uom}. Cannot split further.`)
+      return
+    }
+
+    let split1 = 1
+    let split2 = 1
+
+    if (totalQty === 2 && currentBatchQty === 2) {
+      // Direct clean split 1 OF 2 and 1 OF 2 without prompt
+      split1 = 1
+      split2 = 1
+    } else {
+      const defaultVal = Math.floor(currentBatchQty / 2) || 1
+      const inputVal = prompt(
+        `Split Item #${parent.client_po_item_no || parent.sl_no} (${currentBatchQty} ${parent.uom} available in this batch of ${totalQty} total).\n\nEnter Qty for 1st batch (e.g. ${defaultVal} for "${defaultVal} OF ${totalQty}"):`,
+        String(defaultVal)
+      )
+      if (inputVal === null) return // Cancelled
+      split1 = parseFloat(inputVal)
+      if (isNaN(split1) || split1 <= 0 || split1 >= currentBatchQty) {
+        alert(`Please enter a valid partial quantity between 1 and ${currentBatchQty - 1}`)
+        return
+      }
+      split2 = currentBatchQty - split1
+    }
+
+    const fmtTotal = Number.isInteger(totalQty) ? totalQty : Math.round(totalQty * 100) / 100
+    const fmt1 = Number.isInteger(split1) ? split1 : Math.round(split1 * 100) / 100
+    const fmt2 = Number.isInteger(split2) ? split2 : Math.round(split2 * 100) / 100
+
+    const groupId = (parent as any).group_id || `grp-${parent.client_po_item_no || parent.sl_no}`
+
+    // Update 1st batch row
+    const updatedParent: SourcingLineItem = {
+      ...parent,
+      qty: `${fmt1} OF ${fmtTotal}`,
+      split_qty: `${fmt1} OF ${fmtTotal}`,
+      total_price: split1 * (parent.unit_price || 125),
+      total_net_weight_kg: Math.round(split1 * (parent.unit_weight_kg || 1) * 100) / 100,
+      total_gross_weight_kg: Math.round(split1 * (parent.unit_weight_kg || 1) * 1.05 * 100) / 100,
+      group_id: groupId,
+      total_qty: fmtTotal,
+    }
+
+    // Create 2nd batch row directly below with SAME group ID, total Qty, and Client PO Item No
+    const splitChild: SourcingLineItem = {
+      ...parent,
+      id: `ITEM-SPLIT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      client_po_item_no: parent.client_po_item_no,
+      qty: `${fmt2} OF ${fmtTotal}`,
+      split_qty: `${fmt2} OF ${fmtTotal}`,
+      heat_number: '', // Blank for second heat / supplier allocation
+      certificate_number: '',
+      supplier_name: parent.supplier_name || '',
+      supplier_po_number: parent.supplier_po_number || '',
+      remarks: parent.remarks ? `${parent.remarks} (Split Batch)` : '(Split Batch)',
+      total_price: split2 * (parent.unit_price || 125),
+      total_net_weight_kg: Math.round(split2 * (parent.unit_weight_kg || 1) * 100) / 100,
+      total_gross_weight_kg: Math.round(split2 * (parent.unit_weight_kg || 1) * 1.05 * 100) / 100,
+      group_id: groupId,
+      total_qty: fmtTotal,
+      is_new_added: true,
+    }
+
+    const updated = [...items]
+    updated.splice(idx, 1, updatedParent, splitChild)
+    setItems(updated)
+    setSelectedIds(prev => [...prev, splitChild.id])
+    setSuccessBanner(`Item #${parent.client_po_item_no || parent.sl_no} split into "${fmt1} OF ${fmtTotal}" and "${fmt2} OF ${fmtTotal}"!`)
+    setTimeout(() => setSuccessBanner(null), 3500)
+  }
+
   // Remove Item Row
   const handleRemoveRow = (id: string) => {
     if (items.length <= 1) {
       alert('At least one line item must remain.')
       return
     }
-    setItems(items.filter(it => it.id !== id))
-    setSelectedIds(selectedIds.filter(x => x !== id))
+
+    const itemToRemove = items.find(it => it.id === id)
+    const remainingItems = items.filter(it => it.id !== id)
+
+    // If the removed item was part of a split group (sharing client_po_item_no or group_id)
+    if (itemToRemove) {
+      const cNo = String(itemToRemove.client_po_item_no || '').trim()
+      const groupId = (itemToRemove as any).group_id
+
+      const siblings = remainingItems.filter(it =>
+        (groupId && (it as any).group_id === groupId) ||
+        (cNo && String(it.client_po_item_no || '').trim() === cNo)
+      )
+
+      if (siblings.length === 1) {
+        // Only 1 sibling remains for this client PO item -> revert from "X OF Y" back to the full quantity!
+        const sib = siblings[0]
+        const fullQty = (sib as any).total_qty || extractTotalQtyNumber(sib.qty) || extractQtyNumber(sib.qty)
+        sib.qty = fullQty
+        delete (sib as any).group_id
+        delete (sib as any).total_qty
+        delete (sib as any).split_qty
+        if (sib.remarks) {
+          sib.remarks = sib.remarks.replace(/\s*\(Split[^)]*\)/gi, '').trim()
+        }
+      } else if (siblings.length > 1) {
+        // Re-calculate the "X OF Y" for the remaining siblings
+        let newTotal = 0
+        siblings.forEach(s => {
+          newTotal += extractQtyNumber(s.qty)
+        })
+        const fmtTotal = Number.isInteger(newTotal) ? newTotal : Math.round(newTotal * 100) / 100
+        siblings.forEach(s => {
+          const curr = extractQtyNumber(s.qty)
+          const fmtCurr = Number.isInteger(curr) ? curr : Math.round(curr * 100) / 100
+          s.qty = `${fmtCurr} OF ${fmtTotal}`
+          s.split_qty = `${fmtCurr} OF ${fmtTotal}`
+          ;(s as any).total_qty = fmtTotal
+        })
+      }
+    }
+
+    setItems(remainingItems)
+    setSelectedIds(prev => prev.filter(x => x !== id))
+    setSuccessBanner('Item removed successfully. View updated on this page.')
+    setTimeout(() => setSuccessBanner(null), 3000)
   }
 
   return (
@@ -780,15 +955,21 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                         </td>
                         <td className="p-2 text-center">
                           <input
-                            type="number"
-                            min="1"
+                            type="text"
                             value={it.qty}
                             onChange={e => {
+                              const val = e.target.value
                               const updated = [...items]
-                              updated[idx].qty = Number(e.target.value)
+                              updated[idx].qty = val
+                              const numQ = extractQtyNumber(val)
+                              updated[idx].total_price = numQ * (updated[idx].unit_price || 125)
+                              updated[idx].total_net_weight_kg = Math.round(numQ * (updated[idx].unit_weight_kg || 1) * 100) / 100
+                              updated[idx].total_gross_weight_kg = Math.round(updated[idx].total_net_weight_kg * 1.05 * 100) / 100
                               setItems(updated)
                             }}
-                            className="w-14 text-center font-bold text-xs border border-slate-300 rounded px-1 py-0.5"
+                            placeholder="Qty or X OF Y"
+                            title="PO Quantity (e.g. 10 or 1 OF 2)"
+                            className="w-20 text-center font-bold font-mono text-xs border border-slate-300 rounded px-1 py-0.5 bg-amber-50/20 text-slate-900 focus:bg-white focus:ring-1 focus:ring-orange-500"
                           />
                         </td>
                         <td className="p-2 text-center">
@@ -913,15 +1094,25 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                             className="w-full text-xs font-mono border border-slate-300 rounded px-1.5 py-0.5 bg-white"
                           />
                         </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRow(it.id)}
-                            className="text-slate-400 hover:text-red-600 transition-colors p-1"
-                            title="Remove line"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                        <td className="p-2 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => handleSplitRow(idx)}
+                              className="text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded p-1 transition-colors"
+                              title="Split line item for multi-heat / supplier allocation (e.g. 1 OF 2)"
+                            >
+                              <Scissors className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(it.id)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded p-1 transition-colors"
+                              title="Remove line"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -1341,8 +1532,8 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
                 {/* TAB 4: CIPL COMMERCIAL INVOICE */}
                 {previewTab === 'cipl_invoice' && (() => {
-                  const totalQty = items.reduce((sum, it) => sum + (it.qty || 1), 0)
-                  const totalAmt = items.reduce((sum, it) => sum + (it.qty || 1) * (it.unit_price || 125), 0)
+                  const totalQty = items.reduce((sum, it) => sum + extractQtyNumber(it.qty), 0)
+                  const totalAmt = items.reduce((sum, it) => sum + extractQtyNumber(it.qty) * (it.unit_price || 125), 0)
                   return (
                     <div className="space-y-4">
                       {/* Company Header */}
@@ -1392,9 +1583,9 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                           </thead>
                           <tbody className="divide-y divide-slate-200">
                             {items.map((it, idx) => {
-                              const q = it.qty || 1
+                              const numQ = extractQtyNumber(it.qty) || 1
                               const rate = it.unit_price || 125
-                              const amt = q * rate
+                              const amt = numQ * rate
                               return (
                                 <tr key={idx} className="hover:bg-blue-50/20">
                                   <td className="p-2 text-center font-mono border-r border-slate-200">{idx + 1}</td>
@@ -1402,7 +1593,7 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                                   <td className="p-2 border-r border-slate-200 text-left">{it.description}</td>
                                   <td className="p-2 text-center font-mono border-r border-slate-200">{it.hs_code || '7307.93.00'}</td>
                                   <td className="p-2 text-center border-r border-slate-200">{it.country_of_origin || 'Italy'}</td>
-                                  <td className="p-2 text-center font-bold border-r border-slate-200">{q}</td>
+                                  <td className="p-2 text-center font-bold border-r border-slate-200">{it.qty}</td>
                                   <td className="p-2 text-center border-r border-slate-200">{it.uom}</td>
                                   <td className="p-2 text-right font-mono border-r border-slate-200">{rate.toFixed(2)}</td>
                                   <td className="p-2 text-right font-mono font-bold">{amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1430,9 +1621,9 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
                 {/* TAB 5: CIPL PACKING LIST */}
                 {previewTab === 'cipl_packing' && (() => {
-                  const totalQty = items.reduce((sum, it) => sum + (it.qty || 1), 0)
-                  const totalNetWt = items.reduce((sum, it) => sum + (it.total_net_weight_kg || (it.unit_weight_kg * (it.qty || 1))), 0)
-                  const totalGrossWt = items.reduce((sum, it) => sum + (it.total_gross_weight_kg || (it.unit_weight_kg * (it.qty || 1) * 1.05)), 0)
+                  const totalQty = items.reduce((sum, it) => sum + extractQtyNumber(it.qty), 0)
+                  const totalNetWt = items.reduce((sum, it) => sum + (it.total_net_weight_kg || (it.unit_weight_kg * extractQtyNumber(it.qty))), 0)
+                  const totalGrossWt = items.reduce((sum, it) => sum + (it.total_gross_weight_kg || (it.unit_weight_kg * extractQtyNumber(it.qty) * 1.05)), 0)
                   const distinctPkgs = new Set(items.map(it => `${it.package_type || 'Pallet'} ${it.package_no || '1'}`)).size
 
                   return (
@@ -1483,9 +1674,9 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                           </thead>
                           <tbody className="divide-y divide-slate-200">
                             {items.map((it, idx) => {
-                              const q = it.qty || 1
+                              const numQ = extractQtyNumber(it.qty) || 1
                               const uWt = it.unit_weight_kg || estimateUnitWeight(it.description, it.uom)
-                              const nWt = it.total_net_weight_kg || Math.round(uWt * q * 100) / 100
+                              const nWt = it.total_net_weight_kg || Math.round(uWt * numQ * 100) / 100
                               const gWt = it.total_gross_weight_kg || Math.round(nWt * 1.05 * 100) / 100
                               const dims = it.package_no === '1' ? '120 X 80 X 100' : '100 X 80 X 80'
                               return (
@@ -1494,7 +1685,7 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                                   <td className="p-2 text-center font-semibold border-r border-slate-200">{it.package_type || 'Pallet'}</td>
                                   <td className="p-2 text-center font-mono border-r border-slate-200">{idx + 1}</td>
                                   <td className="p-2 border-r border-slate-200 text-left">{it.description}</td>
-                                  <td className="p-2 text-center font-bold border-r border-slate-200">{q}</td>
+                                  <td className="p-2 text-center font-bold border-r border-slate-200">{it.qty}</td>
                                   <td className="p-2 text-center border-r border-slate-200">{it.uom}</td>
                                   <td className="p-2 text-center font-mono border-r border-slate-200">{dims}</td>
                                   <td className="p-2 text-right font-mono border-r border-slate-200">{uWt.toFixed(2)}</td>

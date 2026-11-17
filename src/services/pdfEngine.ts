@@ -890,6 +890,9 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     supplierName?: string
     packageType?: string
     packageNo?: string
+    splitQty?: string
+    totalQty?: number
+    groupId?: string
   }[]
   pdfBlobUrl: string
   fileName: string
@@ -1165,6 +1168,9 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     supplierName?: string
     packageType?: string
     packageNo?: string
+    splitQty?: string
+    totalQty?: number
+    groupId?: string
   }[] = []
 
   let i = 0
@@ -1436,6 +1442,31 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       }
     }
   }
+
+  // Auto-group split batches sharing the same Client PO Item No (e.g. 9 pcs & 18 pcs -> 9 OF 27 & 18 OF 27)
+  const clientGroups: Record<string, typeof items> = {}
+  items.forEach(it => {
+    const cNo = String(it.clientPoItemNo || '').trim()
+    if (cNo) {
+      if (!clientGroups[cNo]) clientGroups[cNo] = []
+      clientGroups[cNo].push(it)
+    }
+  })
+
+  Object.keys(clientGroups).forEach(cNo => {
+    const grp = clientGroups[cNo]
+    if (grp.length > 1) {
+      const totalQty = grp.reduce((sum, it) => sum + (it.requiredQty || 1), 0)
+      const fmtTotal = Number.isInteger(totalQty) ? totalQty : Math.round(totalQty * 100) / 100
+      grp.forEach(it => {
+        const curr = it.requiredQty || 1
+        const fmtCurr = Number.isInteger(curr) ? curr : Math.round(curr * 100) / 100
+        it.splitQty = `${fmtCurr} OF ${fmtTotal}`
+        it.totalQty = fmtTotal
+        it.groupId = `grp-${cNo}`
+      })
+    }
+  })
 
   return {
     customerName,
