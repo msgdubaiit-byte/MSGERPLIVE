@@ -951,7 +951,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     }
     let line = decodedWords.join(' ')
     // Normalize font artifacts (e.g. en-dash or Greek zeta from custom glyph 0x0396 -> 'I')
-    line = line.replace(/[–\u2013\u0396\u0096]/g, 'I').replace(/\s*I\s*/g, 'I').replace(/\u0000/g, '')
+    line = line.replace(/[–\u2013\u0396\u0096]/g, 'I').replace(/\u0000/g, '')
     line = line.replace(/\byt\b/g, '&').replace(/yf/g, ')')
     return line
   }
@@ -1188,7 +1188,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     const line = lines[i]
 
     // Skip order totals, subtotal, and VAT lines
-    if (/^(?:total|amount\s*in\s*words|sub\s*total|standard\s*rate|vat)/i.test(line)) {
+    if (/^(?:total|amount\s*in\s*words|sub\s*total|standard\s*rate|zero\s*rate|vat)/i.test(line)) {
       i++
       continue
     }
@@ -1199,10 +1199,14 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       continue
     }
 
-    // Check if line is a page number right before a table header: e.g. "2" followed by "#" or "Item"
-    if (/^\d{1,3}$/.test(line) && i + 1 < lines.length && /^(?:#|Item)/i.test(lines[i + 1])) {
-      i += 2
-      continue
+    // Skip standalone page number lines: e.g. "2" followed by Sub Total, Total, or header
+    if (/^\d{1,3}$/.test(line)) {
+      const val = parseInt(line, 10)
+      const isFollowedByNonItem = i + 1 < lines.length && /^(?:#|Item|Sub\s*Total|Total|Standard\s*Rate|VAT|Amount)/i.test(lines[i + 1])
+      if (isFollowedByNonItem || (items.length > 0 && val <= items.length && val !== items.length + 1)) {
+        i++
+        continue
+      }
     }
 
     let pos: number | null = null
@@ -1234,7 +1238,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
         if (isItemCode(nextLine)) {
           code = nextLine
           i++
-        } else if (!/^\d+(?:\.\d+)?$/.test(nextLine) && !/^(?:#|Item|Qty|Rate|Amount)/i.test(nextLine)) {
+        } else if (!/^\d+(?:\.\d+)?$/.test(nextLine) && !/^(?:#|Item|Qty|Rate|Amount|Sub\s*Total|Total|Standard\s*Rate|VAT)/i.test(nextLine)) {
           code = null
           initialDesc = nextLine
           i++
@@ -1246,6 +1250,11 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       i++
     } else {
       i++
+      continue
+    }
+
+    // If code is null and initialDesc is empty or looks like totals/headers, skip!
+    if (!code && (!initialDesc || /^(?:Sub\s*Total|Total|Standard\s*Rate|VAT|#|Amount)/i.test(initialDesc))) {
       continue
     }
 
@@ -1262,11 +1271,13 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       if (/^(?:total|amount\s*in\s*words|sub\s*total|standard\s*rate|vat)/i.test(cur)) break
       if (/^(?:#|Item\s*&?\s*Description|Client\s*PO)/i.test(cur)) break
 
-      // Stop if next item start: e.g. standalone "2", "3" or "2 Code"
+      // Stop if next item start: e.g. standalone "2", "3" followed by item code or non-numeric line
       if (/^\d{1,3}$/.test(cur)) {
         const nextPos = parseInt(cur, 10)
         if (nextPos === (pos || 0) + 1) {
-          break
+          if (i + 1 < lines.length && (isItemCode(lines[i + 1]) || (!/^[\d.,]+$/.test(lines[i + 1]) && !/^(?:pcs|ea|nos)$/i.test(lines[i + 1])))) {
+            break
+          }
         }
         if (i + 1 < lines.length && /^(?:#|Item|Sub\s*Total|Total|Amount)/i.test(lines[i + 1])) {
           break
@@ -1386,14 +1397,15 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       itemDesc = `${code} Oilfield Fitting / Material`
     }
 
-    const isLocal = (
+    const isStock = /[-_\s/]STOCK\b/i.test(code) || /[-_\s/]STOCK\b/i.test(itemDesc)
+    const isLocal = !isStock && (
       code.toUpperCase().startsWith('L') ||
       itemDesc.toUpperCase().includes('LOCALLY MADE') ||
       itemDesc.toUpperCase().includes('LOCAL')
     )
 
-    const detectedMake = autoDetectMake(itemDesc) || (pos === 1 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
-    const detectedSupplier = isLocal ? 'LOCAL UAE SUPPLIER' : autoDetectSupplier(detectedMake, itemDesc)
+    const detectedMake = autoDetectMake(code + ' ' + itemDesc) || (pos === 1 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
+    const detectedSupplier = isStock ? 'STOCK' : (isLocal ? 'LOCAL UAE SUPPLIER' : autoDetectSupplier(detectedMake, itemDesc))
 
     items.push({
       position: pos || items.length + 1,
@@ -1404,7 +1416,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       requiredQty: qty || 1,
       clientPoItemNo: clientPoItemNo || String(pos || items.length + 1),
       rate,
-      purchaseType: isLocal ? 'local_purchase' : 'regular',
+      purchaseType: isStock ? 'regular' : (isLocal ? 'local_purchase' : 'regular'),
       make: detectedMake,
       supplierName: detectedSupplier,
       packageType: 'Pallet',

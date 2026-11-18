@@ -106,7 +106,7 @@ export const MAKE_MAPPINGS: [RegExp, string][] = [
   [/W[-_]?STOCK|WMA?ASS/i, 'WMASS GERMANY'],
   [/TK[-_]?STOCK|\bTK\b/i, 'TK KOREA'],
   [/ST&H(?:[-_]?STOCK)?|\bSTH\b/i, 'ST&H KOREA'],
-  [/\bMFF\b|METALFAR/i, 'Metalfar Italy'],
+  [/(?:^|\b|\d)MFF|METALFAR/i, 'Metalfar Italy'],
   [/\bULMA\b/i, 'ULMA SPAIN'],
   [/\bMELESI\b/i, 'MELESI ITALY'],
   [/\bMEGA\b/i, 'MEGA ITALY'],
