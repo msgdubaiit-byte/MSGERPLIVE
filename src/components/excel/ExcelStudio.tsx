@@ -409,7 +409,7 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
                 <FileUp className="h-8 w-8 text-slate-400 mx-auto mb-1.5" />
                 <div className="text-xs font-bold text-slate-700">Click to Select or Drop Excel Sheet</div>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  6 Columns: Item Name, Description, Rate, Account, Purchase Rate, Stock On Hand
+                  Supports Multi-Heat Matrix (HEAT - 1, HEAT - 2, HEAT - 3), MSG 6-Column, & Extended formats
                 </p>
                 {fileName && (
                   <div className="mt-2 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100/70 py-0.5 px-2 rounded inline-block">

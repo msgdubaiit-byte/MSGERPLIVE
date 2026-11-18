@@ -5,6 +5,7 @@
 import * as XLSX from 'xlsx'
 import { db } from './db'
 import { uploadedCertificatesCache } from './zipExtractor'
+import { autoDetectMake, autoDetectSupplier } from './sourcingEngine'
 
 // Auto-match MTCs by Heat Number and Item Code
 export function matchCertificatesForHeat(heatNumber: string, itemCode?: string): any[] {
@@ -124,9 +125,42 @@ export function parseMSGDescription(desc: string) {
   }
 }
 
-// Generates both MSG Standard Format and Extended Detailed Template
+// Generates Multi-Heat Matrix Format, MSG Standard Format, and Extended Detailed Template
 export function generateStockImportTemplate(): void {
-  // 1. MSG Standard Zoho Books Format (Exact user screenshot format)
+  const wb = XLSX.utils.book_new()
+
+  // 1. Multi-Heat Matrix Format (Exact user layout with HEAT - 1, HEAT - 2, HEAT - 3)
+  const multiHeatData = [
+    ['', '', '', '', 'HEAT - 1', '', '', '', '', 'HEAT - 2', '', '', '', '', 'HEAT - 3', '', '', '', ''],
+    [
+      'Item Name', 'Description', 'Stock', 'TOTAL QTY',
+      'QTY', 'HEAT NO', 'CERTIFICATE NO', 'DATE', 'LOCATION',
+      'QTY', 'HEAT NO', 'CERTIFICATE NO', 'DATE', 'LOCATION',
+      'QTY', 'HEAT NO', 'CERTIFICATE NO', 'DATE', 'LOCATION'
+    ],
+    [
+      'EL9080S40WPB', 'ELBOW 3" 90DEG SCH.40 LR A234 WPB BENKAN', 'IN STOCK', 27,
+      9, '67C00M255', 'CERT-BEN-101', '2024', 'LN-AC1',
+      18, '67C00M256', 'CERT-BEN-102', '2024', 'LN-AC2',
+      '', '', '', '', ''
+    ],
+    [
+      'WN80150S80RF', 'WELDNECK FLANGE 3" 150# SCH.80 A105N METALFAR', 'IN STOCK', 50,
+      25, '23/39490', 'CERT-MFF-501', '2023', 'LN-DD5',
+      25, '23/39491', 'CERT-MFF-502', '2023', 'LN-DD6',
+      '', '', '', '', ''
+    ],
+    [
+      'LEL9065S40WPB', 'ELBOW 2.1/2" 90DEG SCH.40 LOCAL UAE', 'IN STOCK', 24,
+      24, 'LOC-HT-4921', 'CERT-LOC-882', '2024', 'LOCAL-BAY-1',
+      '', '', '', '', '',
+      '', '', '', '', ''
+    ]
+  ]
+  const wsMultiHeat = XLSX.utils.aoa_to_sheet(multiHeatData)
+  XLSX.utils.book_append_sheet(wb, wsMultiHeat, 'Multi_Heat_Stock_Format')
+
+  // 2. MSG Standard Zoho Books Format
   const standardMSGFormat = [
     {
       'Item Name': 'WSO15150F316',
@@ -161,8 +195,10 @@ export function generateStockImportTemplate(): void {
       'Stock On Hand': 10
     }
   ]
+  const wsStandard = XLSX.utils.json_to_sheet(standardMSGFormat)
+  XLSX.utils.book_append_sheet(wb, wsStandard, 'MSG_Standard_Format')
 
-  // 2. Explicit Extended Multi-Column Format
+  // 3. Explicit Extended Multi-Column Format
   const extendedFormat = [
     {
       'Item Code': 'WSO15150F316',
@@ -181,16 +217,235 @@ export function generateStockImportTemplate(): void {
       'Unit Price AED': 22.0
     }
   ]
-
-  const wb = XLSX.utils.book_new()
-
-  const wsStandard = XLSX.utils.json_to_sheet(standardMSGFormat)
-  XLSX.utils.book_append_sheet(wb, wsStandard, 'MSG_Standard_Format')
-
   const wsExtended = XLSX.utils.json_to_sheet(extendedFormat)
   XLSX.utils.book_append_sheet(wb, wsExtended, 'Extended_Detailed_Format')
 
   XLSX.writeFile(wb, 'MSG_Stock_Import_Template.xlsx')
+}
+
+// Multi-Heat Matrix Parser (Supports HEAT - 1, HEAT - 2, HEAT - 3 layout across columns)
+export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): any[] | null {
+  if (!rows || rows.length < 2) return null
+
+  let headerRowIdx = -1
+  let groupRowIdx = -1
+
+  for (let r = 0; r < Math.min(rows.length, 5); r++) {
+    const rowStr = rows[r].map(c => String(c || '').trim()).join(' ').toUpperCase()
+    if (rowStr.includes('ITEM NAME') || rowStr.includes('ITEM CODE') || (rowStr.includes('DESCRIPTION') && rowStr.includes('HEAT'))) {
+      headerRowIdx = r
+      break
+    }
+  }
+
+  if (headerRowIdx === -1) return null
+
+  if (headerRowIdx > 0) {
+    const prevRowStr = rows[headerRowIdx - 1].map(c => String(c || '').trim()).join(' ').toUpperCase()
+    if (prevRowStr.includes('HEAT')) {
+      groupRowIdx = headerRowIdx - 1
+    }
+  }
+
+  const headerRow = rows[headerRowIdx].map(c => String(c || '').trim())
+  const groupRow = groupRowIdx >= 0 ? rows[groupRowIdx].map(c => String(c || '').trim()) : []
+
+  let itemCodeCol = -1
+  let descCol = -1
+  let totalQtyCol = -1
+  let stockCol = -1
+
+  headerRow.forEach((colName, cIdx) => {
+    const clean = colName.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (clean === 'ITEMNAME' || clean === 'ITEMCODE' || clean === 'ITEM') itemCodeCol = cIdx
+    else if (clean === 'DESCRIPTION' || clean === 'ITEMDESCRIPTION') descCol = cIdx
+    else if (clean === 'TOTALQTY' || clean === 'STOCKONHAND' || clean === 'TOTALSTOCK') totalQtyCol = cIdx
+    else if (clean === 'STOCK' || (clean === 'QTY' && totalQtyCol === -1)) stockCol = cIdx
+  })
+
+  if (itemCodeCol === -1 && descCol === -1) return null
+  if (totalQtyCol === -1 && stockCol !== -1) totalQtyCol = stockCol
+
+  const heatBlocks: {
+    heatCol: number
+    certCol: number
+    dateCol: number
+    locCol: number
+    qtyCol: number
+    label: string
+  }[] = []
+
+  for (let c = 0; c < headerRow.length; c++) {
+    const cell = headerRow[c].toUpperCase().trim()
+    if (cell === 'HEAT NO' || cell === 'HEAT' || cell === 'HEAT NUMBER' || cell === 'HEAT#') {
+      let certCol = -1
+      let dateCol = -1
+      let locCol = -1
+      let qtyCol = -1
+
+      // Check column immediately preceding for QTY
+      if (c > 0 && /^(?:QTY|PIECES|STOCK|PCS)$/i.test(headerRow[c - 1])) qtyCol = c - 1
+
+      // Scan right up to 4 columns for Cert, Date, Location, Qty
+      for (let offset = 1; offset <= 4 && c + offset < headerRow.length; offset++) {
+        const nextCell = headerRow[c + offset].toUpperCase().trim()
+        if (nextCell === 'HEAT NO' || nextCell === 'HEAT' || nextCell === 'HEAT NUMBER' || nextCell === 'HEAT#') break
+        if (certCol === -1 && (nextCell.includes('CERT') || nextCell.includes('MTC'))) certCol = c + offset
+        else if (dateCol === -1 && (nextCell.includes('DATE') || nextCell.includes('YOM') || nextCell.includes('YEAR'))) dateCol = c + offset
+        else if (locCol === -1 && (nextCell.includes('LOC') || nextCell.includes('BAY') || nextCell.includes('LN'))) locCol = c + offset
+        else if (qtyCol === -1 && (nextCell.includes('QTY') || nextCell.includes('STOCK') || nextCell.includes('PCS'))) qtyCol = c + offset
+      }
+
+      let label = `Heat ${heatBlocks.length + 1}`
+      if (groupRow.length > c && groupRow[c]) label = groupRow[c]
+      else if (c > 0 && groupRow.length > c - 1 && groupRow[c - 1]) label = groupRow[c - 1]
+
+      heatBlocks.push({
+        heatCol: c,
+        certCol,
+        dateCol,
+        locCol,
+        qtyCol,
+        label
+      })
+    }
+  }
+
+  // Must have at least 1 heat block to qualify as multi-heat matrix
+  if (heatBlocks.length === 0) return null
+
+  const resultRows: any[] = []
+
+  for (let r = headerRowIdx + 1; r < rows.length; r++) {
+    const row = rows[r]
+    if (!row || row.length === 0) continue
+
+    const rawCode = itemCodeCol >= 0 ? row[itemCodeCol] : ''
+    const itemCode = String(rawCode || '').trim().toUpperCase()
+    if (!itemCode) continue
+
+    const desc = descCol >= 0 ? String(row[descCol] || '').trim() : ''
+    const rawTotalQty = totalQtyCol >= 0 ? row[totalQtyCol] : 0
+    const totalQty = parseInt(String(rawTotalQty).replace(/[^0-9]/g, ''), 10) || 0
+
+    const rowHeats: {
+      heat_number: string
+      certificate_number: string
+      yom: number
+      location: string
+      explicitQty: number | null
+    }[] = []
+
+    for (let b = 0; b < heatBlocks.length; b++) {
+      const block = heatBlocks[b]
+      const heatNo = block.heatCol >= 0 ? String(row[block.heatCol] || '').trim() : ''
+      if (!heatNo || heatNo === '-' || heatNo.toUpperCase() === 'N/A') continue
+
+      const certNo = block.certCol >= 0 ? String(row[block.certCol] || '').trim() : ''
+      const rawDate = block.dateCol >= 0 ? row[block.dateCol] : ''
+      const location = block.locCol >= 0 ? String(row[block.locCol] || '').trim() : 'LN-EB1'
+      const rawQty = block.qtyCol >= 0 ? row[block.qtyCol] : ''
+      const explicitQty = rawQty !== '' && rawQty !== undefined ? parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) : null
+
+      let yom = 2025
+      if (rawDate) {
+        const yrMatch = String(rawDate).match(/\b(20\d{2}|19\d{2})\b/)
+        if (yrMatch) yom = parseInt(yrMatch[1], 10)
+      }
+
+      rowHeats.push({
+        heat_number: heatNo,
+        certificate_number: certNo,
+        yom,
+        location: location || 'LN-EB1',
+        explicitQty
+      })
+    }
+
+    const detectedMake = autoDetectMake(itemCode + ' ' + desc) || 'International Mill'
+    const isLocal = itemCode.endsWith('-LOC') || desc.toUpperCase().includes('LOCAL') || desc.toUpperCase().includes('LOCALLY')
+    const supplier = isLocal ? 'Local UAE Supplier' : autoDetectSupplier(detectedMake, desc)
+
+    if (rowHeats.length === 0) {
+      resultRows.push({
+        rowNum: r + 1,
+        sheet_name: sheetName,
+        item_code: itemCode,
+        description: desc || `${itemCode} Oilfield Material`,
+        raw_description: desc,
+        heat_number: `LOT-${itemCode.slice(0, 8)}`,
+        certificate_number: '',
+        selected_mtc_ref: '',
+        is_extracted_heat: false,
+        yom: 2025,
+        quantity: totalQty || 1,
+        rate: 0,
+        purchase_rate: 0,
+        account: 'Sales',
+        purchase_type: isLocal ? 'local_purchase' : 'regular',
+        supplier,
+        location: 'LN-EB1',
+        l_code: isLocal ? `L-${itemCode}-${r + 1}` : undefined,
+        unit_price: 0,
+        isValid: true,
+        errors: []
+      })
+      continue
+    }
+
+    const anyExplicit = rowHeats.some(h => h.explicitQty !== null && h.explicitQty > 0)
+    let finalHeats: {
+      heat_number: string
+      certificate_number: string
+      yom: number
+      location: string
+      quantity: number
+    }[]
+
+    if (anyExplicit) {
+      finalHeats = rowHeats.map(h => ({
+        ...h,
+        quantity: (h.explicitQty !== null && h.explicitQty > 0) ? h.explicitQty : Math.max(1, Math.floor(totalQty / rowHeats.length))
+      }))
+    } else {
+      const count = rowHeats.length
+      const perHeatQty = count > 0 ? Math.floor(totalQty / count) : totalQty
+      const remainder = totalQty - (perHeatQty * count)
+
+      finalHeats = rowHeats.map((h, idx) => ({
+        ...h,
+        quantity: idx === 0 ? perHeatQty + remainder : perHeatQty
+      }))
+    }
+
+    for (const h of finalHeats) {
+      resultRows.push({
+        rowNum: r + 1,
+        sheet_name: sheetName,
+        item_code: itemCode,
+        description: desc || `${itemCode} Oilfield Material`,
+        raw_description: desc,
+        heat_number: h.heat_number,
+        certificate_number: h.certificate_number,
+        selected_mtc_ref: h.certificate_number || undefined,
+        is_extracted_heat: false,
+        yom: h.yom,
+        quantity: h.quantity || 1,
+        rate: 0,
+        purchase_rate: 0,
+        account: 'Sales',
+        purchase_type: isLocal ? 'local_purchase' : 'regular',
+        supplier,
+        location: h.location,
+        l_code: isLocal ? `L-${itemCode}-${r + 1}` : undefined,
+        unit_price: 0,
+        isValid: true,
+        errors: []
+      })
+    }
+  }
+
+  return resultRows
 }
 
 // Robust key lookup ignoring case and spaces
@@ -227,6 +482,56 @@ export function parseExcelBuffer(data: Uint8Array | ArrayBuffer): {
   sheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) return
+
+    // 1. Try parsing as Multi-Heat Matrix first (HEAT - 1, HEAT - 2, HEAT - 3 layout)
+    const rawAOA: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+    const multiHeatRows = parseMultiHeatAOA(rawAOA, sheetName)
+
+    if (multiHeatRows && multiHeatRows.length > 0) {
+      multiHeatRows.forEach(r => {
+        globalRowCounter++
+        validCount++
+
+        // Auto-match MTC certificates by Heat Number and Item Code
+        const candidateMTCs = matchCertificatesForHeat(r.heat_number, r.item_code)
+        let mtcMatchStatus: 'auto_matched' | 'multiple_found' | 'missing' = 'missing'
+        let selectedMtcRef = r.selected_mtc_ref || ''
+        let selectedMtcId = ''
+
+        if (candidateMTCs.length === 1) {
+          mtcMatchStatus = 'auto_matched'
+          selectedMtcRef = candidateMTCs[0].certificate_reference
+          selectedMtcId = candidateMTCs[0].id
+        } else if (candidateMTCs.length > 1) {
+          const matchByRef = r.certificate_number
+            ? candidateMTCs.find((c: any) => c.certificate_reference.toUpperCase() === r.certificate_number.toUpperCase())
+            : null
+          if (matchByRef) {
+            mtcMatchStatus = 'auto_matched'
+            selectedMtcRef = matchByRef.certificate_reference
+            selectedMtcId = matchByRef.id
+          } else {
+            mtcMatchStatus = 'multiple_found'
+            selectedMtcRef = ''
+            selectedMtcId = ''
+          }
+        } else {
+          mtcMatchStatus = 'missing'
+        }
+
+        rows.push({
+          ...r,
+          id: `ROW-${globalRowCounter}`,
+          candidate_mtcs: candidateMTCs,
+          mtc_match_status: mtcMatchStatus,
+          selected_mtc_ref: selectedMtcRef,
+          selected_mtc_id: selectedMtcId
+        })
+      })
+      return
+    }
+
+    // 2. Fallback to standard 1-heat per row format
     const rawJson: any[] = XLSX.utils.sheet_to_json(sheet)
     if (!rawJson || rawJson.length === 0) return
 
