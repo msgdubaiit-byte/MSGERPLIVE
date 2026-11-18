@@ -537,6 +537,39 @@ def extract_pdf_data(pdf_path_or_file):
         # Strip leading item number again if revealed after code stripping
         item["description"] = strip_leading_item_number(item["description"], item["sl_no"])
 
+        # Auto-extract Heat Number from description or remarks if present
+        raw_text_for_heat = (str(item.get("description", "")) + " " + str(item.get("remarks", "")))
+        if not item.get("heat_number"):
+            heat_m = re.search(r'\bHEAT\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)', raw_text_for_heat, re.IGNORECASE)
+            if heat_m:
+                val = heat_m.group(1).strip()
+                if val.upper() not in ["NO", "NUMBER", "N/A", "NA", "-", ""]:
+                    item["heat_number"] = val
+
+        # Auto-extract Certificate Number from description or remarks if present
+        if not item.get("certificate_number"):
+            cert_m = re.search(r'\b(?:CERT|CERTIFICATE|MTC)\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)', raw_text_for_heat, re.IGNORECASE)
+            if cert_m:
+                val = cert_m.group(1).strip()
+                if val.upper() not in ["NO", "NUMBER", "N/A", "NA", "-", ""]:
+                    item["certificate_number"] = val
+
+        # Auto-extract Location (LN: ... or LOC: ...) from description if present
+        loc_m = re.search(r'\b(?:LN|LOC|LOCATION)\s*[:.-]?\s*([A-Za-z0-9_\-]+)', raw_text_for_heat, re.IGNORECASE)
+        if loc_m:
+            loc_val = loc_m.group(1).strip().upper()
+            if loc_val:
+                item["location"] = loc_val
+                curr_rem = str(item.get("remarks", "")).strip()
+                if loc_val not in curr_rem.upper():
+                    item["remarks"] = f"LN: {loc_val}" if not curr_rem else f"{curr_rem}; LN: {loc_val}"
+                if not item.get("supplier_name"):
+                    item["supplier_name"] = "STOCK"
+
+        # If heat number exists but supplier_name is empty, default supplier to STOCK
+        if item.get("heat_number") and not item.get("supplier_name"):
+            item["supplier_name"] = "STOCK"
+
         # Ensure default packaging & CIPL fields
         if not item.get("package_type"):
             item["package_type"] = "Pallet"

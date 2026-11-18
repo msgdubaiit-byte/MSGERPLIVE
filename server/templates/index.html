@@ -463,6 +463,8 @@
                             <span class="text-white small fw-semibold">Bulk Operations:</span>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-warning text-dark fw-bold shadow-sm" onclick="makeSeparateLocalPurchase()" title="Make separate Local Purchase sheet or draft from selected items"><i class="bi bi-tools me-1"></i>Make Separate Local Purchase</button>
+                            <button class="btn btn-sm btn-outline-warning text-dark fw-semibold" onclick="downloadSelectedAsLocalPurchase()" title="Download separate Excel with only selected items"><i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Download Local Purchase (.xlsx)</button>
                             <button class="btn btn-sm btn-primary fw-semibold" onclick="openSupplierPOModal()"><i class="bi bi-cart-plus-fill me-1"></i>Convert to Supplier PO</button>
                             <button class="btn btn-sm btn-info text-dark fw-semibold" onclick="openCIPLConfigModal()"><i class="bi bi-box-seam-fill me-1"></i>Convert to CIPL</button>
                             <div class="btn-group btn-group-sm">
@@ -497,6 +499,7 @@
                     <div class="col-lg-6 text-lg-end">
                         <div class="d-inline-flex gap-2 flex-wrap align-items-center bg-light p-2 rounded border">
                             <span class="fw-bold text-dark small"><i class="bi bi-box-seam text-warning me-1"></i>Quick Actions:</span>
+                            <button type="button" class="btn btn-xs btn-warning text-dark fw-bold" onclick="selectLocalPurchaseRows()" title="Automatically select all items with Machined/Fabricated/Local remarks"><i class="bi bi-check2-all me-1"></i>Select Local Purchase</button>
                             <button type="button" class="btn btn-xs btn-outline-primary" onclick="openSupplierPOModal()"><i class="bi bi-cart-plus me-1"></i>Supplier PO</button>
                             <button type="button" class="btn btn-xs btn-outline-info text-dark" onclick="openCIPLConfigModal()"><i class="bi bi-file-earmark-spreadsheet me-1"></i>CIPL Builder</button>
                             <button type="button" class="btn btn-xs btn-outline-dark" onclick="setAllPackaging('Pallet')"><i class="bi bi-stack me-1"></i>All Pallet</button>
@@ -561,6 +564,11 @@
                     <button class="btn btn-stores-download" onclick="downloadExcel(true)">
                         <i class="bi bi-shield-lock me-2"></i>Download Stores Sheet (.xlsx)
                         <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">11 Columns (Includes Supplier Details)</div>
+                    </button>
+
+                    <button class="btn btn-warning text-dark fw-bold shadow-sm" onclick="downloadLocalPurchaseSheet()">
+                        <i class="bi bi-tools me-2"></i>Download Local Purchase (.xlsx)
+                        <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Separate Sheet with Machined &amp; Local Items</div>
                     </button>
 
                     <button class="btn btn-cipl-download" onclick="openCIPLConfigModal()">
@@ -1071,6 +1079,266 @@
             }
         }
 
+        // =========================================================================
+        // HEAT NUMBER AUTO-FILL ENGINE: Click / Type Heat Number -> Auto-fill All
+        // =========================================================================
+        function onHeatInputClick(input) {
+            onHeatInputFocus(input);
+        }
+
+        function onHeatInputFocus(input) {
+            const tr = input.closest('tr');
+            if (!tr) return;
+            const currentHeat = input.value.trim();
+            // If empty, extract heat from Description
+            if (!currentHeat) {
+                const desc = tr.querySelector('.item-desc')?.value || '';
+                const remarks = tr.querySelector('.item-remarks')?.value || '';
+                const combined = desc + ' ' + remarks;
+
+                const heatMatch = combined.match(/\bHEAT\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i);
+                if (heatMatch && heatMatch[1]) {
+                    const h = heatMatch[1].trim();
+                    if (!['NO', 'NUMBER', 'N/A', 'NA', '-', ''].includes(h.toUpperCase())) {
+                        input.value = h;
+                        onHeatInputChange(input);
+                        return;
+                    }
+                }
+            }
+        }
+
+        function onHeatInputChange(input) {
+            const tr = input.closest('tr');
+            if (!tr) return;
+            const heatVal = input.value.trim();
+            if (!heatVal) return;
+
+            autoFillRowFromHeat(tr, heatVal, input);
+        }
+
+        function autoFillRowFromHeat(tr, heatVal, heatInput = null) {
+            const descInput = tr.querySelector('.item-desc');
+            const desc = descInput?.value || '';
+            const remarksInput = tr.querySelector('.item-remarks');
+            const certInput = tr.querySelector('.item-cert');
+            const makeInput = tr.querySelector('.item-make');
+            const supplierInput = tr.querySelector('.item-supplier-name');
+            const supplierPoInput = tr.querySelector('.item-supplier-po');
+
+            const combined = desc + ' ' + (remarksInput?.value || '');
+
+            // 1. Certificate Number
+            if (certInput && !certInput.value.trim()) {
+                const certMatch = combined.match(/\b(?:CERT|CERTIFICATE|MTC)\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i);
+                if (certMatch && certMatch[1] && !['NO', 'NUMBER', 'N/A', '-', ''].includes(certMatch[1].toUpperCase())) {
+                    certInput.value = certMatch[1].trim();
+                } else {
+                    // Check if any other row already has this heat and a cert
+                    const otherRow = Array.from(document.querySelectorAll('#itemsTableBody tr')).find(r => {
+                        return r !== tr && r.querySelector('.item-heat')?.value.trim().toUpperCase() === heatVal.toUpperCase() && r.querySelector('.item-cert')?.value.trim();
+                    });
+                    if (otherRow) {
+                        certInput.value = otherRow.querySelector('.item-cert').value.trim();
+                    } else {
+                        certInput.value = `MTC-${heatVal}`;
+                    }
+                }
+            }
+
+            // 2. Location (LN: ... or LOC: ...)
+            const locMatch = combined.match(/\b(?:LN|LOC|LOCATION)\s*[:.-]?\s*([A-Za-z0-9_\-]+)/i);
+            if (locMatch && locMatch[1]) {
+                const locCode = locMatch[1].trim().toUpperCase();
+                if (remarksInput) {
+                    let curr = remarksInput.value.trim();
+                    if (!curr.toUpperCase().includes(locCode)) {
+                        remarksInput.value = curr ? `${curr}; LN: ${locCode}` : `LN: ${locCode}`;
+                    }
+                }
+            }
+
+            // 3. MAKE / Manufacturer
+            if (makeInput) {
+                const currMake = makeInput.value.trim();
+                if (!currMake || currMake.toUpperCase() === 'MAKE') {
+                    const detected = autoDetectMakeJs(combined);
+                    if (detected) {
+                        makeInput.value = detected;
+                    }
+                }
+            }
+
+            // 4. Supplier Name -> If internal heat/location present, default to STOCK
+            if (supplierInput) {
+                const currSupp = supplierInput.value.trim();
+                if (!currSupp || currSupp.toUpperCase() === 'SUPPLIER') {
+                    supplierInput.value = 'STOCK';
+                }
+            }
+
+            // 5. Supplier PO -> If supplier is STOCK, default to STOCK
+            if (supplierPoInput && (!supplierPoInput.value.trim() || supplierPoInput.value.trim().toUpperCase() === 'PO #')) {
+                if (supplierInput?.value.trim().toUpperCase() === 'STOCK') {
+                    supplierPoInput.value = 'STOCK';
+                }
+            }
+
+            // Trigger country of origin and HS code auto-detection
+            onItemDetailsChange(makeInput || descInput);
+
+            // Subtle green pulse feedback
+            if (heatInput) {
+                heatInput.classList.add('border-success', 'bg-success', 'bg-opacity-10');
+                setTimeout(() => {
+                    heatInput.classList.remove('border-success', 'bg-success', 'bg-opacity-10');
+                }, 1200);
+            }
+        }
+
+        // =========================================================================
+        // LOCAL PURCHASE SEPARATION ENGINE: Select & Make Separate Sheet / PO
+        // =========================================================================
+        function selectLocalPurchaseRows() {
+            let count = 0;
+            const keywords = ['machined', 'machining', 'fabricated', 'fabrication', 'made from', 'modified', 'locally', 'local', 'offered', 'l-'];
+            itemsTableBody.querySelectorAll('tr').forEach(tr => {
+                const desc = (tr.querySelector('.item-desc')?.value || '').toLowerCase();
+                const remarks = (tr.querySelector('.item-remarks')?.value || '').toLowerCase();
+                const supplier = (tr.querySelector('.item-supplier-name')?.value || '').toLowerCase();
+                const isLocal = keywords.some(k => desc.includes(k) || remarks.includes(k) || supplier.includes(k)) || (supplier && supplier !== 'stock' && supplier !== 'supplier');
+                
+                const cb = tr.querySelector('.item-select-check');
+                if (cb) {
+                    cb.checked = isLocal;
+                    if (isLocal) count++;
+                }
+            });
+
+            updateSelectionBar();
+            if (count > 0) {
+                alert(`Selected ${count} Local Purchase / Machined item(s)!\n\nYou can now click "Make Separate Local Purchase" to export or separate them.`);
+            } else {
+                alert('No items matching Machined/Fabricated/Local were found. You can manually check any items using the checkboxes on the left.');
+            }
+        }
+
+        async function makeSeparateLocalPurchase() {
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) {
+                alert('Please select at least one item using the checkboxes on the left to make a separate Local Purchase sheet.');
+                return;
+            }
+
+            const choice = confirm(`You have selected ${selectedRows.length} item(s) for Local Purchase.\n\n[OK]: Download separate Local Purchase Stores Excel (.xlsx)\n[Cancel]: Save as a separate Local Purchase draft`);
+
+            if (choice) {
+                downloadSelectedAsLocalPurchase();
+            } else {
+                saveSelectedAsSeparateLocalDraft();
+            }
+        }
+
+        async function downloadSelectedAsLocalPurchase() {
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) {
+                alert('Please select at least one item using the checkboxes on the left to export.');
+                return;
+            }
+
+            const client = document.getElementById('clientInput').value.trim();
+            const poNumber = document.getElementById('poInput').value.trim();
+            const msgRef = document.getElementById('msgRefInput').value.trim();
+            const currency = document.getElementById('currencyInput')?.value || 'AED';
+
+            const payload = {
+                client,
+                po_number: poNumber,
+                msg_ref: (msgRef ? msgRef : 'MSG') + '_LOCAL_PURCHASE',
+                currency,
+                is_internal: true,
+                filter_machined_only: false,
+                items: selectedRows
+            };
+
+            try {
+                const resp = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    alert('Error generating Local Purchase sheet: ' + (err.error || resp.statusText));
+                    return;
+                }
+
+                const blob = await resp.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Local_Purchase_${(msgRef || 'MSG').replace(/ /g, '_')}_${(poNumber || 'PO').replace(/ /g, '_')}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Download error: ' + e.message);
+            }
+        }
+
+        async function saveSelectedAsSeparateLocalDraft() {
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) return;
+
+            const client = document.getElementById('clientInput').value.trim();
+            const poNumber = document.getElementById('poInput').value.trim();
+            const msgRef = document.getElementById('msgRefInput').value.trim();
+            const currency = document.getElementById('currencyInput')?.value || 'AED';
+
+            const payload = {
+                client,
+                po_number: poNumber,
+                msg_ref: (msgRef ? msgRef : 'MSG') + ' [LOCAL PURCHASE]',
+                currency,
+                items: selectedRows,
+                save_as_new: true,
+                editor_name: (currentUsername || 'Editor') + ' (Local Purchase)'
+            };
+
+            try {
+                const resp = await fetch('/api/save-worksheet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (resp.ok) {
+                    alert(`Saved separate Local Purchase draft with ${selectedRows.length} items! You can view and manage it anytime in the Sales Orders & Drafts Portal.`);
+                    loadHistory();
+                } else {
+                    alert('Failed to save separate draft');
+                }
+            } catch (e) {
+                alert('Save error: ' + e.message);
+            }
+        }
+
+        async function downloadLocalPurchaseSheet() {
+            const selected = getSelectedRows();
+            if (selected.length > 0) {
+                downloadSelectedAsLocalPurchase();
+                return;
+            }
+
+            selectLocalPurchaseRows();
+            const count = getSelectedRows().length;
+            if (count > 0) {
+                downloadSelectedAsLocalPurchase();
+            }
+        }
+
         function populateEditor(data) {
             document.getElementById('clientInput').value = data.client || '';
             document.getElementById('poInput').value = data.po_number || '';
@@ -1142,10 +1410,52 @@
             tr.setAttribute('data-total-qty', totalQty);
             
             const descVal = item.description || '';
-            const remarksVal = item.remarks || '';
+            let remarksVal = item.remarks || '';
+
+            // Auto-extract Heat Number if not already provided
+            let heatVal = item.heat_number || '';
+            const combinedText = descVal + ' ' + remarksVal;
+
+            if (!heatVal) {
+                const heatM = combinedText.match(/\bHEAT\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i);
+                if (heatM && heatM[1] && !['NO', 'NUMBER', 'N/A', 'NA', '-', ''].includes(heatM[1].toUpperCase())) {
+                    heatVal = heatM[1].trim();
+                }
+            }
+
+            // Auto-extract Certificate Number
+            let certVal = item.certificate_number || '';
+            if (!certVal && heatVal) {
+                const certM = combinedText.match(/\b(?:CERT|CERTIFICATE|MTC)\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i);
+                if (certM && certM[1] && !['NO', 'NUMBER', 'N/A', '-', ''].includes(certM[1].toUpperCase())) {
+                    certVal = certM[1].trim();
+                } else {
+                    certVal = `MTC-${heatVal}`;
+                }
+            }
+
+            // Auto-extract Location (LN: ... or LOC: ...)
+            const locM = combinedText.match(/\b(?:LN|LOC|LOCATION)\s*[:.-]?\s*([A-Za-z0-9_\-]+)/i);
+            if (locM && locM[1]) {
+                const locCode = locM[1].trim().toUpperCase();
+                if (!remarksVal.toUpperCase().includes(locCode)) {
+                    remarksVal = remarksVal ? `${remarksVal}; LN: ${locCode}` : `LN: ${locCode}`;
+                }
+            }
+
             const makeVal = item.make || autoDetectMakeJs(descVal + ' ' + remarksVal);
             const detectedCoo = item.country_of_origin || autoDetectCooJs(makeVal, descVal, remarksVal);
             const detectedHs = item.hs_code || autoDetectHsJs(descVal);
+
+            let suppVal = item.supplier_name || '';
+            if (!suppVal && (heatVal || locM)) {
+                suppVal = 'STOCK';
+            }
+
+            let suppPoVal = item.supplier_po || '';
+            if (!suppPoVal && suppVal === 'STOCK') {
+                suppPoVal = 'STOCK';
+            }
 
             tr.setAttribute('data-hs-code', detectedHs);
             tr.setAttribute('data-coo', detectedCoo);
@@ -1159,7 +1469,7 @@
                     <input type="text" class="form-control form-control-sm text-center item-client-po-item-no" value="${escapeHtml(clientPoItVal)}" placeholder="1" onchange="onClientPoItemNoChange(this)">
                 </td>
                 <td>
-                    <textarea class="form-control desc item-desc" placeholder="Item Description" oninput="onItemDetailsChange(this)">${escapeHtml(item.description || '')}</textarea>
+                    <textarea class="form-control desc item-desc" placeholder="Item Description" oninput="onItemDetailsChange(this)">${escapeHtml(descVal)}</textarea>
                 </td>
                 <td>
                     <input type="text" class="form-control form-control-sm text-center item-qty" value="${escapeHtml(item.qty || '1.00')}" oninput="calculateRowAmount(this)" onchange="validateQtyChange(this)">
@@ -1187,22 +1497,22 @@
                     </div>
                 </td>
                 <td>
-                    <input type="text" class="form-control form-control-sm text-center item-heat" value="${escapeHtml(item.heat_number || '')}" placeholder="Heat #">
+                    <input type="text" class="form-control form-control-sm text-center item-heat fw-semibold text-primary" value="${escapeHtml(heatVal)}" placeholder="Heat #" onclick="onHeatInputClick(this)" onfocus="onHeatInputFocus(this)" oninput="onHeatInputChange(this)">
                 </td>
                 <td>
-                    <input type="text" class="form-control form-control-sm text-center item-cert" value="${escapeHtml(item.certificate_number || '')}" placeholder="Cert #">
+                    <input type="text" class="form-control form-control-sm text-center item-cert" value="${escapeHtml(certVal)}" placeholder="Cert #">
                 </td>
                 <td>
                     <input type="text" class="form-control form-control-sm text-center item-make" value="${escapeHtml(makeVal)}" placeholder="MAKE" oninput="onItemDetailsChange(this)">
                 </td>
                 <td>
-                    <input type="text" class="form-control form-control-sm item-remarks" value="${escapeHtml(item.remarks || '')}" placeholder="Remarks" oninput="onItemDetailsChange(this)">
+                    <input type="text" class="form-control form-control-sm item-remarks" value="${escapeHtml(remarksVal)}" placeholder="Remarks" oninput="onItemDetailsChange(this)">
                 </td>
                 <td class="internal-col">
-                    <input type="text" class="form-control form-control-sm item-supplier-name" list="suppliersList" value="${escapeHtml(item.supplier_name || '')}" placeholder="Supplier">
+                    <input type="text" class="form-control form-control-sm item-supplier-name" list="suppliersList" value="${escapeHtml(suppVal)}" placeholder="Supplier">
                 </td>
                 <td class="internal-col">
-                    <input type="text" class="form-control form-control-sm text-center item-supplier-po" value="${escapeHtml(item.supplier_po || '')}" placeholder="PO #">
+                    <input type="text" class="form-control form-control-sm text-center item-supplier-po" value="${escapeHtml(suppPoVal)}" placeholder="PO #">
                 </td>
                 <td class="text-center">
                     <div class="btn-group btn-group-sm">
@@ -1916,7 +2226,7 @@
                     </div>
                 </td>
                 <td>
-                    <input type="text" class="form-control form-control-sm text-center item-heat" value="" placeholder="Heat #2">
+                    <input type="text" class="form-control form-control-sm text-center item-heat fw-semibold text-primary" value="" placeholder="Heat #2" onclick="onHeatInputClick(this)" onfocus="onHeatInputFocus(this)" oninput="onHeatInputChange(this)">
                 </td>
                 <td>
                     <input type="text" class="form-control form-control-sm text-center item-cert" value="${escapeHtml(cert)}" placeholder="Cert #2">

@@ -21,6 +21,7 @@ import {
   Tag,
   Eye,
   Download,
+  Wrench,
 } from 'lucide-react'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDeliverablesPreviewModal'
 import {
@@ -329,6 +330,42 @@ export const TechnicalSourcingPortal: React.FC = () => {
         }
         if (field === 'description' || field === 'remarks') {
           updated.is_machined = isMeaningfulItem({ description: updated.description, remarks: updated.remarks })
+        }
+        if (field === 'heat_number') {
+          const heatVal = String(value || '').trim()
+          if (heatVal) {
+            const combined = `${updated.description || ''} ${updated.remarks || ''}`
+            // Auto-fill Certificate Number if empty
+            if (!updated.certificate_number) {
+              const certMatch = combined.match(/\b(?:CERT|CERTIFICATE|MTC)\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i)
+              if (certMatch && certMatch[1] && !['NO', 'NUMBER', 'N/A', '-', ''].includes(certMatch[1].toUpperCase())) {
+                updated.certificate_number = certMatch[1].trim()
+              } else {
+                updated.certificate_number = `MTC-${heatVal}`
+              }
+            }
+            // Auto-fill Location from description if present
+            const locMatch = combined.match(/\b(?:LN|LOC|LOCATION)\s*[:.-]?\s*([A-Za-z0-9_\-]+)/i)
+            if (locMatch && locMatch[1]) {
+              const locCode = locMatch[1].trim().toUpperCase()
+              const currRem = (updated.remarks || '').trim()
+              if (!currRem.toUpperCase().includes(locCode)) {
+                updated.remarks = currRem ? `${currRem}; LN: ${locCode}` : `LN: ${locCode}`
+              }
+            }
+            // Auto-detect Make if empty or 'MAKE'
+            if (!updated.make || updated.make.toUpperCase() === 'MAKE') {
+              const detectedMake = autoDetectMake(combined)
+              if (detectedMake) updated.make = detectedMake
+            }
+            // Auto-fill Supplier Name to STOCK
+            if (!updated.supplier_name || updated.supplier_name.toUpperCase() === 'SUPPLIER') {
+              updated.supplier_name = 'STOCK'
+            }
+            if (!updated.supplier_po_number || updated.supplier_po_number.toUpperCase() === 'PO #') {
+              updated.supplier_po_number = 'STOCK'
+            }
+          }
         }
         return updated
       })
@@ -787,6 +824,38 @@ export const TechnicalSourcingPortal: React.FC = () => {
             </button>
           </div>
 
+          {/* Local Purchase Sheet: Separate export for Machined & Local items */}
+          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-amber-800">
+            <button
+              onClick={() => handleOpenPreview('stores')}
+              className="bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Preview Local Purchase Sheet with Machined & Fabrication items"
+            >
+              <Wrench className="h-4 w-4" />
+              <span>Local Purchase</span>
+            </button>
+            <button
+              onClick={async () => {
+                setIsExporting(true)
+                try {
+                  const localItems = currentWorksheetData.items.filter(it => isMeaningfulItem({ description: it.description, remarks: it.remarks }) || (it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK'))
+                  const targetItems = localItems.length > 0 ? localItems : currentWorksheetData.items
+                  await generateStoresSummaryExcel({ ...currentWorksheetData, items: targetItems }, false)
+                  setStatusNotice(`Exported ${targetItems.length} Local Purchase / Machined item(s) to separate Excel!`)
+                } catch (err: any) {
+                  alert('Error exporting Local Purchase sheet: ' + err.message)
+                } finally {
+                  setIsExporting(false)
+                }
+              }}
+              disabled={isExporting}
+              className="bg-amber-800 hover:bg-amber-900 text-amber-100 hover:text-white px-2 py-2 border-l border-amber-600/70 transition-colors cursor-pointer"
+              title="Download Local Purchase Sheet (.xlsx) directly"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
           {/* 3. Sticker Summary Sheet: Click opens Sticker Summary preview tab */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-teal-800">
             <button
@@ -1024,6 +1093,15 @@ export const TechnicalSourcingPortal: React.FC = () => {
                       type="text"
                       placeholder="e.g. 68C20M091"
                       value={it.heat_number}
+                      onClick={() => {
+                        if (!it.heat_number) {
+                          const combined = `${it.description || ''} ${it.remarks || ''}`
+                          const heatMatch = combined.match(/\bHEAT\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i)
+                          if (heatMatch && heatMatch[1] && !['NO', 'NUMBER', 'N/A', 'NA', '-', ''].includes(heatMatch[1].toUpperCase())) {
+                            handleUpdateItem(it.id, 'heat_number', heatMatch[1].trim())
+                          }
+                        }
+                      }}
                       onChange={e => handleUpdateItem(it.id, 'heat_number', e.target.value)}
                       className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] font-bold text-red-700 bg-red-50/40"
                     />

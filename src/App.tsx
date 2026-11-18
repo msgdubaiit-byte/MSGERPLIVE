@@ -24,6 +24,7 @@ import { UserManagement } from './components/users/UserManagement'
 import { AuditLogsView } from './components/audit/AuditLogsView'
 import { SettingsView } from './components/settings/SettingsView'
 import { PDFPreviewModal } from './components/common/PDFPreviewModal'
+import { ERPChatbot } from './components/chat/ERPChatbot'
 import { db } from './services/db'
 
 const MainApp: React.FC = () => {
@@ -232,6 +233,15 @@ const MainApp: React.FC = () => {
           onClose={() => setActivePdfPreview(null)}
         />
       )}
+
+      {/* Global ERP AI Assistant Chatbot */}
+      <ERPChatbot
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        onOpenTraceability={(heat) => setActiveHeatForModal(heat)}
+        onPreviewMTC={(docName, itemCode, heat) =>
+          setActivePdfPreview({ docName, itemCode, heatNumber: heat })
+        }
+      />
     </div>
   )
 }
