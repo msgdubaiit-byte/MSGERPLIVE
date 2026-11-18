@@ -74,7 +74,7 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
       } else if (candidateMTCs.length > 1) {
         mtcMatchStatus = 'multiple_found'
         // If previously selected a valid candidate, retain it
-        if (selectedMtcRef && candidateMTCs.some((c: any) => c.certificate_reference === selectedMtcRef)) {
+        if (selectedMtcRef && candidateMTCs.some((c: any) => String(c?.certificate_reference || '').trim().toUpperCase() === String(selectedMtcRef || '').trim().toUpperCase())) {
           mtcMatchStatus = 'auto_matched'
         } else {
           selectedMtcRef = ''

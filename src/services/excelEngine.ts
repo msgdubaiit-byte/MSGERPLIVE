@@ -225,13 +225,15 @@ export function generateStockImportTemplate(): void {
 
 // Multi-Heat Matrix Parser (Supports HEAT - 1, HEAT - 2, HEAT - 3 layout across columns)
 export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): any[] | null {
-  if (!rows || rows.length < 2) return null
+  if (!rows || !Array.isArray(rows) || rows.length < 2) return null
 
   let headerRowIdx = -1
   let groupRowIdx = -1
 
   for (let r = 0; r < Math.min(rows.length, 5); r++) {
-    const rowStr = rows[r].map(c => String(c || '').trim()).join(' ').toUpperCase()
+    const row = rows[r]
+    if (!row || !Array.isArray(row)) continue
+    const rowStr = row.map(c => String(c ?? '').trim()).join(' ').toUpperCase()
     if (rowStr.includes('ITEM NAME') || rowStr.includes('ITEM CODE') || (rowStr.includes('DESCRIPTION') && rowStr.includes('HEAT'))) {
       headerRowIdx = r
       break
@@ -240,15 +242,25 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
 
   if (headerRowIdx === -1) return null
 
-  if (headerRowIdx > 0) {
-    const prevRowStr = rows[headerRowIdx - 1].map(c => String(c || '').trim()).join(' ').toUpperCase()
+  if (headerRowIdx > 0 && rows[headerRowIdx - 1] && Array.isArray(rows[headerRowIdx - 1])) {
+    const prevRowStr = rows[headerRowIdx - 1].map(c => String(c ?? '').trim()).join(' ').toUpperCase()
     if (prevRowStr.includes('HEAT')) {
       groupRowIdx = headerRowIdx - 1
     }
   }
 
-  const headerRow = rows[headerRowIdx].map(c => String(c || '').trim())
-  const groupRow = groupRowIdx >= 0 ? rows[groupRowIdx].map(c => String(c || '').trim()) : []
+  // Convert header row into dense array of safe strings
+  const rawHeader = rows[headerRowIdx] || []
+  const headerRow: string[] = []
+  for (let i = 0; i < rawHeader.length; i++) {
+    headerRow[i] = String(rawHeader[i] ?? '').trim()
+  }
+
+  const rawGroup = (groupRowIdx >= 0 ? rows[groupRowIdx] : []) || []
+  const groupRow: string[] = []
+  for (let i = 0; i < rawGroup.length; i++) {
+    groupRow[i] = String(rawGroup[i] ?? '').trim()
+  }
 
   let itemCodeCol = -1
   let descCol = -1
@@ -256,7 +268,7 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
   let stockCol = -1
 
   headerRow.forEach((colName, cIdx) => {
-    const clean = colName.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const clean = String(colName || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     if (clean === 'ITEMNAME' || clean === 'ITEMCODE' || clean === 'ITEM') itemCodeCol = cIdx
     else if (clean === 'DESCRIPTION' || clean === 'ITEMDESCRIPTION') descCol = cIdx
     else if (clean === 'TOTALQTY' || clean === 'STOCKONHAND' || clean === 'TOTALSTOCK') totalQtyCol = cIdx
@@ -276,7 +288,7 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
   }[] = []
 
   for (let c = 0; c < headerRow.length; c++) {
-    const cell = headerRow[c].toUpperCase().trim()
+    const cell = String(headerRow[c] || '').toUpperCase().trim()
     if (cell === 'HEAT NO' || cell === 'HEAT' || cell === 'HEAT NUMBER' || cell === 'HEAT#') {
       let certCol = -1
       let dateCol = -1
@@ -284,11 +296,11 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
       let qtyCol = -1
 
       // Check column immediately preceding for QTY
-      if (c > 0 && /^(?:QTY|PIECES|STOCK|PCS)$/i.test(headerRow[c - 1])) qtyCol = c - 1
+      if (c > 0 && /^(?:QTY|PIECES|STOCK|PCS)$/i.test(String(headerRow[c - 1] || ''))) qtyCol = c - 1
 
       // Scan right up to 4 columns for Cert, Date, Location, Qty
       for (let offset = 1; offset <= 4 && c + offset < headerRow.length; offset++) {
-        const nextCell = headerRow[c + offset].toUpperCase().trim()
+        const nextCell = String(headerRow[c + offset] || '').toUpperCase().trim()
         if (nextCell === 'HEAT NO' || nextCell === 'HEAT' || nextCell === 'HEAT NUMBER' || nextCell === 'HEAT#') break
         if (certCol === -1 && (nextCell.includes('CERT') || nextCell.includes('MTC'))) certCol = c + offset
         else if (dateCol === -1 && (nextCell.includes('DATE') || nextCell.includes('YOM') || nextCell.includes('YEAR'))) dateCol = c + offset
@@ -318,7 +330,7 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
 
   for (let r = headerRowIdx + 1; r < rows.length; r++) {
     const row = rows[r]
-    if (!row || row.length === 0) continue
+    if (!row || !Array.isArray(row) || row.length === 0) continue
 
     const rawCode = itemCodeCol >= 0 ? row[itemCodeCol] : ''
     const itemCode = String(rawCode || '').trim().toUpperCase()
@@ -338,14 +350,14 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
 
     for (let b = 0; b < heatBlocks.length; b++) {
       const block = heatBlocks[b]
-      const heatNo = block.heatCol >= 0 ? String(row[block.heatCol] || '').trim() : ''
-      if (!heatNo || heatNo === '-' || heatNo.toUpperCase() === 'N/A') continue
+      const heatNo = block.heatCol >= 0 ? String(row[block.heatCol] ?? '').trim() : ''
+      if (!heatNo || heatNo === '-' || String(heatNo).toUpperCase() === 'N/A') continue
 
-      const certNo = block.certCol >= 0 ? String(row[block.certCol] || '').trim() : ''
+      const certNo = block.certCol >= 0 ? String(row[block.certCol] ?? '').trim() : ''
       const rawDate = block.dateCol >= 0 ? row[block.dateCol] : ''
-      const location = block.locCol >= 0 ? String(row[block.locCol] || '').trim() : 'LN-EB1'
+      const location = block.locCol >= 0 ? String(row[block.locCol] ?? '').trim() : 'LN-EB1'
       const rawQty = block.qtyCol >= 0 ? row[block.qtyCol] : ''
-      const explicitQty = rawQty !== '' && rawQty !== undefined ? parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) : null
+      const explicitQty = rawQty !== '' && rawQty !== undefined && rawQty !== null ? parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) : null
 
       let yom = 2025
       if (rawDate) {
@@ -363,7 +375,7 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
     }
 
     const detectedMake = autoDetectMake(itemCode + ' ' + desc) || 'International Mill'
-    const isLocal = itemCode.endsWith('-LOC') || desc.toUpperCase().includes('LOCAL') || desc.toUpperCase().includes('LOCALLY')
+    const isLocal = itemCode.endsWith('-LOC') || String(desc || '').toUpperCase().includes('LOCAL') || String(desc || '').toUpperCase().includes('LOCALLY')
     const supplier = isLocal ? 'Local UAE Supplier' : autoDetectSupplier(detectedMake, desc)
 
     if (rowHeats.length === 0) {
@@ -504,12 +516,12 @@ export function parseExcelBuffer(data: Uint8Array | ArrayBuffer): {
           selectedMtcId = candidateMTCs[0].id
         } else if (candidateMTCs.length > 1) {
           const matchByRef = r.certificate_number
-            ? candidateMTCs.find((c: any) => c.certificate_reference.toUpperCase() === r.certificate_number.toUpperCase())
+            ? candidateMTCs.find((c: any) => String(c?.certificate_reference || '').trim().toUpperCase() === String(r.certificate_number || '').trim().toUpperCase())
             : null
           if (matchByRef) {
             mtcMatchStatus = 'auto_matched'
-            selectedMtcRef = matchByRef.certificate_reference
-            selectedMtcId = matchByRef.id
+            selectedMtcRef = matchByRef.certificate_reference || ''
+            selectedMtcId = matchByRef.id || ''
           } else {
             mtcMatchStatus = 'multiple_found'
             selectedMtcRef = ''
