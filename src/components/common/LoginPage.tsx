@@ -134,8 +134,25 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Role Logins */}
-          <div className="mt-6 pt-5 border-t border-slate-200">
+          {/* Special 1-Click Login When Workers Are Away */}
+          <div className="mt-5 pt-4 border-t border-slate-200">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 shadow-sm text-center">
+              <div className="flex items-center justify-center space-x-1.5 text-amber-800 text-xs font-bold mb-1">
+                <Shield className="h-4 w-4 text-amber-600" />
+                <span>Special Duty Login (When Workers Are Away)</span>
+              </div>
+              <p className="text-[11px] text-amber-700 mb-2">
+                1-Click Master Access for Owners, Managers &amp; Supervisors without typing credentials.
+              </p>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('admin@msgoilfield.ae')}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center space-x-2 shadow cursor-pointer"
+              >
+                <span>⭐ 1-Click Master Duty Access</span>
+              </button>
+            </div>
+
             <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
               Quick Role-Based Access Evaluation (1-Click)
             </div>
