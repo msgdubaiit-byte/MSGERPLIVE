@@ -571,10 +571,15 @@
                         <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Separate Sheet with Machined &amp; Local Items</div>
                     </button>
 
-                    <button class="btn btn-cipl-download" onclick="openCIPLConfigModal()">
-                        <i class="bi bi-file-earmark-spreadsheet-fill me-2"></i>Download CIPL (.xlsx)
-                        <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Commercial Invoice & Packing List (Pallet/Box/COO/HS)</div>
-                    </button>
+                    <div class="btn-group">
+                        <button class="btn btn-cipl-download" onclick="downloadCIPL()" title="Click to instantly download CIPL Excel file">
+                            <i class="bi bi-file-earmark-spreadsheet-fill me-2"></i>Download CIPL (.xlsx)
+                            <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Commercial Invoice &amp; Packing List (Direct 1-Click Export)</div>
+                        </button>
+                        <button type="button" class="btn btn-info text-dark px-3" onclick="openCIPLConfigModal()" title="Optional: Customize CIPL weights, dimensions, origins">
+                            <i class="bi bi-sliders fs-5"></i>
+                        </button>
+                    </div>
 
                     <button class="btn btn-pdf-download" onclick="exportSupplierPDFs()">
                         <i class="bi bi-file-earmark-pdf me-2"></i>Export Supplier PDFs (.zip)

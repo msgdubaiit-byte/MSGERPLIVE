@@ -764,22 +764,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
         {/* 4 Preview & Download Deliverable Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Client Summary: Click opens Client Summary preview tab, with direct download option */}
+          {/* 1. Client Summary: 1-Click Direct Download */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-emerald-800">
-            <button
-              onClick={() => handleOpenPreview('client')}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Preview 9-Column Client Summary Sheet on screen before download"
-            >
-              <Eye className="h-4 w-4" />
-              <span>Client Summary</span>
-            </button>
             <button
               onClick={async () => {
                 setIsExporting(true)
                 try {
                   await generateClientSummaryExcel(currentWorksheetData, filterMachinedOnly)
-                  setStatusNotice('Client Summary (.xlsx) exported successfully!')
+                  setStatusNotice('Client Summary (.xlsx) downloaded successfully!')
                 } catch (err: any) {
                   alert('Error exporting Client Summary: ' + err.message)
                 } finally {
@@ -787,29 +779,29 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-emerald-800 hover:bg-emerald-900 text-emerald-100 hover:text-white px-2 py-2 border-l border-emerald-600/70 transition-colors cursor-pointer"
+              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Download Client Summary (.xlsx) directly"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
+              <span>Download Client Summary</span>
+            </button>
+            <button
+              onClick={() => handleOpenPreview('client')}
+              className="bg-emerald-800 hover:bg-emerald-900 text-emerald-100 hover:text-white px-2 py-2 border-l border-emerald-600/70 transition-colors cursor-pointer"
+              title="Preview Client Summary Sheet"
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* 2. Stores Internal Excel: Click opens Stores Summary preview tab */}
+          {/* 2. Stores Internal Excel: 1-Click Direct Download */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-blue-800">
-            <button
-              onClick={() => handleOpenPreview('stores')}
-              className="bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Preview 11-Column Stores Summary with Suppliers & Machining"
-            >
-              <Eye className="h-4 w-4" />
-              <span>Stores Summary</span>
-            </button>
             <button
               onClick={async () => {
                 setIsExporting(true)
                 try {
                   await generateStoresSummaryExcel(currentWorksheetData, filterMachinedOnly)
-                  setStatusNotice('Internal Stores Summary (.xlsx) exported successfully!')
+                  setStatusNotice('Stores Summary (.xlsx) downloaded successfully!')
                 } catch (err: any) {
                   alert('Error exporting Stores Summary: ' + err.message)
                 } finally {
@@ -817,23 +809,23 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-blue-800 hover:bg-blue-900 text-blue-100 hover:text-white px-2 py-2 border-l border-blue-600/70 transition-colors cursor-pointer"
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Download Stores Summary (.xlsx) directly"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
+              <span>Download Stores Sheet</span>
+            </button>
+            <button
+              onClick={() => handleOpenPreview('stores')}
+              className="bg-blue-800 hover:bg-blue-900 text-blue-100 hover:text-white px-2 py-2 border-l border-blue-600/70 transition-colors cursor-pointer"
+              title="Preview Stores Summary"
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* Local Purchase Sheet: Separate export for Machined & Local items */}
+          {/* Local Purchase Sheet: 1-Click Direct Download */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-amber-800">
-            <button
-              onClick={() => handleOpenPreview('stores')}
-              className="bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Preview Local Purchase Sheet with Machined & Fabrication items"
-            >
-              <Wrench className="h-4 w-4" />
-              <span>Local Purchase</span>
-            </button>
             <button
               onClick={async () => {
                 setIsExporting(true)
@@ -841,7 +833,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   const localItems = currentWorksheetData.items.filter(it => isMeaningfulItem({ description: it.description, remarks: it.remarks }) || (it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK'))
                   const targetItems = localItems.length > 0 ? localItems : currentWorksheetData.items
                   await generateStoresSummaryExcel({ ...currentWorksheetData, items: targetItems }, false)
-                  setStatusNotice(`Exported ${targetItems.length} Local Purchase / Machined item(s) to separate Excel!`)
+                  setStatusNotice(`Exported ${targetItems.length} Local Purchase item(s) to separate Excel!`)
                 } catch (err: any) {
                   alert('Error exporting Local Purchase sheet: ' + err.message)
                 } finally {
@@ -849,29 +841,29 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-amber-800 hover:bg-amber-900 text-amber-100 hover:text-white px-2 py-2 border-l border-amber-600/70 transition-colors cursor-pointer"
+              className="bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Download Local Purchase Sheet (.xlsx) directly"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
+              <span>Download Local Purchase</span>
+            </button>
+            <button
+              onClick={() => handleOpenPreview('stores')}
+              className="bg-amber-800 hover:bg-amber-900 text-amber-100 hover:text-white px-2 py-2 border-l border-amber-600/70 transition-colors cursor-pointer"
+              title="Preview Local Purchase Sheet"
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* 3. Sticker Summary Sheet: Click opens Sticker Summary preview tab */}
+          {/* 3. Sticker Summary Sheet: 1-Click Direct Download */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-teal-800">
-            <button
-              onClick={() => handleOpenPreview('summary')}
-              className="bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Preview Autogenerated SUMMARY SHEET (.xlsx) matching exact sticker source layout"
-            >
-              <Eye className="h-4 w-4" />
-              <span>Sticker Summary</span>
-            </button>
             <button
               onClick={async () => {
                 setIsExporting(true)
                 try {
                   await generateStickerSummaryExcel(currentWorksheetData)
-                  setStatusNotice('Sticker Summary Sheet (.xlsx) exported successfully!')
+                  setStatusNotice('Sticker Summary Sheet (.xlsx) downloaded successfully!')
                 } catch (err: any) {
                   alert('Error exporting Sticker Summary Sheet: ' + err.message)
                 } finally {
@@ -879,29 +871,29 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-teal-800 hover:bg-teal-900 text-teal-100 hover:text-white px-2 py-2 border-l border-teal-600/70 transition-colors cursor-pointer"
+              className="bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Download Sticker Summary Sheet (.xlsx) directly"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
+              <span>Sticker Summary</span>
+            </button>
+            <button
+              onClick={() => handleOpenPreview('summary')}
+              className="bg-teal-800 hover:bg-teal-900 text-teal-100 hover:text-white px-2 py-2 border-l border-teal-600/70 transition-colors cursor-pointer"
+              title="Preview Sticker Summary"
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* 4. CIPL Generator: Click opens CIPL Commercial Invoice preview tab */}
+          {/* 4. CIPL Generator: 1-Click Direct Download */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-purple-800">
-            <button
-              onClick={() => handleOpenPreview('cipl_invoice')}
-              className="bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs px-3 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Preview Commercial Invoice & Packing List (.xlsx)"
-            >
-              <Eye className="h-4 w-4" />
-              <span>CIPL Logistics</span>
-            </button>
             <button
               onClick={async () => {
                 setIsExporting(true)
                 try {
                   await generateCIPLLogisticExcel(currentWorksheetData)
-                  setStatusNotice('CIPL Logistics (.xlsx) exported successfully!')
+                  setStatusNotice('CIPL Logistics (.xlsx) downloaded successfully!')
                 } catch (err: any) {
                   alert('Error exporting CIPL: ' + err.message)
                 } finally {
@@ -909,10 +901,18 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-purple-800 hover:bg-purple-900 text-purple-100 hover:text-white px-2 py-2 border-l border-purple-600/70 transition-colors cursor-pointer"
-              title="Download CIPL Logistics (.xlsx) directly"
+              className="bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Download CIPL (.xlsx) directly on 1-click"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
+              <span>Download CIPL (.xlsx)</span>
+            </button>
+            <button
+              onClick={() => handleOpenPreview('cipl_invoice')}
+              className="bg-purple-800 hover:bg-purple-900 text-purple-100 hover:text-white px-2 py-2 border-l border-purple-600/70 transition-colors cursor-pointer"
+              title="Preview Commercial Invoice & Packing List"
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
           </div>
 
