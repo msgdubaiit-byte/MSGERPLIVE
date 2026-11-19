@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { UserRole } from '../../types'
-import { Search, Shield, User, LogOut, ChevronDown, Bell, Database, Trash2, Crown } from 'lucide-react'
+import { Search, Shield, User, LogOut, ChevronDown, Bell, Database, Trash2, Crown, ShieldCheck } from 'lucide-react'
 import { db } from '../../services/db'
 import { ClearDataModal } from './ClearDataModal'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
@@ -47,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings }
     { role: 'mtc_controller', label: 'MTC Controller', department: 'QA/QC' },
     { role: 'dispatch_team', label: 'Dispatch Team', department: 'Logistics' },
     { role: 'management_viewer', label: 'Management Viewer', department: 'Board of Directors' },
+    { role: 'it_engineer', label: 'IT Systems Engineer', department: 'IT Systems & Architecture' },
   ]
 
   const pendingApprovalsCount = orders.filter(o => o.status === 'Pending Storekeeper Approval').length
@@ -222,6 +223,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings }
             <Database className="h-3.5 w-3.5 text-emerald-400" />
             <span className="hidden xl:inline">Supabase DB</span>
           </button>
+
+          {/* IT Engineer Zero-Data Mode Badge */}
+          {currentRole === 'it_engineer' && (
+            <div className="hidden lg:flex items-center space-x-1.5 bg-indigo-950/80 border border-indigo-400/60 px-2.5 py-1.5 rounded-lg text-indigo-200 text-xs font-bold">
+              <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" />
+              <span>IT Mode (Data Masked)</span>
+            </div>
+          )}
 
           {/* Role Switcher Pill / Dropdown for Fast Evaluation */}
           <div className="relative">

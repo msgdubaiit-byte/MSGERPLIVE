@@ -28,6 +28,9 @@ export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
   management_viewer: [
     'solo_hub', 'dashboard', 'reports', 'stock', 'orders', 'audit'
   ],
+  it_engineer: [
+    'it_console', 'settings', 'users', 'audit', 'excel'
+  ],
 }
 
 export interface VipPreset {
@@ -100,6 +103,14 @@ export const VIP_PRESETS: VipPreset[] = [
       'returns', 'reports', 'excel', 'users', 'audit', 'settings'
     ],
   },
+  {
+    id: 'it_systems_engineer',
+    label: '🛠️ IT Systems Engineer (Software Config Only - No Data Access)',
+    description: 'Administrative access to configure all software settings, branding, MTC stamp calibration, document templates, users, permissions, integrations, and backups. Commercial business data is strictly masked & protected.',
+    badge: 'IT Config / No Data',
+    badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+    modules: ['it_console', 'settings', 'users', 'audit', 'excel'],
+  },
 ]
 
 interface AuthContextType {
@@ -123,6 +134,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const MODULE_PERMISSIONS: Record<string, UserRole[]> = {
+  it_console: ['super_admin', 'it_engineer'],
+  solo_hub: ['super_admin', 'admin_inventory', 'sales_team', 'storekeeper', 'mtc_controller', 'dispatch_team', 'management_viewer'],
   dashboard: ['super_admin', 'admin_inventory', 'sales_team', 'storekeeper', 'mtc_controller', 'dispatch_team', 'management_viewer'],
   stock: ['super_admin', 'admin_inventory', 'sales_team', 'storekeeper', 'mtc_controller', 'dispatch_team', 'management_viewer'],
   items: ['super_admin', 'admin_inventory', 'sales_team', 'storekeeper', 'management_viewer'],
@@ -139,10 +152,10 @@ const MODULE_PERMISSIONS: Record<string, UserRole[]> = {
   movements: ['super_admin', 'admin_inventory', 'storekeeper', 'management_viewer'],
   returns: ['super_admin', 'admin_inventory', 'storekeeper'],
   reports: ['super_admin', 'admin_inventory', 'sales_team', 'storekeeper', 'mtc_controller', 'dispatch_team', 'management_viewer'],
-  excel: ['super_admin', 'admin_inventory'],
-  users: ['super_admin'],
-  audit: ['super_admin', 'management_viewer'],
-  settings: ['super_admin', 'admin_inventory'],
+  excel: ['super_admin', 'admin_inventory', 'it_engineer'],
+  users: ['super_admin', 'it_engineer'],
+  audit: ['super_admin', 'management_viewer', 'it_engineer'],
+  settings: ['super_admin', 'admin_inventory', 'it_engineer'],
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { initialUsers } from '../../services/db'
-import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, Zap } from 'lucide-react'
+import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, Zap, Cpu, Wrench } from 'lucide-react'
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth()
@@ -53,21 +53,40 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Special Solo Operator / Workers Away Fast Access */}
-        <div className="bg-amber-500/10 border-b border-amber-500/30 p-4 text-center">
+        <div className="bg-amber-500/10 border-b border-amber-500/30 p-3.5 text-center">
           <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-amber-600 uppercase tracking-wide">
             <Zap className="h-4 w-4 fill-current text-amber-500" />
             <span>Special Solo Login (Workers Away Mode)</span>
           </div>
-          <p className="text-[11px] text-slate-600 mt-1">
+          <p className="text-[11px] text-slate-600 mt-0.5">
             Centralized fast-track portal for solo operators, weekends &amp; after-hours when staff is absent.
           </p>
           <button
             type="button"
             onClick={() => handleQuickLogin('admin@msgoilfield.ae')}
-            className="mt-2.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black py-2.5 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer transform hover:-translate-y-0.5"
+            className="mt-2 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black py-2 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer transform hover:-translate-y-0.5"
           >
             <Zap className="h-4 w-4 fill-current text-slate-950" />
             <span>Enter Centralized Solo Hub (1-Click)</span>
+          </button>
+        </div>
+
+        {/* IT Systems Engineer Fast Access */}
+        <div className="bg-indigo-500/10 border-b border-indigo-500/30 p-3 text-center">
+          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-indigo-700 uppercase tracking-wide">
+            <Cpu className="h-3.5 w-3.5 text-indigo-600" />
+            <span>IT Systems Engineer Access (Config Only)</span>
+          </div>
+          <p className="text-[10px] text-slate-600 mt-0.5">
+            Full software &amp; system parameters configuration. Zero business data access.
+          </p>
+          <button
+            type="button"
+            onClick={() => handleQuickLogin('it.engineer@msgoilfield.ae')}
+            className="mt-1.5 w-full bg-gradient-to-r from-indigo-700 to-blue-700 hover:from-indigo-800 hover:to-blue-800 text-white font-black py-2 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+          >
+            <Wrench className="h-3.5 w-3.5 text-indigo-300" />
+            <span>Login as IT Engineer (Software Config Mode)</span>
           </button>
         </div>
 

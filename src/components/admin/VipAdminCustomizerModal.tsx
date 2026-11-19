@@ -506,6 +506,7 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
                         { role: 'admin_inventory', label: 'Inventory Manager' },
                         { role: 'management_viewer', label: 'Management Viewer' },
                         { role: 'super_admin', label: 'Super Admin' },
+                        { role: 'it_engineer', label: 'IT Systems Engineer' },
                       ] as { role: UserRole; label: string }[]
                     ).map(r => {
                       const isSelected = selectedRole === r.role

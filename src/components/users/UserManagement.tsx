@@ -16,7 +16,7 @@ export const UserManagement: React.FC = () => {
   const [department, setDepartment] = useState('Commercial Sales')
   const [role, setRole] = useState<UserRole>('sales_team')
 
-  const canManage = hasPermission(['super_admin'])
+  const canManage = hasPermission(['super_admin', 'it_engineer'])
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault()
@@ -225,6 +225,7 @@ export const UserManagement: React.FC = () => {
                   <option value="mtc_controller">ROLE 5: MTC / Document Controller</option>
                   <option value="dispatch_team">ROLE 6: Dispatch Team</option>
                   <option value="management_viewer">ROLE 7: Management / Viewer (Read-Only)</option>
+                  <option value="it_engineer">ROLE 8: IT Systems Engineer (Software Config / Zero Data Access)</option>
                 </select>
               </div>
 

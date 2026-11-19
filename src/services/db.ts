@@ -449,7 +449,54 @@ export const initialUsers: UserProfile[] = [
   { id: 'USR-005', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00' },
   { id: 'USR-006', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40' },
   { id: 'USR-007', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20' },
+  { id: 'USR-008', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-02-15', last_login: '2026-11-19 10:00' },
 ]
+
+export interface SystemCustomConfig {
+  companyName: string
+  trnNumber: string
+  defaultCurrency: string
+  companyAddress: string
+  contactEmail: string
+  contactPhone: string
+  themePrimaryColor: string
+  mtcStampText: string
+  mtcStampColor: string
+  mtcStampScale: number
+  mtcStampOffsetX: number
+  mtcStampOffsetY: number
+  mtcInspectorName: string
+  showMachinedTag: boolean
+  defaultWeightSafetyBuffer: number
+  ciplInvoicePrefix: string
+  qrStickerFormat: 'thermal_4x6' | 'a4_sheet' | 'standard_tag'
+  enableAuditLogging: boolean
+  sessionTimeoutMinutes: number
+  dataPrivacyMaskingForIT: boolean
+}
+
+export const defaultSystemCustomConfig: SystemCustomConfig = {
+  companyName: 'MSG OILFIELD EQUIPMENT TRADING LLC',
+  trnNumber: '100293847500003',
+  defaultCurrency: 'AED',
+  companyAddress: 'Industrial Area 2, Al Qusais, P.O. Box 92831, Dubai, United Arab Emirates',
+  contactEmail: 'sales@msgoilfield.ae',
+  contactPhone: '+971 4 288 1234',
+  themePrimaryColor: '#0B2545',
+  mtcStampText: 'CERTIFIED TRUE COPY OF ORIGINAL / MSG QA/QC APPROVED',
+  mtcStampColor: '#D32F2F',
+  mtcStampScale: 100,
+  mtcStampOffsetX: 0,
+  mtcStampOffsetY: 0,
+  mtcInspectorName: 'QA/QC Lead Inspector',
+  showMachinedTag: true,
+  defaultWeightSafetyBuffer: 15,
+  ciplInvoicePrefix: 'CIPL-INV-',
+  qrStickerFormat: 'thermal_4x6',
+  enableAuditLogging: true,
+  sessionTimeoutMinutes: 60,
+  dataPrivacyMaskingForIT: true,
+}
 
 // Database singleton and state provider
 class DBService {
@@ -468,6 +515,7 @@ class DBService {
   private audits: AuditLog[] = []
   private importJobs: ExcelImportJob[] = []
   private users: UserProfile[] = []
+  private systemConfig: SystemCustomConfig = defaultSystemCustomConfig
 
   private listeners: (() => void)[] = []
 
@@ -527,6 +575,7 @@ class DBService {
     this.audits = loadFromStorage('audits', [])
     this.importJobs = loadFromStorage('importJobs', [])
     this.users = loadFromStorage('users', initialUsers)
+    this.systemConfig = loadFromStorage('systemConfig', defaultSystemCustomConfig)
   }
 
   public subscribe(listener: () => void) {
@@ -2092,6 +2141,98 @@ class DBService {
       this.logAudit(userEmail, 'Reset to Demo Data', 'System', 'ALL_TABLES')
     }
     this.notify()
+  }
+
+  // IT Systems Custom Configuration & System Control
+  public getSystemConfig(): SystemCustomConfig {
+    return { ...this.systemConfig }
+  }
+
+  public updateSystemConfig(config: Partial<SystemCustomConfig>, userEmail?: string): SystemCustomConfig {
+    this.systemConfig = { ...this.systemConfig, ...config }
+    saveToStorage('systemConfig', this.systemConfig)
+    if (userEmail) {
+      this.logAudit(userEmail, 'Update System Custom Config', 'IT Systems', 'SYSTEM_SETTINGS', null, config)
+    }
+    this.notify()
+    return { ...this.systemConfig }
+  }
+
+  // 1-Click Database Backup Export (JSON format)
+  public exportFullDatabaseJSON(): string {
+    const backupObj = {
+      system: 'MSG Oilfield Equipment Trading LLC ERP',
+      export_version: '2.0-ENTERPRISE',
+      exported_at: new Date().toISOString(),
+      systemConfig: this.systemConfig,
+      customers: this.customers,
+      items: this.items,
+      lots: this.lots,
+      balances: this.balances,
+      orders: this.orders,
+      mtcs: this.mtcs,
+      localPurchases: this.localPurchases,
+      movements: this.movements,
+      users: this.users,
+    }
+    return JSON.stringify(backupObj, null, 2)
+  }
+
+  // Restore Database from JSON Backup File
+  public importFullDatabaseJSON(jsonStr: string, userEmail?: string): { success: boolean; message: string } {
+    try {
+      const parsed = JSON.parse(jsonStr)
+      if (parsed.customers && Array.isArray(parsed.customers)) this.customers = parsed.customers
+      if (parsed.items && Array.isArray(parsed.items)) this.items = parsed.items
+      if (parsed.lots && Array.isArray(parsed.lots)) this.lots = parsed.lots
+      if (parsed.balances && Array.isArray(parsed.balances)) this.balances = parsed.balances
+      if (parsed.orders && Array.isArray(parsed.orders)) this.orders = parsed.orders
+      if (parsed.mtcs && Array.isArray(parsed.mtcs)) this.mtcs = parsed.mtcs
+      if (parsed.localPurchases && Array.isArray(parsed.localPurchases)) this.localPurchases = parsed.localPurchases
+      if (parsed.movements && Array.isArray(parsed.movements)) this.movements = parsed.movements
+      if (parsed.users && Array.isArray(parsed.users)) this.users = parsed.users
+      if (parsed.systemConfig) this.systemConfig = { ...defaultSystemCustomConfig, ...parsed.systemConfig }
+
+      this.saveAll()
+      saveToStorage('systemConfig', this.systemConfig)
+      if (userEmail) {
+        this.logAudit(userEmail, 'Restore Database Backup', 'IT Systems', 'ALL_TABLES')
+      }
+      this.notify()
+      return { success: true, message: 'Database restored successfully from backup file!' }
+    } catch (e: any) {
+      return { success: false, message: 'Failed to import backup file: ' + e.message }
+    }
+  }
+
+  // IT Integrity & Diagnostics Engine
+  public getSystemDiagnostics() {
+    const verifiedMTCs = this.mtcs.filter(m => m.verification_status === 'Verified').length
+    const stampedMTCs = this.mtcs.filter(m => Boolean(m.stamped_file_path)).length
+    const totalPhysicalPcs = this.balances.reduce((s, b) => s + b.physical_qty, 0)
+    const totalAvailPcs = this.balances.reduce((s, b) => s + b.available_qty, 0)
+    const orphanBalances = this.balances.filter(b => !this.lots.some(l => l.id === b.stock_lot_id)).length
+    const localPurchasesCount = this.localPurchases.length
+    const pendingApprovalsCount = this.orders.filter(o => o.status === 'Pending Storekeeper Approval').length
+
+    return {
+      totalCustomers: this.customers.length,
+      totalItems: this.items.length,
+      totalLots: this.lots.length,
+      totalBalances: this.balances.length,
+      totalPhysicalPcs,
+      totalAvailPcs,
+      orphanBalances,
+      totalOrders: this.orders.length,
+      pendingApprovalsCount,
+      totalMTCs: this.mtcs.length,
+      verifiedMTCs,
+      stampedMTCs,
+      localPurchasesCount,
+      totalAudits: this.audits.length,
+      totalUsers: this.users.length,
+      systemHealth: orphanBalances === 0 ? 'Optimal (100% Data Integrity)' : 'Warning (Orphan Balances Detected)'
+    }
   }
 }
 

@@ -23,12 +23,15 @@ import {
   Sparkles,
   Crown,
   Zap,
+  Cpu,
+  ShieldCheck,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 
 export type NavTabId =
   | 'solo_hub'
+  | 'it_console'
   | 'dashboard'
   | 'stock'
   | 'items'
@@ -64,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
 
   const navItems: { id: NavTabId; label: string; icon: any; badge?: number | string; badgeColor?: string }[] = [
     { id: 'solo_hub', label: '★ Centralized Solo Hub', icon: Zap, badge: 'Workers Away', badgeColor: 'bg-amber-500 text-slate-950 font-bold' },
+    { id: 'it_console', label: '🛠️ IT Software Config', icon: Cpu, badge: 'IT Admin', badgeColor: 'bg-indigo-600 text-white font-bold' },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'stock', label: 'Master Stock', icon: Package },
     { id: 'items', label: 'Item Master', icon: Boxes },
@@ -133,6 +137,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
               <Crown className="h-4 w-4 text-amber-400 shrink-0" />
               <span className="truncate">VIP Team Customizer</span>
             </button>
+          </div>
+        )}
+
+        {currentUser?.role === 'it_engineer' && (
+          <div className="pt-2 mt-2 border-t border-slate-700/80">
+            <div className="p-2.5 bg-indigo-950/70 border border-indigo-500/50 rounded-xl text-[10px]">
+              <div className="font-extrabold text-indigo-300 flex items-center space-x-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                <span>IT Engineer Active</span>
+              </div>
+              <p className="text-slate-300 text-[10px] mt-1 leading-snug">
+                Full software &amp; system config enabled. Commercial business data strictly masked.
+              </p>
+            </div>
           </div>
         )}
       </nav>

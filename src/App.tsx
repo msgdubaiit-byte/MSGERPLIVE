@@ -26,6 +26,7 @@ import { SettingsView } from './components/settings/SettingsView'
 import { PDFPreviewModal } from './components/common/PDFPreviewModal'
 import { ERPChatbot } from './components/chat/ERPChatbot'
 import { CentralizedSoloHub } from './components/solo/CentralizedSoloHub'
+import { ITSystemConfigConsole } from './components/it/ITSystemConfigConsole'
 import { db } from './services/db'
 
 const MainApp: React.FC = () => {
@@ -44,7 +45,7 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (!canAccessModule(activeTab)) {
       const allModules: NavTabId[] = [
-        'solo_hub', 'dashboard', 'orders', 'sourcing', 'stickers', 'stock', 'items', 'traceability',
+        'solo_hub', 'it_console', 'dashboard', 'orders', 'sourcing', 'stickers', 'stock', 'items', 'traceability',
         'allocation', 'loc', 'approvals', 'mtc', 'local_purchase', 'dispatch',
         'movements', 'returns', 'reports', 'excel', 'users', 'audit', 'settings'
       ]
@@ -104,6 +105,12 @@ const MainApp: React.FC = () => {
               <CentralizedSoloHub
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onOpenHeatModal={(heat) => setActiveHeatForModal(heat)}
+              />
+            )}
+
+            {activeTab === 'it_console' && (
+              <ITSystemConfigConsole
+                onNavigateTab={(tab) => setActiveTab(tab)}
               />
             )}
 

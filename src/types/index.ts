@@ -8,6 +8,7 @@ export type UserRole =
   | 'mtc_controller'
   | 'dispatch_team'
   | 'management_viewer'
+  | 'it_engineer'
 
 export interface UserProfile {
   id: string
