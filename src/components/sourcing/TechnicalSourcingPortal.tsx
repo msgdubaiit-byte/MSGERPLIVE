@@ -994,7 +994,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center space-x-3 text-xs">
+          <div className="flex items-center space-x-3 text-xs flex-wrap gap-y-2">
             <span className="text-slate-600">
               Total Value: <strong className="text-slate-900">{currency} {totalAmount.toLocaleString()}</strong>
             </span>
@@ -1002,6 +1002,44 @@ export const TechnicalSourcingPortal: React.FC = () => {
             <span className="text-slate-600">
               Net Wt: <strong className="text-slate-900">{Math.round(totalNetWt * 100) / 100} kg</strong>
             </span>
+            <div className="flex items-center space-x-1.5 pl-2 border-l border-slate-300">
+              <button
+                type="button"
+                onClick={() => {
+                  const val = prompt('Enter Supplier PO Number to apply to all items:', '')
+                  if (val && val.trim()) {
+                    const trimmed = val.trim()
+                    setItems(prev => prev.map(item => ({ ...item, supplier_po_number: trimmed })))
+                    setStatusNotice(`Applied Supplier PO #${trimmed} to all items!`)
+                  }
+                }}
+                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Bulk apply Supplier PO to all items outside"
+              >
+                <Plus className="h-3 w-3 text-amber-700" />
+                <span>Supplier PO</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenPreview('cipl_invoice')}
+                className="bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Open CIPL Builder & Preview"
+              >
+                <Eye className="h-3 w-3 text-purple-700" />
+                <span>CIPL Builder</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setItems(prev => prev.map(item => ({ ...item, package_type: 'Pallet' })))
+                  setStatusNotice('Set packaging to Pallet for all items!')
+                }}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs px-2 py-1.5 rounded-md transition-colors cursor-pointer"
+                title="Set All Pallet"
+              >
+                All Pallet
+              </button>
+            </div>
             <button
               onClick={handleAddItem}
               className="bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1"
@@ -1020,10 +1058,18 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 <th className="p-2.5 w-20">PO Item</th>
                 <th className="p-2.5 min-w-[260px]">Description &amp; Machining Spec</th>
                 <th className="p-2.5 w-24 text-center">Qty / UOM</th>
+                <th className="p-2.5 w-32 bg-sky-50 text-sky-900 border-b-2 border-sky-400 text-center">
+                  Packaging (CIPL)
+                  <span className="block text-[9px] text-sky-600 font-normal">Pallet / Box / #</span>
+                </th>
                 <th className="p-2.5 w-32">Heat Number</th>
                 <th className="p-2.5 w-32">MTC Cert Ref</th>
                 <th className="p-2.5 w-36">MAKE / Mfr</th>
                 <th className="p-2.5 w-36">Supplier Name</th>
+                <th className="p-2.5 w-36 bg-amber-50 text-amber-900 border-b-2 border-amber-400">
+                  Supplier PO #
+                  <span className="block text-[9px] text-amber-700 font-normal">Stores / CIPL</span>
+                </th>
                 <th className="p-2.5 w-28">HS Tariff</th>
                 <th className="p-2.5 w-24">COO</th>
                 <th className="p-2.5 w-24 text-right">Price ({currency})</th>
@@ -1087,6 +1133,30 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     </div>
                   </td>
 
+                  {/* Packaging (CIPL) */}
+                  <td className="p-2.5 bg-sky-50/20">
+                    <div className="flex items-center space-x-1">
+                      <select
+                        value={it.package_type || 'Pallet'}
+                        onChange={e => handleUpdateItem(it.id, 'package_type', e.target.value)}
+                        className="border border-sky-200 rounded px-1 py-1 text-xs bg-white text-slate-800"
+                      >
+                        <option value="Pallet">Pallet</option>
+                        <option value="Box">Box</option>
+                        <option value="Crate">Crate</option>
+                        <option value="Wooden Box">W.Box</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={it.package_no ? it.package_no.replace(/\D/g, '') || '1' : '1'}
+                        onChange={e => handleUpdateItem(it.id, 'package_no', `PKG # ${e.target.value || '1'}`)}
+                        className="w-9 border border-sky-200 rounded px-1 py-1 text-center font-mono text-xs bg-white"
+                        placeholder="1"
+                        title="Package number"
+                      />
+                    </div>
+                  </td>
+
                   {/* Heat Number */}
                   <td className="p-2.5">
                     <input
@@ -1135,6 +1205,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
                       value={it.supplier_name}
                       onChange={e => handleUpdateItem(it.id, 'supplier_name', e.target.value)}
                       className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-blue-900 font-medium"
+                    />
+                  </td>
+
+                  {/* Supplier PO # */}
+                  <td className="p-2.5 bg-amber-50/20">
+                    <input
+                      type="text"
+                      value={it.supplier_po_number || ''}
+                      onChange={e => handleUpdateItem(it.id, 'supplier_po_number', e.target.value)}
+                      placeholder="PO #"
+                      className="w-full border border-amber-300 rounded px-1.5 py-1 text-center font-mono text-xs font-bold text-amber-950 bg-white"
                     />
                   </td>
 
