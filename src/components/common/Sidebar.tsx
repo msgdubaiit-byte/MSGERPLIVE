@@ -22,11 +22,13 @@ import {
   Tag,
   Sparkles,
   Crown,
+  Zap,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 
 export type NavTabId =
+  | 'solo_hub'
   | 'dashboard'
   | 'stock'
   | 'items'
@@ -60,7 +62,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   const pendingApprovalsCount = orders.filter(o => o.status === 'Pending Storekeeper Approval').length
   const pendingMTCCount = orders.filter(o => o.status === 'Approved' && !o.mtc_package_generated).length
 
-  const navItems: { id: NavTabId; label: string; icon: any; badge?: number; badgeColor?: string }[] = [
+  const navItems: { id: NavTabId; label: string; icon: any; badge?: number | string; badgeColor?: string }[] = [
+    { id: 'solo_hub', label: '★ Centralized Solo Hub', icon: Zap, badge: 'Workers Away', badgeColor: 'bg-amber-500 text-slate-950 font-bold' },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'stock', label: 'Master Stock', icon: Package },
     { id: 'items', label: 'Item Master', icon: Boxes },
@@ -111,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
                 <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                 <span className="truncate">{item.label}</span>
               </div>
-              {item.badge !== undefined && item.badge > 0 && (
+              {item.badge !== undefined && (typeof item.badge === 'number' ? item.badge > 0 : Boolean(item.badge)) && (
                 <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold shrink-0 ${item.badgeColor || 'bg-red-600'}`}>
                   {item.badge}
                 </span>

@@ -99,6 +99,20 @@
         <h4 class="fw-bold mb-1 text-white">MSG OILFIELD PORTAL</h4>
         <p class="text-warning small mb-4">Material Solutions Grid &bull; Technical Sourcing</p>
 
+        <!-- Special Solo Access (Workers Away Mode) -->
+        <div class="credentials-box mb-4 text-start" style="border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.12); border-radius: 12px; padding: 14px;">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <span class="badge bg-warning text-dark fw-bold"><i class="bi bi-lightning-charge-fill me-1"></i>Special Solo Access</span>
+                <span class="badge bg-dark text-warning small">Workers Away Mode</span>
+            </div>
+            <p class="text-white-50 small mb-2" style="font-size: 0.8rem;">
+                Fast-track 1-click access for solo operators, weekends, or after-hours when staff is absent.
+            </p>
+            <button type="button" class="btn btn-warning text-dark fw-bold w-100 btn-sm shadow-sm py-2" onclick="loginSoloMode()">
+                <i class="bi bi-shield-lock-fill me-1"></i>Enter Centralized Solo Portal (1-Click)
+            </button>
+        </div>
+
         {% if error %}
         <div class="alert alert-danger py-2 small mb-3" role="alert">
             <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ error }}
@@ -127,25 +141,18 @@
             </button>
         </form>
 
-        <!-- Special 1-Click Login When Workers Are Away -->
-        <div class="mt-4 pt-3 border-top border-secondary text-start">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-                <span class="text-warning small fw-bold"><i class="bi bi-shield-lock-fill me-1"></i> Special Login (Workers Away / Emergency Access)</span>
-                <span class="badge bg-warning text-dark text-uppercase" style="font-size:0.65rem;">1-Click Entry</span>
-            </div>
-            <a href="/special-login" class="btn btn-outline-warning w-100 fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center text-decoration-none">
-                <i class="bi bi-person-badge-fill me-2 fs-5"></i>
-                <span>Special Duty Login (Supervisor / Master Access)</span>
-            </a>
-            <small class="text-muted d-block mt-2 text-center" style="font-size:0.75rem;">
-                No password typing required &bull; Direct access for managers, owners &amp; duty supervisors
-            </small>
-        </div>
-
         <div class="mt-4 text-muted small">
             &copy; 2026 MSG Oilfield — Sourcing - Reliable & Systematic
         </div>
     </div>
 
+    <script>
+        function loginSoloMode() {
+            const form = document.querySelector('form');
+            form.querySelector('input[name="username"]').value = 'info@msgoilfield.com';
+            form.querySelector('input[name="password"]').value = 'MSG#2026!SecP@ss982';
+            form.submit();
+        }
+    </script>
 </body>
 </html>

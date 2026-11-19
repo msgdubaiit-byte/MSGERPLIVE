@@ -25,11 +25,12 @@ import { AuditLogsView } from './components/audit/AuditLogsView'
 import { SettingsView } from './components/settings/SettingsView'
 import { PDFPreviewModal } from './components/common/PDFPreviewModal'
 import { ERPChatbot } from './components/chat/ERPChatbot'
+import { CentralizedSoloHub } from './components/solo/CentralizedSoloHub'
 import { db } from './services/db'
 
 const MainApp: React.FC = () => {
   const { isAuthenticated, currentUser, canAccessModule } = useAuth()
-  const [activeTab, setActiveTab] = useState<NavTabId>('dashboard')
+  const [activeTab, setActiveTab] = useState<NavTabId>('solo_hub')
   const [, setDbVersion] = useState(0)
 
   // Reactive listener to DB changes across the app
@@ -43,7 +44,7 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (!canAccessModule(activeTab)) {
       const allModules: NavTabId[] = [
-        'dashboard', 'orders', 'sourcing', 'stickers', 'stock', 'items', 'traceability',
+        'solo_hub', 'dashboard', 'orders', 'sourcing', 'stickers', 'stock', 'items', 'traceability',
         'allocation', 'loc', 'approvals', 'mtc', 'local_purchase', 'dispatch',
         'movements', 'returns', 'reports', 'excel', 'users', 'audit', 'settings'
       ]
@@ -99,6 +100,13 @@ const MainApp: React.FC = () => {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
+            {activeTab === 'solo_hub' && (
+              <CentralizedSoloHub
+                onNavigateTab={(tab) => setActiveTab(tab)}
+                onOpenHeatModal={(heat) => setActiveHeatForModal(heat)}
+              />
+            )}
+
             {activeTab === 'dashboard' && (
               <Dashboard
                 onNavigate={(tab, filter) => {

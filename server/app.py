@@ -76,14 +76,6 @@ def login():
 
     return render_template('login.html')
 
-@app.route('/special-login', methods=['GET', 'POST'])
-def special_login():
-    """1-Click Special Duty Login for when regular workers/staff are away."""
-    session['logged_in'] = True
-    session['username'] = 'Supervisor (Duty Master)'
-    session['role'] = 'manager'
-    return redirect(url_for('index'))
-
 @app.route('/logout')
 def logout():
     session.clear()

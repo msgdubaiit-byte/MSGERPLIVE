@@ -5,28 +5,28 @@ import { initialUsers, db } from '../services/db'
 
 export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
   super_admin: [
-    'dashboard', 'stock', 'items', 'traceability', 'orders', 'allocation', 'sourcing',
+    'solo_hub', 'dashboard', 'stock', 'items', 'traceability', 'orders', 'allocation', 'sourcing',
     'loc', 'stickers', 'approvals', 'mtc', 'local_purchase', 'dispatch', 'movements',
     'returns', 'reports', 'excel', 'users', 'audit', 'settings'
   ],
   admin_inventory: [
-    'dashboard', 'stock', 'items', 'traceability', 'orders', 'allocation', 'sourcing',
+    'solo_hub', 'dashboard', 'stock', 'items', 'traceability', 'orders', 'allocation', 'sourcing',
     'loc', 'stickers', 'approvals', 'mtc', 'local_purchase', 'movements', 'returns', 'reports', 'excel', 'settings'
   ],
   sales_team: [
-    'dashboard', 'orders', 'sourcing', 'stickers', 'loc', 'stock', 'traceability'
+    'solo_hub', 'dashboard', 'orders', 'sourcing', 'stickers', 'loc', 'stock', 'traceability'
   ],
   storekeeper: [
-    'approvals', 'stock', 'traceability', 'loc', 'dispatch', 'movements'
+    'solo_hub', 'approvals', 'stock', 'traceability', 'loc', 'dispatch', 'movements'
   ],
   mtc_controller: [
-    'mtc', 'traceability', 'orders', 'stock', 'local_purchase'
+    'solo_hub', 'mtc', 'traceability', 'orders', 'stock', 'local_purchase'
   ],
   dispatch_team: [
-    'dispatch', 'orders', 'stickers', 'stock'
+    'solo_hub', 'dispatch', 'orders', 'stickers', 'stock'
   ],
   management_viewer: [
-    'dashboard', 'reports', 'stock', 'orders', 'audit'
+    'solo_hub', 'dashboard', 'reports', 'stock', 'orders', 'audit'
   ],
 }
 
@@ -40,6 +40,14 @@ export interface VipPreset {
 }
 
 export const VIP_PRESETS: VipPreset[] = [
+  {
+    id: 'workers_away_solo',
+    label: '★ Centralized Solo Hub (Workers Away Mode)',
+    description: 'Centralized all-in-one hub: 1-click order deliverables, instant heat & stock finder, local purchase split, stickers, and fast approvals in 1 screen.',
+    badge: 'Workers Away Fast-Track',
+    badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+    modules: ['solo_hub', 'sourcing', 'orders', 'stock', 'stickers', 'local_purchase'],
+  },
   {
     id: 'simplified_sales',
     label: 'Simplified Sales Team (4 Options)',

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { initialUsers } from '../../services/db'
-import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, Zap } from 'lucide-react'
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth()
@@ -50,6 +50,25 @@ export const LoginPage: React.FC = () => {
           <div className="inline-block bg-red-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase mt-2">
             Enterprise Portal
           </div>
+        </div>
+
+        {/* Special Solo Operator / Workers Away Fast Access */}
+        <div className="bg-amber-500/10 border-b border-amber-500/30 p-4 text-center">
+          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-amber-600 uppercase tracking-wide">
+            <Zap className="h-4 w-4 fill-current text-amber-500" />
+            <span>Special Solo Login (Workers Away Mode)</span>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-1">
+            Centralized fast-track portal for solo operators, weekends &amp; after-hours when staff is absent.
+          </p>
+          <button
+            type="button"
+            onClick={() => handleQuickLogin('admin@msgoilfield.ae')}
+            className="mt-2.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black py-2.5 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer transform hover:-translate-y-0.5"
+          >
+            <Zap className="h-4 w-4 fill-current text-slate-950" />
+            <span>Enter Centralized Solo Hub (1-Click)</span>
+          </button>
         </div>
 
         {/* Form Body */}
@@ -134,25 +153,8 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Special 1-Click Login When Workers Are Away */}
-          <div className="mt-5 pt-4 border-t border-slate-200">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 shadow-sm text-center">
-              <div className="flex items-center justify-center space-x-1.5 text-amber-800 text-xs font-bold mb-1">
-                <Shield className="h-4 w-4 text-amber-600" />
-                <span>Special Duty Login (When Workers Are Away)</span>
-              </div>
-              <p className="text-[11px] text-amber-700 mb-2">
-                1-Click Master Access for Owners, Managers &amp; Supervisors without typing credentials.
-              </p>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@msgoilfield.ae')}
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center space-x-2 shadow cursor-pointer"
-              >
-                <span>⭐ 1-Click Master Duty Access</span>
-              </button>
-            </div>
-
+          {/* Quick Demo Role Logins */}
+          <div className="mt-6 pt-5 border-t border-slate-200">
             <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
               Quick Role-Based Access Evaluation (1-Click)
             </div>
