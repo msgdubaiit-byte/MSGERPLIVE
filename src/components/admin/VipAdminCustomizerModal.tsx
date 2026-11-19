@@ -31,6 +31,8 @@ import {
   Sliders,
   CheckCircle2,
   Sparkle,
+  Zap,
+  Cpu,
 } from 'lucide-react'
 
 export interface ModuleItemDef {
@@ -44,6 +46,14 @@ export interface ModuleItemDef {
 
 export const ALL_ERP_MODULES: ModuleItemDef[] = [
   // Sales & Orders
+  {
+    id: 'solo_hub',
+    label: '★ Centralized Solo Hub',
+    category: 'Sales & Orders',
+    icon: Zap,
+    description: 'All-in-one operations portal for solo operators, after-hours, and workers away mode',
+    recommendedFor: 'Solo Operators, Shift Supervisors, Fast-Track Duty Desk',
+  },
   {
     id: 'orders',
     label: 'Sales Orders',
@@ -211,6 +221,14 @@ export const ALL_ERP_MODULES: ModuleItemDef[] = [
     icon: Settings,
     description: 'Cloud PostgreSQL sync, API keys, database backups, system migrations',
     recommendedFor: 'Super Admin',
+  },
+  {
+    id: 'it_console',
+    label: '🛠️ IT Software Config',
+    category: 'System & Admin',
+    icon: Cpu,
+    description: 'Configure all software settings, document templates, stamp calibrations, and RBAC matrix',
+    recommendedFor: 'IT Systems Engineer, Technical Architect',
   },
 ]
 

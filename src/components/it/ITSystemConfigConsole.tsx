@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Cpu,
   ShieldCheck,
@@ -26,11 +26,25 @@ import {
   Server,
   Layers,
   Save,
-  RotateCcw
+  RotateCcw,
+  Boxes,
+  Tag,
+  CheckSquare,
+  FileCheck2,
+  ShoppingBag,
+  History,
+  BarChart3,
+  FileUp,
+  ScrollText,
+  Zap,
+  Check,
+  Crown
 } from 'lucide-react'
 import { db, SystemCustomConfig } from '../../services/db'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, DEFAULT_ROLE_MODULES, VIP_PRESETS } from '../../context/AuthContext'
 import { NavTabId } from '../common/Sidebar'
+import { UserRole } from '../../types'
+import { VipAdminCustomizerModal, ALL_ERP_MODULES, ModuleItemDef } from '../admin/VipAdminCustomizerModal'
 
 interface ITSystemConfigConsoleProps {
   onNavigateTab: (tab: NavTabId) => void
@@ -45,17 +59,141 @@ type ConfigTab =
   | 'integrations'
   | 'privacy_redaction'
 
+interface GranularActionPrivilege {
+  key: string
+  label: string
+  category: string
+  description: string
+  isSecurityCritical?: boolean
+}
+
+const GRANULAR_ACTION_PRIVILEGES: GranularActionPrivilege[] = [
+  {
+    key: 'can_upload_so_pdf',
+    label: 'Sales Order PDF Drag-and-Drop Auto-Parse',
+    category: 'Orders & Commercial',
+    description: 'Extract customer name, line items, and quantities from PO scans'
+  },
+  {
+    key: 'can_create_orders',
+    label: 'Create & Edit Sales Orders',
+    category: 'Orders & Commercial',
+    description: 'Manually create orders, update line positions, and modify customer references'
+  },
+  {
+    key: 'can_storekeeper_approve',
+    label: 'Storekeeper Fast-Track Release & Approvals',
+    category: 'Warehouse & Yard',
+    description: 'Authorize physical release of allocated stock and release goods for dispatch'
+  },
+  {
+    key: 'can_local_purchase_split',
+    label: 'Local Purchase Allocation & Exact PCS Splitting',
+    category: 'Warehouse & Yard',
+    description: 'Split line items across local suppliers and allocate exact piece quantities'
+  },
+  {
+    key: 'can_export_client_summary',
+    label: 'Client Summary (.xlsx) Export',
+    category: 'Export Deliverables',
+    description: 'Download official customer-facing Excel sheet with clean layout'
+  },
+  {
+    key: 'can_export_stores_summary',
+    label: 'Internal Stores Sheet (11-Column .xlsx) Export',
+    category: 'Export Deliverables',
+    description: 'Download internal operations sheet with heat numbers and warehouse bay details'
+  },
+  {
+    key: 'can_export_cipl',
+    label: 'CIPL Logistics Workbook (Commercial Invoice & Packing List)',
+    category: 'Export Deliverables',
+    description: 'Export multi-sheet workbook with HS codes, net weights, and dimensions'
+  },
+  {
+    key: 'can_export_supplier_po',
+    label: 'Supplier POs (.zip) Generation',
+    category: 'Export Deliverables',
+    description: 'Auto-generate and download zip archive of supplier purchase orders'
+  },
+  {
+    key: 'can_stamp_mtc',
+    label: 'MTC Inspection Quality Stamp & Seal Endorsement',
+    category: 'Quality Assurance',
+    description: 'Digitally stamp and verify EN 10204 3.1 mill test certificates'
+  },
+  {
+    key: 'can_generate_stickers',
+    label: 'QR Code Thermal Yard Stickers',
+    category: 'Warehouse & Yard',
+    description: 'Generate 58mm x 39mm waterproof barcode yard labels'
+  },
+  {
+    key: 'can_view_prices',
+    label: 'Commercial Financial Data Visibility',
+    category: 'Security & Privacy',
+    description: 'View unmasked customer rates, unit prices, and contract values (Unchecked = Masked)',
+    isSecurityCritical: true
+  },
+  {
+    key: 'can_backup_database',
+    label: 'Full Database JSON Backup & Restore Rights',
+    category: 'Security & Privacy',
+    description: 'Export or import complete ERP database snapshots',
+    isSecurityCritical: true
+  }
+]
+
 export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ onNavigateTab }) => {
-  const { currentUser, currentRole } = useAuth()
-  const [activeTab, setActiveTab] = useState<ConfigTab>('branding')
+  const {
+    currentUser,
+    currentRole,
+    customPermissions,
+    updateCustomPermissions,
+    getAllowedModulesForTarget
+  } = useAuth()
+
+  const [activeTab, setActiveTab] = useState<ConfigTab>('roles_governance')
   const [config, setConfig] = useState<SystemCustomConfig>(() => db.getSystemConfig())
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [diagnostics, setDiagnostics] = useState(() => db.getSystemDiagnostics())
+  const [isVipModalOpen, setIsVipModalOpen] = useState(false)
 
-  const [testConnectionStatus, setTestConnectionStatus] = useState<string | null>(null)
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
+  // Real-time user list
+  const users = db.getUsers()
 
-  // Reload diagnostics periodically or on change
+  // Target selection for RBAC Matrix (Role vs Individual Employee)
+  const [targetType, setTargetType] = useState<'role' | 'user'>('role')
+  const [selectedRole, setSelectedRole] = useState<UserRole>('sales_team')
+  const [selectedUserId, setSelectedUserId] = useState<string>(() => users[0]?.id || '')
+
+  const currentTargetKey = targetType === 'role' ? selectedRole : selectedUserId
+
+  // Local state for module checkboxes of currently selected target
+  const [targetModules, setTargetModules] = useState<string[]>(() => {
+    return getAllowedModulesForTarget(targetType === 'role' ? selectedRole : selectedUserId)
+  })
+
+  // Feature action permissions storage
+  const [featurePermissions, setFeaturePermissions] = useState<Record<string, Record<string, boolean>>>(() => {
+    const saved = localStorage.getItem('msg_custom_feature_permissions')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        return {}
+      }
+    }
+    return {}
+  })
+
+  // When selected target changes, load their active modules
+  useEffect(() => {
+    const key = targetType === 'role' ? selectedRole : selectedUserId
+    setTargetModules(getAllowedModulesForTarget(key))
+  }, [targetType, selectedRole, selectedUserId, customPermissions])
+
+  // Reload diagnostics periodically or on config change
   useEffect(() => {
     setDiagnostics(db.getSystemDiagnostics())
   }, [config])
@@ -103,6 +241,76 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
     }
     reader.readAsText(file)
     e.target.value = ''
+  }
+
+  // Toggle single module for selected target
+  const handleToggleModule = (moduleId: string) => {
+    setTargetModules(prev => {
+      if (prev.includes(moduleId)) {
+        return prev.filter(m => m !== moduleId)
+      } else {
+        return [...prev, moduleId]
+      }
+    })
+  }
+
+  // Toggle single action privilege
+  const handleToggleActionPrivilege = (privilegeKey: string) => {
+    setFeaturePermissions(prev => {
+      const targetMap = prev[currentTargetKey] ? { ...prev[currentTargetKey] } : {}
+      const currentVal = targetMap[privilegeKey] !== undefined ? targetMap[privilegeKey] : true
+      targetMap[privilegeKey] = !currentVal
+      const next = { ...prev, [currentTargetKey]: targetMap }
+      localStorage.setItem('msg_custom_feature_permissions', JSON.stringify(next))
+      return next
+    })
+  }
+
+  const isActionPrivilegeEnabled = (privilegeKey: string): boolean => {
+    if (featurePermissions[currentTargetKey] && featurePermissions[currentTargetKey][privilegeKey] !== undefined) {
+      return featurePermissions[currentTargetKey][privilegeKey]
+    }
+    // Default: for it_engineer, price visibility is false
+    if (currentTargetKey === 'it_engineer' && privilegeKey === 'can_view_prices') {
+      return false
+    }
+    return true
+  }
+
+  // Apply custom modules & feature privileges in 1 click
+  const handleApplyPermissions = () => {
+    updateCustomPermissions(currentTargetKey, targetModules)
+    db.logAudit(
+      currentUser?.email || 'it.engineer@msgoilfield.ae',
+      'Update Granular RBAC Permissions',
+      'IT Administration',
+      currentTargetKey,
+      null,
+      { modulesCount: targetModules.length, target: currentTargetKey }
+    )
+    setStatusNotice(`✓ Permissions successfully updated for ${currentTargetKey}! Active immediately across ERP without touching code.`)
+    setTimeout(() => setStatusNotice(null), 4000)
+  }
+
+  // Quick preset buttons
+  const handleApplyPresetAll = () => {
+    const allIds = ALL_ERP_MODULES.map(m => m.id)
+    setTargetModules(allIds)
+  }
+
+  const handleApplyPresetSolo = () => {
+    setTargetModules(['solo_hub', 'orders', 'sourcing', 'stock', 'stickers', 'local_purchase'])
+  }
+
+  const handleResetTargetToDefault = () => {
+    if (targetType === 'role') {
+      const defs = DEFAULT_ROLE_MODULES[selectedRole] || []
+      setTargetModules(defs)
+    } else {
+      const u = users.find(x => x.id === selectedUserId)
+      const defs = u ? DEFAULT_ROLE_MODULES[u.role] || [] : []
+      setTargetModules(defs)
+    }
   }
 
   return (
@@ -191,6 +399,19 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
       <div className="flex items-center space-x-2 overflow-x-auto pb-1 border-b border-slate-200 text-xs font-bold">
         <button
           type="button"
+          onClick={() => setActiveTab('roles_governance')}
+          className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
+            activeTab === 'roles_governance'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          <span>User Roles &amp; Granular Permissions</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('branding')}
           className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
             activeTab === 'branding'
@@ -226,19 +447,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         >
           <Flame className="h-3.5 w-3.5 text-orange-400" />
           <span>MTC Quality Stamp Calibrator</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('roles_governance')}
-          className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
-            activeTab === 'roles_governance'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Users className="h-3.5 w-3.5" />
-          <span>User Roles &amp; Permissions</span>
         </button>
 
         <button
@@ -281,7 +489,276 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         </button>
       </div>
 
-      {/* TAB 1: BRANDING & COMPANY DEFAULTS */}
+      {/* TAB 1: ROLES GOVERNANCE & GRANULAR PERMISSIONS MATRIX */}
+      {activeTab === 'roles_governance' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <div className="flex items-center space-x-2">
+                <Users className="h-5 w-5 text-indigo-600" />
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Universal Granular Permission Matrix (Live UI Access Control)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Grant or revoke access to any module or feature line in real-time. Changes apply instantly without touching code or redeploying.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsVipModalOpen(true)}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Crown className="h-4 w-4" />
+                <span>Open VIP Visual Customizer</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplyPermissions}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-md"
+              >
+                <Check className="h-4 w-4 stroke-[2.5]" />
+                <span>Save &amp; Apply Access Immediately</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Target Mode Selector: Role vs Specific User */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-4 text-xs font-bold">
+                <span className="text-slate-500 uppercase tracking-wider text-[11px]">Configure Access For:</span>
+                <label className="flex items-center space-x-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="targetType"
+                    checked={targetType === 'role'}
+                    onChange={() => setTargetType('role')}
+                    className="text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>By Corporate Role</span>
+                </label>
+                <label className="flex items-center space-x-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="targetType"
+                    checked={targetType === 'user'}
+                    onChange={() => setTargetType('user')}
+                    className="text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>By Specific Employee</span>
+                </label>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleApplyPresetAll}
+                  className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg cursor-pointer"
+                >
+                  ⚡ Select All 21 Modules
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyPresetSolo}
+                  className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-800 border border-amber-200 rounded-lg cursor-pointer"
+                >
+                  ★ Solo Hub Preset
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetTargetToDefault}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3 inline mr-1" />
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+
+            {/* Target Select Dropdown / Buttons */}
+            {targetType === 'role' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                {(
+                  [
+                    { role: 'sales_team', label: 'Commercial Sales' },
+                    { role: 'storekeeper', label: 'Storekeeper / Yard' },
+                    { role: 'mtc_controller', label: 'QA / MTC Controller' },
+                    { role: 'dispatch_team', label: 'Dispatch & Logistics' },
+                    { role: 'admin_inventory', label: 'Inventory Manager' },
+                    { role: 'management_viewer', label: 'Management Viewer' },
+                    { role: 'super_admin', label: 'Super Admin' },
+                    { role: 'it_engineer', label: 'IT Systems Engineer' },
+                  ] as { role: UserRole; label: string }[]
+                ).map(r => (
+                  <button
+                    key={r.role}
+                    type="button"
+                    onClick={() => setSelectedRole(r.role)}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      selectedRole === r.role
+                        ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-300 font-bold text-slate-900 shadow-sm'
+                        : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold truncate">{r.label}</div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      {targetType === 'role' && selectedRole === r.role
+                        ? `${targetModules.length} modules enabled`
+                        : `${getAllowedModulesForTarget(r.role).length} modules`}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setSelectedUserId(u.id)}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      selectedUserId === u.id
+                        ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-300 font-bold text-slate-900 shadow-sm'
+                        : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold truncate">{u.employee_name}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{u.email} ({u.role})</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 1: Module-by-Module Access Matrix (21 Modules) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <Layers className="h-4 w-4 text-indigo-600" />
+                <span>1. ERP Modules Visible to {currentTargetKey} ({targetModules.length} of {ALL_ERP_MODULES.length} Active):</span>
+              </h4>
+              <span className="text-[11px] font-bold text-indigo-700">
+                Click any card to toggle visibility
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+              {ALL_ERP_MODULES.map(module => {
+                const Icon = module.icon
+                const isEnabled = targetModules.includes(module.id)
+
+                return (
+                  <div
+                    key={module.id}
+                    onClick={() => handleToggleModule(module.id)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-2.5 select-none ${
+                      isEnabled
+                        ? 'border-indigo-400 bg-indigo-50/50 hover:bg-indigo-50 shadow-xs'
+                        : 'border-slate-200 bg-slate-50/40 hover:bg-slate-100/70 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-2.5">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                        isEnabled ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">{module.label}</div>
+                        <div className="text-[10px] text-slate-500 leading-tight mt-0.5">{module.description}</div>
+                      </div>
+                    </div>
+
+                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                      isEnabled ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 bg-white'
+                    }`}>
+                      {isEnabled && <Check className="h-3 w-3 stroke-[3]" />}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Section 2: Granular Feature Actions (Line-by-Line Controls) */}
+          <div className="space-y-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <h4 className="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <Sliders className="h-4 w-4 text-emerald-600" />
+                <span>2. Granular Action Privileges &amp; Operations (Line-by-Line Controls):</span>
+              </h4>
+              <span className="text-[11px] font-bold text-emerald-700">
+                Custom feature authorization
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              {GRANULAR_ACTION_PRIVILEGES.map(priv => {
+                const isEnabled = isActionPrivilegeEnabled(priv.key)
+
+                return (
+                  <div
+                    key={priv.key}
+                    onClick={() => handleToggleActionPrivilege(priv.key)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-2.5 select-none ${
+                      isEnabled
+                        ? priv.isSecurityCritical
+                          ? 'border-amber-400 bg-amber-50/60'
+                          : 'border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50'
+                        : 'border-slate-200 bg-slate-50/40 hover:bg-slate-100 opacity-60'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-slate-900 flex items-center space-x-1.5">
+                        <span>{priv.label}</span>
+                        {priv.isSecurityCritical && (
+                          <span className="bg-amber-200 text-amber-900 text-[9px] font-black px-1.5 py-0.2 rounded font-mono">
+                            Security Guard
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500">{priv.description}</div>
+                      <div className="text-[10px] text-slate-400 font-mono uppercase">{priv.category}</div>
+                    </div>
+
+                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                      isEnabled
+                        ? priv.isSecurityCritical
+                          ? 'bg-amber-600 border-amber-600 text-white'
+                          : 'bg-emerald-600 border-emerald-600 text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}>
+                      {isEnabled && <Check className="h-3 w-3 stroke-[3]" />}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Action Footer */}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs text-slate-500 font-medium">
+              💡 Permissions persist in local database and apply dynamically across all sessions and worker accounts.
+            </span>
+            <button
+              type="button"
+              onClick={handleApplyPermissions}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all shadow-md flex items-center space-x-1.5 cursor-pointer ml-auto"
+            >
+              <Check className="h-4 w-4 stroke-[3]" />
+              <span>Apply &amp; Save Permissions Now</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: BRANDING & COMPANY DEFAULTS */}
       {activeTab === 'branding' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -360,7 +837,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         </div>
       )}
 
-      {/* TAB 2: DOCUMENT TEMPLATES & DELIVERABLES CUSTOMIZER */}
+      {/* TAB 3: DOCUMENT TEMPLATES & DELIVERABLES CUSTOMIZER */}
       {activeTab === 'templates' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -448,7 +925,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         </div>
       )}
 
-      {/* TAB 3: MTC QUALITY STAMP CALIBRATOR */}
+      {/* TAB 4: MTC QUALITY STAMP CALIBRATOR */}
       {activeTab === 'stamp_calibration' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -572,83 +1049,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
 
               <div className="text-[10px] text-slate-400 mt-4 text-center">
                 Calibrated coordinates automatically apply during dynamic PDF stamping in the MTC engine.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: ROLES GOVERNANCE & USER PERMISSIONS */}
-      {activeTab === 'roles_governance' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900">User Role Governance &amp; Security Controls</h3>
-              <p className="text-xs text-slate-500">
-                Manage account authorization, module assignment, and session security policies.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('users')}
-              className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span>Open User Accounts Manager &rarr;</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
-              <div className="font-extrabold text-slate-900 flex items-center space-x-1.5">
-                <KeyRound className="h-4 w-4 text-indigo-600" />
-                <span>Session Security Settings</span>
-              </div>
-              <div>
-                <label className="block font-medium text-slate-600 mb-1">Session Inactivity Timeout</label>
-                <select
-                  value={config.sessionTimeoutMinutes}
-                  onChange={e => setConfig({ ...config, sessionTimeoutMinutes: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-bold"
-                >
-                  <option value={15}>15 Minutes (High Security Bank Standard)</option>
-                  <option value={30}>30 Minutes</option>
-                  <option value={60}>60 Minutes (Default Operational)</option>
-                  <option value={480}>8 Hours (Full Shift Workstation)</option>
-                </select>
-              </div>
-              <div className="pt-2">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={config.enableAuditLogging}
-                    onChange={e => setConfig({ ...config, enableAuditLogging: e.target.checked })}
-                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                  />
-                  <span className="font-semibold text-slate-700">
-                    Log all security access, role switches &amp; export events to immutable audit ledger
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
-              <div className="font-extrabold text-slate-900 flex items-center space-x-1.5">
-                <ShieldAlert className="h-4 w-4 text-emerald-600" />
-                <span>Zero-Data Privacy Enforcement</span>
-              </div>
-              <div className="text-slate-600 text-[11px] leading-relaxed">
-                <p>
-                  Current Policy: <strong className="text-indigo-900">Enforced by Role Guard</strong>
-                </p>
-                <p className="mt-1">
-                  IT Engineering and System Technical Administration roles cannot view customer unit prices, total contract revenue, or billing invoices. All displays automatically redact figures.
-                </p>
-              </div>
-              <div className="pt-1">
-                <span className="inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                  ✓ Privacy Rule Active
-                </span>
               </div>
             </div>
           </div>
@@ -882,6 +1282,16 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
           </div>
         </div>
       )}
+
+      {/* Visual VIP Customizer Modal */}
+      <VipAdminCustomizerModal
+        isOpen={isVipModalOpen}
+        onClose={() => setIsVipModalOpen(false)}
+        onSuccessNotification={(msg) => {
+          setStatusNotice(msg)
+          setTimeout(() => setStatusNotice(null), 4000)
+        }}
+      />
 
     </div>
   )
