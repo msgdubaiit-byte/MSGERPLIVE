@@ -256,12 +256,14 @@ CREATE POLICY "Public MTC Vault Read Access"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'mtc-vault');
 
-CREATE POLICY "Authenticated & Anon MTC Vault Upload"
+CREATE POLICY "Authenticated MTC Vault Upload"
 ON storage.objects FOR INSERT
+TO authenticated
 WITH CHECK (bucket_id = 'mtc-vault');
 
-CREATE POLICY "MTC Vault Update & Upsert"
+CREATE POLICY "Authenticated MTC Vault Update & Upsert"
 ON storage.objects FOR UPDATE
+TO authenticated
 USING (bucket_id = 'mtc-vault');
 
 -- ========================================================================

@@ -3,6 +3,7 @@ import sys
 import json
 import tempfile
 from functools import wraps
+from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,8 +44,8 @@ app.secret_key = os.environ.get('SECRET_KEY', 'msg_oilfield_secure_secret_key_20
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'info@msgoilfield.com').strip()
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'MSG#2026!SecP@ss982').strip()
 
-VALID_USERNAMES = {ADMIN_USERNAME.lower(), 'info@msgoilfield.com', 'admin', 'info'}
-VALID_PASSWORDS = {ADMIN_PASSWORD, 'MSG#2026!SecP@ss982', 'admin123', 'admin', 'MSG2026'}
+VALID_USERNAMES = {ADMIN_USERNAME.lower(), 'info@msgoilfield.com'}
+VALID_PASSWORDS = {ADMIN_PASSWORD, 'MSG#2026!SecP@ss982'}
 
 def login_required(f):
     @wraps(f)
@@ -105,8 +106,9 @@ def parse_pdf():
     if not file.filename.lower().endswith('.pdf'):
         return jsonify({"success": False, "error": "Uploaded file must be a PDF"}), 400
 
+    safe_name = secure_filename(file.filename) or f"upload_{int(os.times()[4])}.pdf"
     temp_dir = tempfile.gettempdir()
-    temp_pdf_path = os.path.join(temp_dir, file.filename)
+    temp_pdf_path = os.path.join(temp_dir, safe_name)
     file.save(temp_pdf_path)
 
     try:
@@ -397,14 +399,16 @@ def generate_loc_labels():
         return jsonify({"error": "LOC Labels generator is not available"}), 503
 @app.route('/generate-sticker', methods=['POST'])
 @app.route('/api/generate-sticker', methods=['POST'])
+@login_required
 def generate_sticker_endpoint():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
         file = request.files['file']
 
+        safe_name = secure_filename(file.filename) or "upload.xlsx"
         temp_dir = tempfile.gettempdir()
-        temp_xlsx = os.path.join(temp_dir, f"temp_{file.filename}")
+        temp_xlsx = os.path.join(temp_dir, f"temp_{safe_name}")
         file.save(temp_xlsx)
 
         temp_out_pdf = os.path.join(temp_dir, "stickers_msg_final.pdf")
@@ -432,4 +436,5 @@ def generate_sticker_endpoint():
                 pass
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    is_debug = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1')
+    app.run(host='127.0.0.1', port=5000, debug=is_debug)

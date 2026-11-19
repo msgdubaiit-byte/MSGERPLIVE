@@ -450,14 +450,14 @@ const initialMovements: StockMovement[] = [
 
 // Initial Users with IT Administrator as USR-001 (Root Initial Administrator & System Provisioner)
 export const initialUsers: UserProfile[] = [
-  { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00' },
-  { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00' },
-  { id: 'USR-003', employee_name: 'Vikram Sharma', email: 'inventory@msgoilfield.ae', department: 'Inventory & Procurement', role: 'admin_inventory', account_status: 'Active', created_at: '2026-01-05', last_login: '2026-10-29 07:45' },
-  { id: 'USR-004', employee_name: 'Fahad Bin Rashid', email: 'sales@msgoilfield.ae', department: 'Commercial Sales', role: 'sales_team', account_status: 'Active', created_at: '2026-01-10', last_login: '2026-10-28 17:30' },
-  { id: 'USR-005', employee_name: 'Tariq Al-Hashimi', email: 'storekeeper@msgoilfield.ae', department: 'Warehouse & Yard-1', role: 'storekeeper', account_status: 'Active', created_at: '2026-01-12', last_login: '2026-10-29 07:15' },
-  { id: 'USR-006', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00' },
-  { id: 'USR-007', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40' },
-  { id: 'USR-008', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20' },
+  { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00', password: 'Admin@123' },
+  { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00', password: 'Pass@123' },
+  { id: 'USR-003', employee_name: 'Vikram Sharma', email: 'inventory@msgoilfield.ae', department: 'Inventory & Procurement', role: 'admin_inventory', account_status: 'Active', created_at: '2026-01-05', last_login: '2026-10-29 07:45', password: 'Pass@123' },
+  { id: 'USR-004', employee_name: 'Fahad Bin Rashid', email: 'sales@msgoilfield.ae', department: 'Commercial Sales', role: 'sales_team', account_status: 'Active', created_at: '2026-01-10', last_login: '2026-10-28 17:30', password: 'Pass@123' },
+  { id: 'USR-005', employee_name: 'Tariq Al-Hashimi', email: 'storekeeper@msgoilfield.ae', department: 'Warehouse & Yard-1', role: 'storekeeper', account_status: 'Active', created_at: '2026-01-12', last_login: '2026-10-29 07:15', password: 'Pass@123' },
+  { id: 'USR-006', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00', password: 'Pass@123' },
+  { id: 'USR-007', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40', password: 'Pass@123' },
+  { id: 'USR-008', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20', password: 'Pass@123' },
 ]
 
 export interface SystemCustomConfig {

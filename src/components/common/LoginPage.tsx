@@ -30,9 +30,10 @@ export const LoginPage: React.FC = () => {
   }
 
   const handleQuickLogin = (demoEmail: string) => {
+    const pass = demoEmail.includes('it.engineer') ? 'Admin@123' : 'Pass@123'
     setEmail(demoEmail)
-    setPassword('Pass@123')
-    login(demoEmail)
+    setPassword(pass)
+    login(demoEmail, pass)
   }
 
   return (
