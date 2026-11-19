@@ -19,6 +19,8 @@ export interface UserProfile {
   account_status: 'Active' | 'Inactive' | 'Suspended'
   created_at: string
   last_login?: string
+  password?: string
+  allowed_modules?: string[]
 }
 
 export interface Customer {
@@ -28,6 +30,20 @@ export interface Customer {
   address: string
   contact_details: string
   status: 'Active' | 'Inactive'
+  created_at: string
+}
+
+export interface Supplier {
+  id: string
+  supplier_code: string
+  supplier_name: string
+  country: string
+  make?: string
+  supplier_type: 'international_maker' | 'local_stockist'
+  approved_status: 'Approved' | 'Pending' | 'Conditional'
+  contact_person?: string
+  contact_email?: string
+  contact_phone?: string
   created_at: string
 }
 

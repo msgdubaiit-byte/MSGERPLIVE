@@ -18,6 +18,7 @@ import {
   FolderArchive,
   RefreshCw,
   X,
+  UploadCloud,
 } from 'lucide-react'
 import {
   mergeSelectedCertificates,
@@ -74,6 +75,33 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
   })
 
   const canAddStock = hasPermission(['super_admin', 'admin_inventory'])
+
+  const handleUploadMissingMTC = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    heatNumber: string,
+    itemCode: string,
+    supplierName?: string
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const res = db.uploadMTCForHeat(
+        heatNumber,
+        {
+          fileName: file.name,
+          fileDataUrl: dataUrl,
+          itemCode,
+          supplierName,
+          pages: 2
+        },
+        currentUser?.email || 'operations@msgoilfield.ae'
+      )
+      alert(`MTC Certificate "${file.name}" linked successfully to Heat ${heatNumber}! Affected Lots: ${res.affectedLots}, Orders: ${res.affectedOrders}`)
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleAddLotSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -488,10 +516,22 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                       {/* MTC Status */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         {isMissingMTC ? (
-                          <span className="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] flex items-center space-x-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            <span>Missing MTC</span>
-                          </span>
+                          <div className="flex items-center space-x-1.5">
+                            <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded text-[10px] flex items-center space-x-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>Missing MTC</span>
+                            </span>
+                            <label className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-2 py-0.5 rounded text-[10px] cursor-pointer shadow-sm flex items-center space-x-1 transition-colors">
+                              <UploadCloud className="h-2.5 w-2.5" />
+                              <span>Upload</span>
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) => handleUploadMissingMTC(e, s.heat_number, s.item_code, s.supplier_name)}
+                              />
+                            </label>
+                          </div>
                         ) : (
                           <button
                             onClick={() => onPreviewMTC(s.mtc_ref || 'sample-mtc.pdf', s.item_code, s.heat_number)}

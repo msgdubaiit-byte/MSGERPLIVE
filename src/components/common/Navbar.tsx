@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { UserRole } from '../../types'
-import { Search, Shield, User, LogOut, ChevronDown, Bell, Database, Trash2, Crown, ShieldCheck } from 'lucide-react'
+import { Search, Shield, User, LogOut, ChevronDown, Bell, Database, Trash2, Crown, ShieldCheck, Sparkles } from 'lucide-react'
 import { db } from '../../services/db'
 import { ClearDataModal } from './ClearDataModal'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
@@ -9,9 +9,10 @@ import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 interface NavbarProps {
   onSearchSelect: (type: 'heat' | 'order' | 'item' | 'lcode', id: string) => void
   onOpenSettings: () => void
+  onOpenGuide?: () => void
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, onOpenGuide }) => {
   const { currentUser, currentRole, switchDemoRole, resetToAdmin, logout } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -192,6 +193,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings }
               <span className="font-bold">{pendingApprovalsCount}</span>
               <span className="text-[11px]">Approval Pending</span>
             </div>
+          )}
+
+          {/* Quick Tour / Guide Replay Button */}
+          {onOpenGuide && (
+            <button
+              onClick={onOpenGuide}
+              title="Interactive Demo Walkthrough & User Guide"
+              className="flex items-center space-x-1.5 bg-gradient-to-r from-indigo-700 to-indigo-800 hover:from-indigo-800 hover:to-indigo-900 border border-indigo-400/80 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+              <span className="hidden lg:inline">System Tour</span>
+            </button>
           )}
 
           {/* VIP Admin Customizer Button */}

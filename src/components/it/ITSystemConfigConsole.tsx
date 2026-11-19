@@ -38,13 +38,28 @@ import {
   ScrollText,
   Zap,
   Check,
-  Crown
+  Crown,
+  Building2,
+  Plus,
+  Search,
+  Trash2,
+  UserPlus,
+  UserCheck,
+  UserX,
+  Edit3,
+  Image as ImageIcon
 } from 'lucide-react'
 import { db, SystemCustomConfig } from '../../services/db'
 import { useAuth, DEFAULT_ROLE_MODULES, VIP_PRESETS } from '../../context/AuthContext'
 import { NavTabId } from '../common/Sidebar'
-import { UserRole } from '../../types'
+import { UserRole, Supplier, UserProfile } from '../../types'
 import { VipAdminCustomizerModal, ALL_ERP_MODULES, ModuleItemDef } from '../admin/VipAdminCustomizerModal'
+import {
+  getStoredSupabaseConfig,
+  saveSupabaseConfig,
+  testSupabaseConnection,
+  isSupabaseConfigured
+} from '../../services/supabase'
 
 interface ITSystemConfigConsoleProps {
   onNavigateTab: (tab: NavTabId) => void
@@ -54,6 +69,7 @@ type ConfigTab =
   | 'branding'
   | 'templates'
   | 'stamp_calibration'
+  | 'suppliers_catalog'
   | 'roles_governance'
   | 'database_backup'
   | 'integrations'
@@ -159,8 +175,27 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
   const [diagnostics, setDiagnostics] = useState(() => db.getSystemDiagnostics())
   const [isVipModalOpen, setIsVipModalOpen] = useState(false)
 
-  // Real-time user list
-  const users = db.getUsers()
+  // Real-time user list & provisioning state
+  const [users, setUsers] = useState<UserProfile[]>(() => db.getUsers())
+  const [userSearchQuery, setUserSearchQuery] = useState('')
+  const [userFilterRole, setUserFilterRole] = useState<string>('all')
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [userFormData, setUserFormData] = useState<{
+    employee_name: string
+    email: string
+    department: string
+    role: UserRole
+    account_status: 'Active' | 'Inactive' | 'Suspended'
+    password?: string
+  }>({
+    employee_name: '',
+    email: '',
+    department: 'Commercial Sales',
+    role: 'sales_team',
+    account_status: 'Active',
+    password: 'Pass@123'
+  })
 
   // Target selection for RBAC Matrix (Role vs Individual Employee)
   const [targetType, setTargetType] = useState<'role' | 'user'>('role')
@@ -197,6 +232,277 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
   useEffect(() => {
     setDiagnostics(db.getSystemDiagnostics())
   }, [config])
+
+  // Suppliers state & management
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => db.getSuppliers())
+  const [supplierSearch, setSupplierSearch] = useState('')
+  const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false)
+  const [newSupplierForm, setNewSupplierForm] = useState<Partial<Supplier>>({
+    supplier_name: '',
+    supplier_code: '',
+    country: 'United Arab Emirates',
+    make: '',
+    supplier_type: 'local_stockist',
+    approved_status: 'Approved',
+    contact_person: '',
+    contact_email: '',
+    contact_phone: ''
+  })
+
+  // Subscribe to DB updates for suppliers and users
+  useEffect(() => {
+    const unsub = db.subscribe(() => {
+      setSuppliers(db.getSuppliers())
+      setUsers(db.getUsers())
+    })
+    return unsub
+  }, [])
+
+  // User management actions
+  const handleOpenAddUser = () => {
+    setEditingUserId(null)
+    setUserFormData({
+      employee_name: '',
+      email: '',
+      department: 'Commercial Sales',
+      role: 'sales_team',
+      account_status: 'Active',
+      password: 'Pass@123'
+    })
+    setIsUserModalOpen(true)
+  }
+
+  const handleOpenEditUser = (u: UserProfile) => {
+    setEditingUserId(u.id)
+    setUserFormData({
+      employee_name: u.employee_name,
+      email: u.email,
+      department: u.department,
+      role: u.role,
+      account_status: u.account_status,
+      password: u.password || 'Pass@123'
+    })
+    setIsUserModalOpen(true)
+  }
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!userFormData.employee_name.trim() || !userFormData.email.trim()) {
+      alert('Please fill in Employee Name and Corporate Email.')
+      return
+    }
+
+    if (editingUserId) {
+      db.updateUser(editingUserId, {
+        employee_name: userFormData.employee_name.trim(),
+        email: userFormData.email.trim().toLowerCase(),
+        department: userFormData.department.trim(),
+        role: userFormData.role,
+        account_status: userFormData.account_status,
+        password: userFormData.password
+      }, 'it.engineer@msgoilfield.ae')
+      setStatusNotice(`Account for "${userFormData.employee_name}" updated successfully!`)
+    } else {
+      const newUser = db.addUser({
+        employee_name: userFormData.employee_name.trim(),
+        email: userFormData.email.trim().toLowerCase(),
+        department: userFormData.department.trim(),
+        role: userFormData.role,
+        account_status: userFormData.account_status,
+        password: userFormData.password
+      }, 'it.engineer@msgoilfield.ae')
+      setStatusNotice(`New account ${newUser.id} (${newUser.employee_name}) provisioned successfully!`)
+      setSelectedUserId(newUser.id)
+      setTargetType('user')
+    }
+
+    setIsUserModalOpen(false)
+    setTimeout(() => setStatusNotice(null), 5000)
+  }
+
+  const handleToggleUserStatus = (u: UserProfile) => {
+    const nextStatus = u.account_status === 'Active' ? 'Suspended' : 'Active'
+    db.updateUser(u.id, { account_status: nextStatus }, 'it.engineer@msgoilfield.ae')
+    setStatusNotice(`Employee ${u.employee_name} status updated to ${nextStatus}.`)
+    setTimeout(() => setStatusNotice(null), 4000)
+  }
+
+  const handleDeleteUserAccount = (u: UserProfile) => {
+    if (u.id === 'USR-001') {
+      alert('Root IT Administrator account (USR-001) cannot be deleted.')
+      return
+    }
+    if (confirm(`Are you sure you want to delete employee account "${u.employee_name}" (${u.email})?`)) {
+      db.deleteUser(u.id, 'it.engineer@msgoilfield.ae')
+      setStatusNotice(`Employee account ${u.employee_name} deleted.`)
+      setTimeout(() => setStatusNotice(null), 4000)
+    }
+  }
+
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      const matchesSearch =
+        u.employee_name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.department.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.id.toLowerCase().includes(userSearchQuery.toLowerCase())
+      const matchesRole = userFilterRole === 'all' || u.role === userFilterRole
+      return matchesSearch && matchesRole
+    })
+  }, [users, userSearchQuery, userFilterRole])
+
+  // Supabase Cloud Configuration State
+  const [supabaseUrl, setSupabaseUrl] = useState(() => getStoredSupabaseConfig().url)
+  const [supabaseKey, setSupabaseKey] = useState(() => getStoredSupabaseConfig().key)
+  const [isSupabaseOnline, setIsSupabaseOnline] = useState(() => isSupabaseConfigured())
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false)
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false)
+  const [supabaseTestMsg, setSupabaseTestMsg] = useState<string | null>(null)
+
+  const handleSaveAndTestSupabase = async () => {
+    setIsTestingSupabase(true)
+    saveSupabaseConfig(supabaseUrl, supabaseKey)
+    const res = await testSupabaseConnection(supabaseUrl, supabaseKey)
+    setIsTestingSupabase(false)
+    setSupabaseTestMsg(res.message)
+    setIsSupabaseOnline(res.success)
+    if (res.success) {
+      setStatusNotice('Supabase credentials verified & saved! Connected to PostgreSQL & Storage.')
+    } else {
+      setStatusNotice('Supabase connection notice: ' + res.message)
+    }
+    setTimeout(() => setStatusNotice(null), 5000)
+  }
+
+  const handlePushAllToSupabase = async () => {
+    setIsSyncingSupabase(true)
+    saveSupabaseConfig(supabaseUrl, supabaseKey)
+    const res = await db.syncToSupabase()
+    setIsSyncingSupabase(false)
+    setStatusNotice(res.message)
+    setTimeout(() => setStatusNotice(null), 6000)
+  }
+
+  const handlePullAllFromSupabase = async () => {
+    setIsSyncingSupabase(true)
+    saveSupabaseConfig(supabaseUrl, supabaseKey)
+    const res = await db.pullFromSupabase()
+    setIsSyncingSupabase(false)
+    setStatusNotice(res.message)
+    setTimeout(() => setStatusNotice(null), 5000)
+  }
+
+  const handleDownloadSupabaseSQL = () => {
+    // Generate blob directly from schema
+    const a = document.createElement('a')
+    a.href = '/src/supabase/supabase_setup_full.sql'
+    a.download = 'supabase_msg_oilfield_setup.sql'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setStatusNotice('Supabase full migration SQL downloaded! Run it in your Supabase SQL Editor.')
+    setTimeout(() => setStatusNotice(null), 4000)
+  }
+
+  const handlePreloadSuppliers = () => {
+    const res = db.preloadAllStandardSuppliers(currentUser?.email || 'it.engineer@msgoilfield.ae')
+    setSuppliers(db.getSuppliers())
+    setStatusNotice(res.message)
+    setTimeout(() => setStatusNotice(null), 5000)
+  }
+
+  const handleBulkSupplierFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = reader.result as string
+        let importedList: Partial<Supplier>[] = []
+        if (file.name.endsWith('.json')) {
+          const parsed = JSON.parse(text)
+          importedList = Array.isArray(parsed) ? parsed : (parsed.suppliers || [])
+        } else {
+          // CSV Parser
+          const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0)
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''))
+            if (cols.length < 2) continue
+            const supp: Partial<Supplier> = {
+              supplier_name: cols[0],
+              supplier_code: cols[1] || cols[0].slice(0, 6).toUpperCase(),
+              country: cols[2] || 'United Arab Emirates',
+              make: cols[3] || cols[0],
+              supplier_type: (cols[4]?.toLowerCase().includes('mill') ? 'mill_manufacturer' : 'local_stockist') as any,
+              approved_status: 'Approved',
+              contact_person: cols[5] || '',
+              contact_email: cols[6] || '',
+              contact_phone: cols[7] || ''
+            }
+            importedList.push(supp)
+          }
+        }
+        if (importedList.length > 0) {
+          const res = db.importSuppliersBulk(importedList, currentUser?.email || 'it.engineer@msgoilfield.ae')
+          setSuppliers(db.getSuppliers())
+          setStatusNotice(res.message)
+        } else {
+          setStatusNotice('No valid supplier rows found in file.')
+        }
+      } catch (err: any) {
+        setStatusNotice('Error parsing supplier file: ' + err.message)
+      }
+      setTimeout(() => setStatusNotice(null), 5000)
+    }
+    reader.readAsText(file)
+  }
+
+  const handleAddSingleSupplier = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newSupplierForm.supplier_name) return
+    db.addSupplier(newSupplierForm, currentUser?.email || 'it.engineer@msgoilfield.ae')
+    setSuppliers(db.getSuppliers())
+    setIsAddSupplierOpen(false)
+    setNewSupplierForm({
+      supplier_name: '',
+      supplier_code: '',
+      country: 'United Arab Emirates',
+      make: '',
+      supplier_type: 'local_stockist',
+      approved_status: 'Approved',
+      contact_person: '',
+      contact_email: '',
+      contact_phone: ''
+    })
+    setStatusNotice(`Supplier "${newSupplierForm.supplier_name}" registered successfully!`)
+    setTimeout(() => setStatusNotice(null), 4000)
+  }
+
+  const handleSealImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      setConfig(prev => ({ ...prev, customSealDataUrl: dataUrl, sealShape: 'custom_image' }))
+      setStatusNotice('Official company seal image uploaded! Live preview updated.')
+      setTimeout(() => setStatusNotice(null), 4000)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSignatureImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      setConfig(prev => ({ ...prev, customSignatureDataUrl: dataUrl }))
+      setStatusNotice('Inspector signature image uploaded! Live preview updated.')
+      setTimeout(() => setStatusNotice(null), 4000)
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleSaveConfig = () => {
     db.updateSystemConfig(config, currentUser?.email || 'it.engineer@msgoilfield.ae')
@@ -446,7 +752,20 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
           }`}
         >
           <Flame className="h-3.5 w-3.5 text-orange-400" />
-          <span>MTC Quality Stamp Calibrator</span>
+          <span>MTC Seal &amp; Stamp Calibrator</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('suppliers_catalog')}
+          className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
+            activeTab === 'suppliers_catalog'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Building2 className="h-3.5 w-3.5 text-blue-500" />
+          <span>Approved Suppliers &amp; Pre-Upload</span>
         </button>
 
         <button
@@ -492,6 +811,224 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
       {/* TAB 1: ROLES GOVERNANCE & GRANULAR PERMISSIONS MATRIX */}
       {activeTab === 'roles_governance' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+
+          {/* SECTION A: ENTERPRISE STAFF ROSTER & USER ACCOUNT PROVISIONING (IT ADMIN ROOT AUTHORITY) */}
+          <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <UserPlus className="h-5 w-5 text-indigo-600" />
+                  <h4 className="font-extrabold text-sm text-slate-900">
+                    Enterprise Staff Accounts &amp; User Provisioning Hub
+                  </h4>
+                  <span className="bg-indigo-100 text-indigo-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-indigo-200">
+                    IT Engineer Authority
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  As the primary Root IT Administrator, you create and provision employee accounts, assign department roles, set passwords, and manage permissions.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAddUser}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-md self-start sm:self-auto shrink-0"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>+ Provision New Employee Account</span>
+              </button>
+            </div>
+
+            {/* Quick Stats & Filters */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-lg text-slate-700 font-bold">
+                  Total Staff: <strong className="text-indigo-600">{users.length}</strong>
+                </span>
+                <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-lg text-slate-700 font-bold">
+                  Active: <strong className="text-emerald-600">{users.filter(u => u.account_status === 'Active').length}</strong>
+                </span>
+                <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-lg text-slate-700 font-bold">
+                  Suspended: <strong className="text-rose-600">{users.filter(u => u.account_status !== 'Active').length}</strong>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-1 md:max-w-md">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Search name, email, department..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  />
+                </div>
+                <select
+                  value={userFilterRole}
+                  onChange={(e) => setUserFilterRole(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Roles ({users.length})</option>
+                  <option value="sales_team">Commercial Sales</option>
+                  <option value="storekeeper">Storekeeper / Yard</option>
+                  <option value="mtc_controller">QA / MTC Controller</option>
+                  <option value="dispatch_team">Dispatch Team</option>
+                  <option value="admin_inventory">Inventory Admin</option>
+                  <option value="management_viewer">Management Viewer</option>
+                  <option value="it_engineer">IT Systems Engineer</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Employee Accounts Roster Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100/90 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">ID &amp; Employee Name</th>
+                    <th className="py-2.5 px-3">Corporate Email</th>
+                    <th className="py-2.5 px-3">Department</th>
+                    <th className="py-2.5 px-3">Assigned Role</th>
+                    <th className="py-2.5 px-3">Active Modules</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Last Login</th>
+                    <th className="py-2.5 px-3 text-right">IT Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-800">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-slate-400">
+                        No employees found matching &quot;{userSearchQuery}&quot;
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map(u => {
+                      const userActiveModules = getAllowedModulesForTarget(u.id)
+                      const isRootIT = u.id === 'USR-001' || u.role === 'it_engineer'
+
+                      return (
+                        <tr
+                          key={u.id}
+                          className={`hover:bg-indigo-50/30 transition-colors ${
+                            selectedUserId === u.id && targetType === 'user' ? 'bg-indigo-50/60 font-semibold' : ''
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-600">
+                                {u.id}
+                              </span>
+                              <span className="font-bold text-slate-900">{u.employee_name}</span>
+                              {isRootIT && (
+                                <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full font-mono uppercase tracking-wider">
+                                  ROOT
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600 whitespace-nowrap">
+                            {u.email}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap">
+                            {u.department}
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                              u.role === 'it_engineer'
+                                ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                : u.role === 'super_admin'
+                                ? 'bg-red-100 text-red-900 border border-red-200'
+                                : u.role === 'sales_team'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                : u.role === 'storekeeper'
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                : u.role === 'mtc_controller'
+                                ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                                : u.role === 'dispatch_team'
+                                ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                                : 'bg-slate-100 text-slate-800 border border-slate-200'
+                            }`}>
+                              {u.role.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedUserId(u.id)
+                                setTargetType('user')
+                              }}
+                              className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline flex items-center space-x-1 cursor-pointer"
+                              title="Click to load and edit permissions in matrix below"
+                            >
+                              <span>{userActiveModules.length} Modules</span>
+                              <Sliders className="h-3 w-3" />
+                            </button>
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleUserStatus(u)}
+                              disabled={u.id === 'USR-001'}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black cursor-pointer transition-colors ${
+                                u.account_status === 'Active'
+                                  ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                                  : 'bg-rose-100 text-rose-900 hover:bg-rose-200'
+                              } ${u.id === 'USR-001' ? 'opacity-80 cursor-not-allowed' : ''}`}
+                            >
+                              {u.account_status}
+                            </button>
+                          </td>
+                          <td className="py-2.5 px-3 text-[11px] text-slate-500 whitespace-nowrap">
+                            {u.last_login || 'Never'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end space-x-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserId(u.id)
+                                  setTargetType('user')
+                                }}
+                                className="p-1 text-indigo-600 hover:bg-indigo-100 rounded cursor-pointer"
+                                title="Configure Granular Permissions in Matrix below"
+                              >
+                                <Sliders className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditUser(u)}
+                                className="p-1 text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+                                title="Edit Employee Details"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              {u.id !== 'USR-001' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUserAccount(u)}
+                                  className="p-1 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
+                                  title="Delete Employee Account"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* SECTION B: GRANULAR PERMISSION MATRIX HEADER & TARGET SELECTOR */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <div className="flex items-center space-x-2">
@@ -925,40 +1462,226 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         </div>
       )}
 
-      {/* TAB 4: MTC QUALITY STAMP CALIBRATOR */}
+      {/* TAB 4: MTC QUALITY STAMP & SEAL CALIBRATOR */}
       {activeTab === 'stamp_calibration' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-extrabold text-sm text-slate-900">MTC Quality Stamp &amp; Seal Calibrator</h3>
+              <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                <Flame className="h-4 w-4 text-orange-500" />
+                <span>MTC Quality Stamp, Official Seal &amp; Signature Calibrator</span>
+              </h3>
               <p className="text-xs text-slate-500">
-                Calibrate X/Y coordinate offsets, stamp dimensions, text, and inspector signature overlays on test certificates.
+                IT Staff full access: change official company seals, upload transparent inspector signatures, calibrate stamp dimensions, and customize designations.
               </p>
             </div>
             <button
               type="button"
               onClick={handleSaveConfig}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm self-start sm:self-auto"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>Save Stamp Calibration</span>
+              <span>Save Stamp &amp; Seal Configuration</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs">
-            {/* Sliders & Parameters */}
-            <div className="lg:col-span-6 space-y-4">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Quality Endorsement Stamp Text</label>
-                <textarea
-                  rows={2}
-                  value={config.mtcStampText}
-                  onChange={e => setConfig({ ...config, mtcStampText: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+            {/* Left Controls Column (7 cols) */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* Section A: Official Company Seal Image & Style */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="font-extrabold text-slate-900 flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <ImageIcon className="h-4 w-4 text-rose-600" />
+                    <span>Official Company Seal (Image &amp; Stamp Shape)</span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full">
+                    IT Configurable
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Official Seal Shape / Mode</label>
+                    <select
+                      value={config.sealShape || 'rectangular'}
+                      onChange={e => setConfig({ ...config, sealShape: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="rectangular">Rectangular Official Stamp (EN 10204 Standard)</option>
+                      <option value="round">Round Inspection Seal (Multi-Page Verification)</option>
+                      <option value="custom_image">Custom Uploaded High-Res Transparent PNG</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Border Line Width: {config.sealBorderWidth || 2}px</label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="6"
+                      value={config.sealBorderWidth || 2}
+                      onChange={e => setConfig({ ...config, sealBorderWidth: Number(e.target.value) })}
+                      className="w-full accent-indigo-600 mt-2"
+                    />
+                  </div>
+                </div>
+
+                {/* Seal Image Upload / Preview */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    {config.customSealDataUrl ? (
+                      <img
+                        src={config.customSealDataUrl}
+                        alt="Company Seal"
+                        className="h-12 w-20 object-contain border border-slate-200 rounded p-1 bg-slate-50"
+                      />
+                    ) : (
+                      <div className="h-12 w-20 flex items-center justify-center border border-dashed border-slate-300 rounded text-[10px] text-slate-400 text-center font-bold">
+                        Default Vector Seal
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-bold text-slate-900">Official Company Seal Graphic</div>
+                      <div className="text-[11px] text-slate-500">
+                        {config.customSealDataUrl ? 'Custom PNG loaded into PDF Engine' : 'Using default built-in MSG Oilfield seal'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <label className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3 py-1.5 rounded-lg border border-indigo-200 cursor-pointer flex items-center space-x-1 transition-colors">
+                      <FileUp className="h-3.5 w-3.5" />
+                      <span>Upload New Seal PNG</span>
+                      <input type="file" accept="image/*" onChange={handleSealImageUpload} className="hidden" />
+                    </label>
+                    {config.customSealDataUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfig(prev => ({ ...prev, customSealDataUrl: undefined, sealShape: 'rectangular' }))
+                          setStatusNotice('Reverted to default official vector seal.')
+                          setTimeout(() => setStatusNotice(null), 3000)
+                        }}
+                        className="text-rose-600 hover:text-rose-800 p-1.5 rounded hover:bg-rose-50"
+                        title="Remove custom seal"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Section B: QC Inspector Signature & Authority */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="font-extrabold text-slate-900 flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <ScrollText className="h-4 w-4 text-indigo-600" />
+                    <span>QC Inspector Authority &amp; Signature Graphic</span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                    IT Configurable
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Inspector Sign Code</label>
+                    <input
+                      type="text"
+                      value={config.inspectorSignName || 'MSG/QC-04'}
+                      onChange={e => setConfig({ ...config, inspectorSignName: e.target.value })}
+                      placeholder="e.g. MSG/QC-04"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Inspector Full Name</label>
+                    <input
+                      type="text"
+                      value={config.mtcInspectorName}
+                      onChange={e => setConfig({ ...config, mtcInspectorName: e.target.value })}
+                      placeholder="e.g. Tariq Al-Hashimi"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Official Designation</label>
+                    <input
+                      type="text"
+                      value={config.inspectorDesignation || 'Head Storekeeper / Lead QC'}
+                      onChange={e => setConfig({ ...config, inspectorDesignation: e.target.value })}
+                      placeholder="e.g. Lead QA/QC Material Inspector"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Signature Image Upload / Preview */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    {config.customSignatureDataUrl ? (
+                      <img
+                        src={config.customSignatureDataUrl}
+                        alt="Inspector Signature"
+                        className="h-10 w-24 object-contain border border-slate-200 rounded p-1 bg-slate-50"
+                      />
+                    ) : (
+                      <div className="h-10 w-24 flex items-center justify-center border border-dashed border-slate-300 rounded font-serif italic text-blue-900 text-xs font-bold">
+                        {config.inspectorSignName || 'MSG/QC-04'}
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-bold text-slate-900">Official Inspector Signature PNG</div>
+                      <div className="text-[11px] text-slate-500">
+                        {config.customSignatureDataUrl ? 'Custom transparent PNG signature overlay active' : 'Using cursive text font overlay'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <label className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3 py-1.5 rounded-lg border border-indigo-200 cursor-pointer flex items-center space-x-1 transition-colors">
+                      <FileUp className="h-3.5 w-3.5" />
+                      <span>Upload Signature PNG</span>
+                      <input type="file" accept="image/*" onChange={handleSignatureImageUpload} className="hidden" />
+                    </label>
+                    {config.customSignatureDataUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfig(prev => ({ ...prev, customSignatureDataUrl: undefined }))
+                          setStatusNotice('Reverted to digital cursive inspector signature.')
+                          setTimeout(() => setStatusNotice(null), 3000)
+                        }}
+                        className="text-rose-600 hover:text-rose-800 p-1.5 rounded hover:bg-rose-50"
+                        title="Remove custom signature"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section C: Dimensions, Scale & Coordinates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+                <div>
+                  <div className="flex items-center justify-between font-bold text-slate-700 mb-1">
+                    <span>Stamp Scale: {config.mtcStampScale}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="60"
+                    max="140"
+                    value={config.mtcStampScale}
+                    onChange={e => setConfig({ ...config, mtcStampScale: Number(e.target.value) })}
+                    className="w-full accent-indigo-600"
+                  />
+                </div>
+
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Stamp Color</label>
                   <div className="flex items-center space-x-2">
@@ -973,32 +1696,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Inspector / QC Name</label>
-                  <input
-                    type="text"
-                    value={config.mtcInspectorName}
-                    onChange={e => setConfig({ ...config, mtcInspectorName: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 font-semibold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between font-bold text-slate-700 mb-1">
-                  <span>Stamp Scale: {config.mtcStampScale}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="60"
-                  max="140"
-                  value={config.mtcStampScale}
-                  onChange={e => setConfig({ ...config, mtcStampScale: Number(e.target.value) })}
-                  className="w-full accent-indigo-600"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
                   <label className="block font-bold text-slate-700 mb-1">X Offset (mm): {config.mtcStampOffsetX}</label>
                   <input
                     type="range"
@@ -1009,6 +1706,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
                     className="w-full accent-indigo-600"
                   />
                 </div>
+
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Y Offset (mm): {config.mtcStampOffsetY}</label>
                   <input
@@ -1023,35 +1721,310 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
               </div>
             </div>
 
-            {/* Visual Calibration Box */}
-            <div className="lg:col-span-6 border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-slate-50 flex flex-col items-center justify-center relative min-h-[280px]">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 absolute top-3 left-4">
-                Live Calibrator Preview (A4 Certificate Canvas)
+            {/* Right Live Preview Column (5 cols) */}
+            <div className="lg:col-span-5 border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-slate-50 flex flex-col items-center justify-center relative min-h-[360px]">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 absolute top-3 left-4 flex items-center space-x-1">
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                <span>Live Certificate Stamping Preview (A4 Canvas)</span>
               </div>
 
               <div
                 style={{
-                  transform: `translate(${config.mtcStampOffsetX * 2}px, ${config.mtcStampOffsetY * 2}px) scale(${config.mtcStampScale / 100})`,
+                  transform: `translate(${config.mtcStampOffsetX * 1.5}px, ${config.mtcStampOffsetY * 1.5}px) scale(${config.mtcStampScale / 100})`,
                   borderColor: config.mtcStampColor,
+                  borderWidth: `${config.sealBorderWidth || 2}px`,
                   color: config.mtcStampColor
                 }}
-                className="p-4 rounded-xl border-3 border-solid bg-white/90 shadow-md max-w-xs text-center transition-transform select-none"
+                className={`p-4 rounded-xl bg-white shadow-lg max-w-sm w-full text-center transition-all select-none ${
+                  config.sealShape === 'round' ? 'rounded-full aspect-square flex flex-col justify-center items-center p-6' : ''
+                }`}
               >
-                <div className="font-black text-xs uppercase tracking-wider">{config.companyName}</div>
-                <div className="text-[10px] font-extrabold uppercase mt-1 px-1 border-t border-b border-current py-0.5">
-                  {config.mtcStampText}
+                {config.customSealDataUrl ? (
+                  <div className="mb-2 flex justify-center">
+                    <img src={config.customSealDataUrl} alt="Seal Preview" className="h-14 max-w-[180px] object-contain" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-black text-xs uppercase tracking-wider">{config.companyName}</div>
+                    <div className="text-[10px] font-extrabold uppercase mt-1 px-1 border-t border-b border-current py-0.5">
+                      {config.mtcStampText}
+                    </div>
+                  </>
+                )}
+
+                <div className="mt-2 text-[9px] font-mono text-left space-y-0.5 border-t border-slate-200/80 pt-1.5 text-slate-700">
+                  <div className="flex justify-between">
+                    <span>P O No.: <strong className="text-slate-900">PO-ADNOC-7700</strong></span>
+                    <span>ITEM No.: <strong className="text-slate-900">01</strong></span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>QTY: <strong className="text-slate-900">10 PCS</strong></span>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-[8px] text-slate-400">SIGN:</span>
+                      {config.customSignatureDataUrl ? (
+                        <img src={config.customSignatureDataUrl} alt="Signature" className="h-6 max-w-[80px] object-contain inline-block" />
+                      ) : (
+                        <span className="font-serif italic font-bold text-blue-900 text-[10px]">
+                          {config.inspectorSignName || 'MSG/QC-04'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-[9px] font-bold mt-2 font-mono">
-                  <span>DATE: {new Date().toISOString().substring(0, 10)}</span>
-                  <span>QC: {config.mtcInspectorName}</span>
+
+                <div className="text-[8px] text-slate-400 mt-2 font-mono uppercase tracking-wider">
+                  Verified by: {config.mtcInspectorName} &bull; {config.inspectorDesignation || 'Lead QC'}
                 </div>
               </div>
 
-              <div className="text-[10px] text-slate-400 mt-4 text-center">
-                Calibrated coordinates automatically apply during dynamic PDF stamping in the MTC engine.
+              <div className="text-[10px] text-slate-500 mt-4 text-center max-w-xs leading-relaxed">
+                Applied dynamically on EN 10204 3.1 MTC certificates. Custom seal and signature graphics are permanently embedded during export.
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: APPROVED SUPPLIERS CATALOG & PRE-UPLOAD */}
+      {activeTab === 'suppliers_catalog' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                <span>Approved Suppliers Catalog &amp; Master Pre-Upload</span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Pre-load standard international makers and UAE local stockists, or bulk-import supplier rosters via Excel/CSV for all dropdowns.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2 flex-wrap">
+              {/* 1-Click Preload All Standard Suppliers */}
+              <button
+                type="button"
+                onClick={handlePreloadSuppliers}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors cursor-pointer shadow-sm flex items-center space-x-1.5"
+                title="Populate 10 standard makers & UAE stockists"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-300" />
+                <span>Pre-load / Fetch All Approved Suppliers</span>
+              </button>
+
+              {/* Bulk File Upload */}
+              <label className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors cursor-pointer shadow-sm flex items-center space-x-1.5">
+                <UploadCloud className="h-3.5 w-3.5 text-blue-300" />
+                <span>Bulk Import (.csv / .json)</span>
+                <input type="file" accept=".csv,.json,.txt" onChange={handleBulkSupplierFile} className="hidden" />
+              </label>
+
+              {/* Add Single Supplier */}
+              <button
+                type="button"
+                onClick={() => setIsAddSupplierOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors cursor-pointer shadow-sm flex items-center space-x-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Supplier</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Filter & Search Bar */}
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <div className="relative flex-1 max-w-md">
+              <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search by Supplier Name, Code, Make or Country (e.g. Benkan, Delcorte, Promat)..."
+                value={supplierSearch}
+                onChange={e => setSupplierSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              />
+            </div>
+            <div className="text-xs text-slate-500 font-bold">
+              Total Approved Suppliers: <strong className="text-slate-900 font-mono text-sm">{suppliers.length}</strong>
+            </div>
+          </div>
+
+          {/* Suppliers Table */}
+          <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4">Supplier Code</th>
+                  <th className="py-3 px-4">Company Name</th>
+                  <th className="py-3 px-4">Make / Brand</th>
+                  <th className="py-3 px-4">Country</th>
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Contact</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {suppliers
+                  .filter(s => {
+                    const q = supplierSearch.toLowerCase()
+                    return (
+                      !q ||
+                      s.supplier_name.toLowerCase().includes(q) ||
+                      (s.supplier_code && s.supplier_code.toLowerCase().includes(q)) ||
+                      (s.make && s.make.toLowerCase().includes(q)) ||
+                      (s.country && s.country.toLowerCase().includes(q))
+                    )
+                  })
+                  .map((s, idx) => (
+                    <tr key={s.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800">{s.supplier_code}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{s.supplier_name}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-700">{s.make}</td>
+                      <td className="py-3 px-4 text-slate-600">{s.country}</td>
+                      <td className="py-3 px-4">
+                        {s.supplier_type === 'local_stockist' ? (
+                          <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
+                            UAE Local Stockist
+                          </span>
+                        ) : (
+                          <span className="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
+                            Mill / Maker
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px] flex items-center space-x-1 w-max">
+                          <Check className="h-3 w-3" />
+                          <span>{s.approved_status}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                        {s.contact_email || s.contact_phone || s.contact_person || '-'}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Add Supplier Modal */}
+          {isAddSupplierOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h4 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                    <Building2 className="h-4 w-4 text-indigo-600" />
+                    <span>Register New Approved Supplier</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSupplierOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 font-bold text-sm"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddSingleSupplier} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Company / Supplier Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newSupplierForm.supplier_name}
+                      onChange={e => setNewSupplierForm({ ...newSupplierForm, supplier_name: e.target.value })}
+                      placeholder="e.g. MEGA S.P.A. or APEX PIPING FZE"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Supplier Code</label>
+                      <input
+                        type="text"
+                        value={newSupplierForm.supplier_code}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, supplier_code: e.target.value })}
+                        placeholder="e.g. MEGA-IT or APEX-LP"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Make / Brand</label>
+                      <input
+                        type="text"
+                        value={newSupplierForm.make}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, make: e.target.value })}
+                        placeholder="e.g. MEGA ITALY"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Country</label>
+                      <input
+                        type="text"
+                        value={newSupplierForm.country}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, country: e.target.value })}
+                        placeholder="e.g. United Arab Emirates or Italy"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Supplier Type</label>
+                      <select
+                        value={newSupplierForm.supplier_type}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, supplier_type: e.target.value as any })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold"
+                      >
+                        <option value="local_stockist">Local UAE Stockist</option>
+                        <option value="mill_manufacturer">Mill / Manufacturer</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Contact Email</label>
+                      <input
+                        type="email"
+                        value={newSupplierForm.contact_email}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, contact_email: e.target.value })}
+                        placeholder="sales@supplier.ae"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Contact Phone</label>
+                      <input
+                        type="text"
+                        value={newSupplierForm.contact_phone}
+                        onChange={e => setNewSupplierForm({ ...newSupplierForm, contact_phone: e.target.value })}
+                        placeholder="+971 4 ..."
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddSupplierOpen(false)}
+                      className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md transition-colors"
+                    >
+                      Save Supplier
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1138,70 +2111,158 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         </div>
       )}
 
-      {/* TAB 6: APIS & INTEGRATIONS */}
+      {/* TAB 6: SUPABASE CLOUD BACKEND & MTC STORAGE VAULT */}
       {activeTab === 'integrations' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-extrabold text-sm text-slate-900">API Keys, Supabase &amp; Webhook Integrations</h3>
+              <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                <Database className="h-4 w-4 text-emerald-600" />
+                <span>Supabase Cloud Backend &amp; MTC Storage Vault</span>
+              </h3>
               <p className="text-xs text-slate-500">
-                Manage cloud database endpoints, SMTP servers, and automated notification webhooks.
+                PostgreSQL cloud database for all ERP tables and persistent S3-compatible cloud storage for EN 10204 3.1 MTC certificates.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('settings')}
-              className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
-            >
-              <Database className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Open Supabase Cloud Console &rarr;</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center space-x-1 ${
+                isSupabaseOnline
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${isSupabaseOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span>{isSupabaseOnline ? 'Supabase Cloud Connected' : 'Local Storage Mode (Offline)'}</span>
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
-              <div className="font-extrabold text-slate-900 flex items-center space-x-1.5">
-                <Server className="h-4 w-4 text-indigo-600" />
-                <span>SMTP Alert Mail Server</span>
+          {/* Supabase Connection Setup Box */}
+          <div className="p-5 rounded-2xl border border-emerald-200 bg-emerald-50/40 space-y-4 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="font-extrabold text-emerald-950 flex items-center space-x-2">
+                <Server className="h-4 w-4 text-emerald-700" />
+                <span>Supabase Project Credentials</span>
               </div>
+              <button
+                type="button"
+                onClick={handleDownloadSupabaseSQL}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Download the full SQL migration script to paste into Supabase"
+              >
+                <Download className="h-3 w-3 text-emerald-400" />
+                <span>Download Setup SQL (.sql)</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-medium text-slate-600 mb-1">SMTP Host</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Supabase Project URL *
+                </label>
                 <input
                   type="text"
-                  placeholder="smtp.office365.com / smtp.gmail.com"
-                  defaultValue="smtp.msgoilfield.ae"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
+                  value={supabaseUrl}
+                  onChange={e => setSupabaseUrl(e.target.value)}
+                  placeholder="https://your-project-id.supabase.co"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono text-xs focus:ring-2 focus:ring-emerald-500"
                 />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Found in Supabase Dashboard &rarr; Project Settings &rarr; API &rarr; Project URL
+                </span>
               </div>
+
               <div>
-                <label className="block font-medium text-slate-600 mb-1">Port</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Supabase Anon / Public API Key *
+                </label>
                 <input
-                  type="text"
-                  placeholder="587"
-                  defaultValue="587"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
+                  type="password"
+                  value={supabaseKey}
+                  onChange={e => setSupabaseKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono text-xs focus:ring-2 focus:ring-emerald-500"
                 />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Found in Supabase Dashboard &rarr; Project Settings &rarr; API &rarr; Project API Keys (anon public)
+                </span>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
-              <div className="font-extrabold text-slate-900 flex items-center space-x-1.5">
-                <Truck className="h-4 w-4 text-emerald-600" />
-                <span>Dispatch Alert Webhook (WhatsApp / SMS)</span>
+            <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+              <div className="text-[11px] text-slate-600 font-medium">
+                {supabaseTestMsg ? (
+                  <span className={`font-bold ${isSupabaseOnline ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {supabaseTestMsg}
+                  </span>
+                ) : (
+                  <span>Click &quot;Save &amp; Test Connection&quot; to verify PostgreSQL and MTC Storage access.</span>
+                )}
               </div>
-              <div>
-                <label className="block font-medium text-slate-600 mb-1">Webhook Endpoint URL</label>
-                <input
-                  type="text"
-                  placeholder="https://api.whatsapp-gateway.com/v1/messages"
-                  defaultValue="https://api.msgoilfield.ae/v1/webhooks/dispatch-notify"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
-                />
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Sends automated delivery note notifications to logistics drivers upon order dispatch release.
-              </p>
+
+              <button
+                type="button"
+                onClick={handleSaveAndTestSupabase}
+                disabled={isTestingSupabase}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer shadow-sm flex items-center space-x-1.5"
+              >
+                {isTestingSupabase ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                <span>{isTestingSupabase ? 'Connecting...' : 'Save &amp; Test Connection'}</span>
+              </button>
             </div>
+          </div>
+
+          {/* Cloud Synchronization Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Push to Cloud Card */}
+            <div className="border border-slate-200 rounded-2xl p-5 bg-gradient-to-br from-indigo-50/50 to-white space-y-3">
+              <div className="flex items-center space-x-2 text-indigo-950 font-bold text-sm">
+                <UploadCloud className="h-5 w-5 text-indigo-600" />
+                <span>Push All ERP &amp; MTC Data to Cloud</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Pushes all active inventory lots, balances, orders, approved suppliers, MTC certificate metadata, and system settings directly into Supabase PostgreSQL.
+              </p>
+              <button
+                type="button"
+                onClick={handlePushAllToSupabase}
+                disabled={isSyncingSupabase}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                {isSyncingSupabase ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                <span>{isSyncingSupabase ? 'Synchronizing to Cloud...' : 'Push Everything to Supabase Cloud'}</span>
+              </button>
+            </div>
+
+            {/* Pull from Cloud Card */}
+            <div className="border border-slate-200 rounded-2xl p-5 bg-gradient-to-br from-emerald-50/40 to-white space-y-3">
+              <div className="flex items-center space-x-2 text-emerald-950 font-bold text-sm">
+                <Download className="h-5 w-5 text-emerald-600" />
+                <span>Pull &amp; Restore All Data from Cloud</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Fetches latest records from Supabase PostgreSQL tables and synchronizes local state across all modules, orders, and certificates.
+              </p>
+              <button
+                type="button"
+                onClick={handlePullAllFromSupabase}
+                disabled={isSyncingSupabase}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                {isSyncingSupabase ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span>{isSyncingSupabase ? 'Restoring from Cloud...' : 'Pull Latest Data from Supabase'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* MTC Storage Vault Information Card */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2 text-xs">
+            <div className="font-extrabold text-slate-900 flex items-center space-x-2">
+              <FileText className="h-4 w-4 text-rose-600" />
+              <span>MTC Storage Bucket Policy (&apos;mtc-vault&apos;)</span>
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              When Supabase is connected, any PDF uploaded in <strong>Master Stock</strong>, <strong>Centralized Solo Hub</strong>, or <strong>Sales Order Management</strong> is automatically uploaded to the <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">mtc-vault</code> bucket. Certificates are given immutable public CDN URLs for fast client delivery note packaging.
+            </p>
           </div>
         </div>
       )}
@@ -1292,6 +2353,155 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
           setTimeout(() => setStatusNotice(null), 4000)
         }}
       />
+
+      {/* Provision / Edit Employee Account Modal */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+                  <UserPlus className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm">
+                    {editingUserId ? `Edit Account (${editingUserId})` : 'Provision New Employee Account'}
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    Configured by IT Systems Administrator (Root Provisioner)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUserModalOpen(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUser} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Employee Full Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={userFormData.employee_name}
+                  onChange={(e) => setUserFormData({ ...userFormData, employee_name: e.target.value })}
+                  placeholder="e.g. Sarah Connor"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Corporate Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={userFormData.email}
+                    onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                    placeholder="name@msgoilfield.ae"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    value={userFormData.department}
+                    onChange={(e) => setUserFormData({ ...userFormData, department: e.target.value })}
+                    placeholder="e.g. Commercial Sales"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Assigned Role
+                  </label>
+                  <select
+                    value={userFormData.role}
+                    onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value as UserRole })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 font-bold bg-white"
+                  >
+                    <option value="sales_team">Commercial Sales</option>
+                    <option value="storekeeper">Warehouse / Storekeeper</option>
+                    <option value="mtc_controller">Quality Assurance / MTC Controller</option>
+                    <option value="dispatch_team">Logistics &amp; Dispatch</option>
+                    <option value="admin_inventory">Inventory Manager</option>
+                    <option value="management_viewer">Management Viewer</option>
+                    <option value="it_engineer">IT Systems Engineer</option>
+                    <option value="super_admin">Super Administrator</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Account Status
+                  </label>
+                  <select
+                    value={userFormData.account_status}
+                    onChange={(e) => setUserFormData({ ...userFormData, account_status: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 font-bold bg-white"
+                  >
+                    <option value="Active">Active (Permitted)</option>
+                    <option value="Suspended">Suspended (Blocked)</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Initial Password / Access PIN
+                </label>
+                <input
+                  type="text"
+                  value={userFormData.password || ''}
+                  onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                  placeholder="Pass@123"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Employee can use this password to sign in immediately via the enterprise login portal.
+                </p>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-[11px] text-indigo-900 leading-relaxed">
+                <strong>Granular Access Note:</strong> Upon saving, you can customize this employee&apos;s exact module visibility and line-by-line feature permissions in the Universal Granular Permission Matrix below.
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsUserModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl shadow-md cursor-pointer flex items-center space-x-1.5"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>{editingUserId ? 'Save Account Changes' : 'Provision Employee Account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   )

@@ -156,6 +156,13 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
     return orders.filter(o => o.status === 'Pending Storekeeper Approval')
   }, [orders])
 
+  // Approved Orders Ready for Physical Stock Reduction
+  const approvedOrders = useMemo(() => {
+    return orders.filter(
+      o => o.status === 'Approved' || o.status === 'Ready for Dispatch' || o.status === 'MTC Generated'
+    )
+  }, [orders])
+
   // Fast-track approve an order without storekeeper
   const handleFastTrackApprove = (orderId: string) => {
     db.storekeeperApprove(
@@ -167,6 +174,40 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
     refreshData()
     setStatusNotice(`Order ${orderId} fast-track approved & released for dispatch!`)
     setTimeout(() => setStatusNotice(null), 4000)
+  }
+
+  // 1-Click Fast Physical Dispatch & Stock Deduction
+  const handleFastDispatchOrder = (orderId: string) => {
+    const res = db.fastDispatchOrder(
+      orderId,
+      `DN-SOLO-${Date.now().toString().slice(-5)}`,
+      currentUser?.email || 'solo.operator@msgoilfield.ae'
+    )
+    refreshData()
+    setStatusNotice(res.message)
+    setTimeout(() => setStatusNotice(null), 5000)
+  }
+
+  // Upload missing certificate directly from Solo Hub
+  const handleUploadMissingMTCForHeat = (file: File, heatNumber: string, itemCode?: string) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const res = db.uploadMTCForHeat(
+        heatNumber,
+        {
+          fileName: file.name,
+          fileDataUrl: dataUrl,
+          itemCode,
+          pages: 2
+        },
+        currentUser?.email || 'solo.operator@msgoilfield.ae'
+      )
+      refreshData()
+      setStatusNotice(`MTC Certificate "${file.name}" linked to Heat ${heatNumber}! Affected Lots: ${res.affectedLots}, Orders: ${res.affectedOrders}`)
+      setTimeout(() => setStatusNotice(null), 4000)
+    }
+    reader.readAsDataURL(file)
   }
 
   const handleOpenPreview = (tab: SourcingPreviewTab) => {
@@ -647,6 +688,55 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
             </div>
           )}
 
+          {/* Card 4: Approved Orders Ready for Physical Dispatch & Stock Reduction */}
+          {approvedOrders.length > 0 && (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Truck className="h-5 w-5 text-emerald-700" />
+                  <h3 className="font-bold text-sm text-emerald-950">
+                    Ready for Physical Dispatch &amp; Stock Deduction ({approvedOrders.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                  1-Click Stock Reduction
+                </span>
+              </div>
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Orders approved and released for delivery. Click below to immediately deduct reserved inventory from warehouse physical balances:
+              </p>
+
+              <div className="space-y-2">
+                {approvedOrders.map(order => (
+                  <div
+                    key={order.id}
+                    className="bg-white border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+                  >
+                    <div>
+                      <div className="font-bold text-xs text-slate-900 flex items-center space-x-1.5">
+                        <span>SO: {order.so_number} &bull; {order.customer_name}</span>
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                          {order.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        PO: {order.po_number} &bull; {order.items.length} line items &bull; Delivery: {order.required_delivery_date || 'Standard'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleFastDispatchOrder(order.id)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 self-start sm:self-auto shrink-0 shadow-sm"
+                    >
+                      <Truck className="h-4 w-4" />
+                      <span>Confirm Dispatch (Deduct Stock)</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* RIGHT COLUMN: Instant Heat & Stock Lookup Box (5 cols) */}
@@ -717,14 +807,31 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                         <span className="text-[10px] text-slate-400">
                           YOM: {lot.yom || '-'} &bull; Code: {lot.item_code}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => onOpenHeatModal(lot.heat_number)}
-                          className="text-[10px] text-blue-700 font-bold hover:underline flex items-center space-x-0.5 cursor-pointer"
-                        >
-                          <span>Trace Heat</span>
-                          <ExternalLink className="h-2.5 w-2.5" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {!lot.mtc_ref && (
+                            <label className="text-[10px] bg-rose-600 hover:bg-rose-700 text-white font-bold px-2 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-xs">
+                              <UploadCloud className="h-2.5 w-2.5" />
+                              <span>Upload MTC</span>
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleUploadMissingMTCForHeat(file, lot.heat_number, lot.item_code)
+                                }}
+                              />
+                            </label>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onOpenHeatModal(lot.heat_number)}
+                            className="text-[10px] text-blue-700 font-bold hover:underline flex items-center space-x-0.5 cursor-pointer"
+                          >
+                            <span>Trace Heat</span>
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )

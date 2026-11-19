@@ -15,6 +15,7 @@ import {
   StockAdjustment,
   AuditLog,
   Customer,
+  Supplier,
   UserProfile,
   ExcelImportJob,
   StockAllocation,
@@ -22,6 +23,12 @@ import {
   PurchaseType,
 } from '../types'
 import { uploadedCertificatesCache } from './certificateVault'
+import {
+  isSupabaseConfigured,
+  uploadMTCFileToSupabase,
+  pushAllTablesToSupabase,
+  pullAllTablesFromSupabase
+} from './supabase'
 
 const STORAGE_KEY_PREFIX = 'msg_oilfield_v1_'
 
@@ -440,16 +447,16 @@ const initialMovements: StockMovement[] = [
   { id: 'MOV-008', stock_lot_id: 'LOT-008', item_code: 'WSO80150F316-LOC', heat_number: 'LOC-A2212-LP', movement_type: 'Reservation', quantity: 4, reference_type: 'SalesOrder', reference_id: 'SO-2026-114', previous_balance: 10, new_balance: 6, performed_by: 'Sales Team', timestamp: '2026-10-14 09:30', remarks: 'Allocated for SO-2026-114' },
 ]
 
-// Initial Users with all 7 roles
+// Initial Users with IT Administrator as USR-001 (Root Initial Administrator & System Provisioner)
 export const initialUsers: UserProfile[] = [
-  { id: 'USR-001', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00' },
-  { id: 'USR-002', employee_name: 'Vikram Sharma', email: 'inventory@msgoilfield.ae', department: 'Inventory & Procurement', role: 'admin_inventory', account_status: 'Active', created_at: '2026-01-05', last_login: '2026-10-29 07:45' },
-  { id: 'USR-003', employee_name: 'Fahad Bin Rashid', email: 'sales@msgoilfield.ae', department: 'Commercial Sales', role: 'sales_team', account_status: 'Active', created_at: '2026-01-10', last_login: '2026-10-28 17:30' },
-  { id: 'USR-004', employee_name: 'Tariq Al-Hashimi', email: 'storekeeper@msgoilfield.ae', department: 'Warehouse & Yard-1', role: 'storekeeper', account_status: 'Active', created_at: '2026-01-12', last_login: '2026-10-29 07:15' },
-  { id: 'USR-005', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00' },
-  { id: 'USR-006', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40' },
-  { id: 'USR-007', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20' },
-  { id: 'USR-008', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-02-15', last_login: '2026-11-19 10:00' },
+  { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00' },
+  { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00' },
+  { id: 'USR-003', employee_name: 'Vikram Sharma', email: 'inventory@msgoilfield.ae', department: 'Inventory & Procurement', role: 'admin_inventory', account_status: 'Active', created_at: '2026-01-05', last_login: '2026-10-29 07:45' },
+  { id: 'USR-004', employee_name: 'Fahad Bin Rashid', email: 'sales@msgoilfield.ae', department: 'Commercial Sales', role: 'sales_team', account_status: 'Active', created_at: '2026-01-10', last_login: '2026-10-28 17:30' },
+  { id: 'USR-005', employee_name: 'Tariq Al-Hashimi', email: 'storekeeper@msgoilfield.ae', department: 'Warehouse & Yard-1', role: 'storekeeper', account_status: 'Active', created_at: '2026-01-12', last_login: '2026-10-29 07:15' },
+  { id: 'USR-006', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00' },
+  { id: 'USR-007', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40' },
+  { id: 'USR-008', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20' },
 ]
 
 export interface SystemCustomConfig {
@@ -466,6 +473,12 @@ export interface SystemCustomConfig {
   mtcStampOffsetX: number
   mtcStampOffsetY: number
   mtcInspectorName: string
+  inspectorDesignation: string
+  inspectorSignName: string
+  customSealDataUrl?: string
+  customSignatureDataUrl?: string
+  sealShape: 'rectangular' | 'round' | 'custom_image'
+  sealBorderWidth: number
   showMachinedTag: boolean
   defaultWeightSafetyBuffer: number
   ciplInvoicePrefix: string
@@ -489,6 +502,12 @@ export const defaultSystemCustomConfig: SystemCustomConfig = {
   mtcStampOffsetX: 0,
   mtcStampOffsetY: 0,
   mtcInspectorName: 'QA/QC Lead Inspector',
+  inspectorDesignation: 'Senior QA/QC Materials Inspector',
+  inspectorSignName: 'MSG/QC-04',
+  customSealDataUrl: '',
+  customSignatureDataUrl: '',
+  sealShape: 'rectangular',
+  sealBorderWidth: 2,
   showMachinedTag: true,
   defaultWeightSafetyBuffer: 15,
   ciplInvoicePrefix: 'CIPL-INV-',
@@ -498,8 +517,22 @@ export const defaultSystemCustomConfig: SystemCustomConfig = {
   dataPrivacyMaskingForIT: true,
 }
 
+export const initialSuppliers: Supplier[] = [
+  { id: 'SUPP-001', supplier_code: 'WMASS', supplier_name: 'WMASS FLANGES & FITTINGS GMBH', country: 'Germany', make: 'WMASS GERMANY', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Hans Becker', contact_email: 'sales@wmass.de', created_at: '2024-01-15' },
+  { id: 'SUPP-002', supplier_code: 'BENKAN', supplier_name: 'BENKAN CORPORATION', country: 'Thailand', make: 'BENKAN THAILAND', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Somchai Prasert', contact_email: 'export@benkan.co.th', created_at: '2024-02-10' },
+  { id: 'SUPP-003', supplier_code: 'MEGA', supplier_name: 'MEGA SPA FITTINGS & VALVES', country: 'Italy', make: 'MEGA ITALY', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Marco Rossi', contact_email: 'sales@mega-spa.it', created_at: '2024-03-05' },
+  { id: 'SUPP-004', supplier_code: 'ULMA', supplier_name: 'ULMA PIPING S. COOP.', country: 'Spain', make: 'ULMA SPAIN', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Javier Lopez', contact_email: 'info@ulmapiping.com', created_at: '2024-04-12' },
+  { id: 'SUPP-005', supplier_code: 'DELCORTE', supplier_name: 'DELCORTE SAS', country: 'France', make: 'DELCORTE FRANCE', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Pierre Dubois', contact_email: 'contact@delcorte.fr', created_at: '2024-05-20' },
+  { id: 'SUPP-006', supplier_code: 'SRI', supplier_name: 'SRI FLANGES & FORGINGS PVT LTD', country: 'India', make: 'SRI FLANGES', supplier_type: 'international_maker', approved_status: 'Approved', contact_person: 'Rajesh Nair', contact_email: 'sales@sriflanges.com', created_at: '2024-06-01' },
+  { id: 'SUPP-007', supplier_code: 'SHREE-LP', supplier_name: 'SHREE OILFIELD SUPPLY LLC', country: 'United Arab Emirates', make: 'LOCAL UAE STOCK', supplier_type: 'local_stockist', approved_status: 'Approved', contact_person: 'Sunil Sharma', contact_email: 'procurement@shreeoilfield.ae', contact_phone: '+971 4 288 9988', created_at: '2026-01-10' },
+  { id: 'SUPP-008', supplier_code: 'PROMAT-LP', supplier_name: 'PROMAT BD MIDDLE EAST FZE', country: 'United Arab Emirates', make: 'PROMAT STOCK', supplier_type: 'local_stockist', approved_status: 'Approved', contact_person: 'David Clark', contact_email: 'sales@promatme.ae', contact_phone: '+971 4 883 4511', created_at: '2026-02-15' },
+  { id: 'SUPP-009', supplier_code: 'ALJEBA-LP', supplier_name: 'AL JEBA OILFIELD TRADING LLC', country: 'United Arab Emirates', make: 'UAE PIPING', supplier_type: 'local_stockist', approved_status: 'Approved', contact_person: 'Ahmed Al-Kindi', contact_email: 'orders@aljeba.ae', contact_phone: '+971 4 332 1100', created_at: '2026-03-20' },
+  { id: 'SUPP-010', supplier_code: 'APEX-LP', supplier_name: 'APEX PIPING & TUBULARS FZE', country: 'United Arab Emirates', make: 'APEX STOCK', supplier_type: 'local_stockist', approved_status: 'Approved', contact_person: 'Khurram Khan', contact_email: 'info@apexpiping.ae', contact_phone: '+971 6 526 8899', created_at: '2026-04-05' },
+]
+
 // Database singleton and state provider
 class DBService {
+  private suppliers: Supplier[] = []
   private customers: Customer[] = []
   private items: Item[] = []
   private lots: StockLot[] = []
@@ -576,6 +609,7 @@ class DBService {
     this.importJobs = loadFromStorage('importJobs', [])
     this.users = loadFromStorage('users', initialUsers)
     this.systemConfig = loadFromStorage('systemConfig', defaultSystemCustomConfig)
+    this.suppliers = loadFromStorage('suppliers', initialSuppliers)
   }
 
   public subscribe(listener: () => void) {
@@ -590,6 +624,7 @@ class DBService {
   }
 
   // Getters
+  public getSuppliers() { return [...this.suppliers] }
   public getCustomers() { return [...this.customers] }
   public getItems() { return [...this.items] }
   public getLots() { return [...this.lots] }
@@ -1980,6 +2015,7 @@ class DBService {
     saveToStorage('audits', this.audits)
     saveToStorage('importJobs', this.importJobs)
     saveToStorage('users', this.users)
+    saveToStorage('suppliers', this.suppliers)
   }
 
   // Bulk Upload Certificates (from ZIP or multi-PDF files)
@@ -2135,6 +2171,7 @@ class DBService {
     this.adjustments = []
     this.importJobs = []
     this.users = [...initialUsers]
+    this.suppliers = [...initialSuppliers]
 
     this.saveAll()
     if (userEmail) {
@@ -2165,6 +2202,7 @@ class DBService {
       export_version: '2.0-ENTERPRISE',
       exported_at: new Date().toISOString(),
       systemConfig: this.systemConfig,
+      suppliers: this.suppliers,
       customers: this.customers,
       items: this.items,
       lots: this.lots,
@@ -2182,6 +2220,7 @@ class DBService {
   public importFullDatabaseJSON(jsonStr: string, userEmail?: string): { success: boolean; message: string } {
     try {
       const parsed = JSON.parse(jsonStr)
+      if (parsed.suppliers && Array.isArray(parsed.suppliers)) this.suppliers = parsed.suppliers
       if (parsed.customers && Array.isArray(parsed.customers)) this.customers = parsed.customers
       if (parsed.items && Array.isArray(parsed.items)) this.items = parsed.items
       if (parsed.lots && Array.isArray(parsed.lots)) this.lots = parsed.lots
@@ -2214,7 +2253,6 @@ class DBService {
     const orphanBalances = this.balances.filter(b => !this.lots.some(l => l.id === b.stock_lot_id)).length
     const localPurchasesCount = this.localPurchases.length
     const pendingApprovalsCount = this.orders.filter(o => o.status === 'Pending Storekeeper Approval').length
-
     return {
       totalCustomers: this.customers.length,
       totalItems: this.items.length,
@@ -2231,8 +2269,433 @@ class DBService {
       localPurchasesCount,
       totalAudits: this.audits.length,
       totalUsers: this.users.length,
+      totalSuppliers: this.suppliers.length,
       systemHealth: orphanBalances === 0 ? 'Optimal (100% Data Integrity)' : 'Warning (Orphan Balances Detected)'
     }
+  }
+
+  // Master Approved Suppliers Management
+  public addSupplier(supplier: Partial<Supplier>, userEmail?: string): Supplier {
+    const id = supplier.id || 'SUPP-' + Date.now().toString().slice(-4)
+    const newSupp: Supplier = {
+      id,
+      supplier_code: supplier.supplier_code || supplier.supplier_name?.slice(0, 6).toUpperCase().replace(/\s+/g, '') || 'SUPP',
+      supplier_name: supplier.supplier_name || 'Approved Supplier',
+      country: supplier.country || 'United Arab Emirates',
+      make: supplier.make || supplier.supplier_name || 'GENERIC',
+      supplier_type: supplier.supplier_type || 'local_stockist',
+      approved_status: supplier.approved_status || 'Approved',
+      contact_person: supplier.contact_person,
+      contact_email: supplier.contact_email,
+      contact_phone: supplier.contact_phone,
+      created_at: new Date().toISOString()
+    }
+    this.suppliers.unshift(newSupp)
+    this.saveAll()
+    if (userEmail) {
+      this.logAudit(userEmail, 'Add Supplier', 'Suppliers Catalog', newSupp.supplier_name, null, newSupp)
+    }
+    this.notify()
+    return newSupp
+  }
+
+  public preloadAllStandardSuppliers(userEmail?: string): { count: number; message: string } {
+    let addedCount = 0
+    for (const initSupp of initialSuppliers) {
+      const exists = this.suppliers.some(
+        s => s.supplier_code.toUpperCase() === initSupp.supplier_code.toUpperCase() ||
+             s.supplier_name.toUpperCase() === initSupp.supplier_name.toUpperCase()
+      )
+      if (!exists) {
+        this.suppliers.push({ ...initSupp })
+        addedCount++
+      }
+    }
+    this.saveAll()
+    if (userEmail) {
+      this.logAudit(userEmail, 'Preload Standard Suppliers', 'Suppliers Catalog', `${addedCount} Suppliers Added`)
+    }
+    this.notify()
+    return {
+      count: addedCount,
+      message: `Successfully pre-loaded ${addedCount} standard makers & approved UAE stockists into the master catalog!`
+    }
+  }
+
+  public importSuppliersBulk(suppliersList: Partial<Supplier>[], userEmail?: string): { success: boolean; count: number; message: string } {
+    let imported = 0
+    for (const item of suppliersList) {
+      if (!item.supplier_name) continue
+      const existingIdx = this.suppliers.findIndex(
+        s => s.supplier_name.toUpperCase() === item.supplier_name!.toUpperCase() ||
+             (item.supplier_code && s.supplier_code.toUpperCase() === item.supplier_code.toUpperCase())
+      )
+      if (existingIdx >= 0) {
+        this.suppliers[existingIdx] = { ...this.suppliers[existingIdx], ...item }
+      } else {
+        this.suppliers.push({
+          id: item.id || 'SUPP-' + Date.now().toString().slice(-4) + '-' + imported,
+          supplier_code: item.supplier_code || item.supplier_name.slice(0, 6).toUpperCase().replace(/\s+/g, ''),
+          supplier_name: item.supplier_name,
+          country: item.country || 'United Arab Emirates',
+          make: item.make || item.supplier_name,
+          supplier_type: item.supplier_type || 'local_stockist',
+          approved_status: item.approved_status || 'Approved',
+          contact_person: item.contact_person,
+          contact_email: item.contact_email,
+          contact_phone: item.contact_phone,
+          created_at: new Date().toISOString()
+        })
+      }
+      imported++
+    }
+    this.saveAll()
+    if (userEmail) {
+      this.logAudit(userEmail, 'Bulk Import Suppliers', 'Suppliers Catalog', `${imported} Suppliers Imported`)
+    }
+    this.notify()
+    return {
+      success: true,
+      count: imported,
+      message: `Bulk uploaded & synchronized ${imported} approved suppliers!`
+    }
+  }
+
+  // Upload and immediately attach an MTC Certificate to any heat number (and associated stock lots / orders)
+  public uploadMTCForHeat(
+    heatNumber: string,
+    fileData: {
+      fileName: string
+      fileDataUrl?: string
+      itemCode?: string
+      supplierName?: string
+      pages?: number
+    },
+    userEmail: string = 'operations@msgoilfield.ae'
+  ): {
+    success: boolean
+    cert: MTCCertificate
+    affectedLots: number
+    affectedOrders: number
+  } {
+    const cleanHeat = String(heatNumber || '').trim()
+    const cleanFileName = fileData.fileName.trim()
+    const certRef = cleanFileName.replace(/\.[^/.]+$/, '')
+
+    let affectedLots = 0
+    let affectedOrders = 0
+
+    // 1. Link matching stock lots
+    this.lots.forEach(lot => {
+      if (lot.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase()) {
+        lot.mtc_ref = cleanFileName
+        affectedLots++
+      }
+    })
+
+    // 2. Add or update MTC Certificate record
+    let cert = this.mtcs.find(m => m.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase())
+    if (cert) {
+      cert.certificate_reference = certRef
+      cert.original_file_path = fileData.fileDataUrl || cert.original_file_path || '/sample-mtc.pdf'
+      cert.verification_status = 'Verified'
+      cert.approval_status = 'Approved'
+      cert.pages = fileData.pages || cert.pages || 2
+      cert.upload_date = new Date().toISOString().replace('T', ' ').substring(0, 16)
+      cert.uploaded_by = userEmail
+    } else {
+      const matchingLot = this.lots.find(l => l.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase())
+      cert = {
+        id: 'MTC-' + (cleanHeat || Date.now()),
+        item_id: matchingLot?.item_id || 'AUTO',
+        item_code: fileData.itemCode || matchingLot?.item_code || 'OILFIELD-MATERIAL',
+        stock_lot_id: matchingLot?.id || '',
+        heat_number: cleanHeat,
+        yom: matchingLot?.yom || 2026,
+        certificate_reference: certRef,
+        original_file_path: fileData.fileDataUrl || '/sample-mtc.pdf',
+        purchase_type: matchingLot?.purchase_type || 'regular',
+        supplier_name: fileData.supplierName || matchingLot?.supplier_name || 'Mill / Stockist',
+        upload_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        uploaded_by: userEmail,
+        verification_status: 'Verified',
+        approval_status: 'Approved',
+        pages: fileData.pages || 2,
+        created_at: new Date().toISOString()
+      }
+      this.mtcs.unshift(cert)
+    }
+
+    // 3. Link matching Sales Order Items and Allocations
+    this.orders.forEach(order => {
+      let orderUpdated = false
+      order.items.forEach(item => {
+        if (item.heat_number && item.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase()) {
+          item.certificate_number = certRef
+          orderUpdated = true
+        }
+      })
+      if (order.allocations) {
+        order.allocations.forEach(alloc => {
+          if (alloc.heat_number && alloc.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase()) {
+            alloc.mtc_certificate_id = cert!.id
+            orderUpdated = true
+          }
+        })
+      }
+      if (orderUpdated) affectedOrders++
+    })
+
+    // Background cloud storage sync to Supabase if connected
+    if (fileData.fileDataUrl && isSupabaseConfigured()) {
+      fetch(fileData.fileDataUrl)
+        .then(r => r.blob())
+        .then(blob => uploadMTCFileToSupabase(cleanFileName, blob, 'mtcs'))
+        .then(res => {
+          if (res.success && res.url) {
+            cert!.original_file_path = res.url
+            this.saveAll()
+            this.notify()
+          }
+        })
+        .catch(err => console.warn('Supabase MTC upload background notice:', err))
+    }
+
+    this.saveAll()
+    this.logAudit(
+      userEmail,
+      'Upload Missing MTC Certificate',
+      'MTC Management',
+      cleanHeat,
+      null,
+      { file: cleanFileName, affectedLots, affectedOrders }
+    )
+    this.notify()
+
+    return {
+      success: true,
+      cert,
+      affectedLots,
+      affectedOrders
+    }
+  }
+
+  // 1-Click Fast Physical Dispatch (Deducts Physical & Reserved Stock immediately)
+  public fastDispatchOrder(
+    orderId: string,
+    deliveryNote: string = `DN-${Date.now().toString().slice(-6)}`,
+    userEmail: string = 'storekeeper@msgoilfield.ae'
+  ): { success: boolean; message: string; dispatchedCount: number } {
+    const order = this.orders.find(o => o.id === orderId)
+    if (!order) return { success: false, message: 'Sales order not found', dispatchedCount: 0 }
+
+    let totalDispatchedPcs = 0
+    const itemsSummary: { item_code: string; heat_number: string; quantity: number }[] = []
+
+    // Deduct physical inventory for every active allocation
+    if (order.allocations && order.allocations.length > 0) {
+      for (const alloc of order.allocations) {
+        if (alloc.allocation_status === 'Released') continue
+        const remainingToDispatch = alloc.allocated_qty - (alloc.dispatched_qty || 0)
+        if (remainingToDispatch <= 0) continue
+
+        const bal = this.balances.find(b => b.stock_lot_id === alloc.stock_lot_id)
+        if (bal) {
+          bal.physical_qty = Math.max(0, bal.physical_qty - remainingToDispatch)
+          bal.reserved_qty = Math.max(0, bal.reserved_qty - remainingToDispatch)
+          bal.dispatched_qty = (bal.dispatched_qty || 0) + remainingToDispatch
+          bal.updated_at = new Date().toISOString()
+        }
+
+        alloc.dispatched_qty = alloc.allocated_qty
+        alloc.allocation_status = 'Dispatched'
+        alloc.updated_at = new Date().toISOString()
+
+        const orderItem = order.items.find(i => i.id === alloc.sales_order_item_id)
+        if (orderItem) {
+          orderItem.dispatched_qty = (orderItem.dispatched_qty || 0) + remainingToDispatch
+          orderItem.line_status = 'Dispatched'
+        }
+
+        totalDispatchedPcs += remainingToDispatch
+        itemsSummary.push({
+          item_code: orderItem?.item_code || 'ITEM',
+          heat_number: alloc.heat_number,
+          quantity: remainingToDispatch
+        })
+
+        // Log Stock Movement Ledger entry
+        this.movements.unshift({
+          id: 'MOV-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+          stock_lot_id: alloc.stock_lot_id,
+          item_code: orderItem?.item_code || '',
+          heat_number: alloc.heat_number,
+          movement_type: 'Dispatch',
+          quantity: remainingToDispatch,
+          reference_type: 'DeliveryNote',
+          reference_id: deliveryNote,
+          previous_balance: bal ? bal.physical_qty + remainingToDispatch : 0,
+          new_balance: bal ? bal.physical_qty : 0,
+          performed_by: userEmail,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          remarks: `Fast-Track Dispatch: ${remainingToDispatch} PCS deducted from Physical Stock under Delivery Note ${deliveryNote}`
+        })
+      }
+    } else {
+      // If order has no discrete allocations, dispatch direct from matching lots
+      for (const item of order.items) {
+        const qtyToDispatch = item.required_qty - (item.dispatched_qty || 0)
+        if (qtyToDispatch <= 0) continue
+
+        const matchingLot = this.lots.find(l => 
+          (item.heat_number && l.heat_number.toUpperCase() === item.heat_number.toUpperCase()) ||
+          l.item_code.toUpperCase() === item.item_code.toUpperCase()
+        )
+        if (matchingLot) {
+          const bal = this.balances.find(b => b.stock_lot_id === matchingLot.id)
+          if (bal) {
+            bal.physical_qty = Math.max(0, bal.physical_qty - qtyToDispatch)
+            bal.available_qty = Math.max(0, bal.available_qty - qtyToDispatch)
+            bal.dispatched_qty = (bal.dispatched_qty || 0) + qtyToDispatch
+            bal.updated_at = new Date().toISOString()
+          }
+        }
+        item.dispatched_qty = item.required_qty
+        item.line_status = 'Dispatched'
+        totalDispatchedPcs += qtyToDispatch
+      }
+    }
+
+    // Record formal Dispatch record
+    this.dispatches.unshift({
+      id: 'DSP-' + Date.now(),
+      sales_order_id: order.id,
+      so_number: order.so_number,
+      dispatch_reference: deliveryNote,
+      delivery_note_number: deliveryNote,
+      customer_name: order.customer_name,
+      dispatch_date: new Date().toISOString().substring(0, 10),
+      items_summary: itemsSummary,
+      dispatched_by: userEmail,
+      delivery_remarks: 'Fast physical stock reduction executed successfully.',
+      created_at: new Date().toISOString()
+    })
+
+    order.status = 'Dispatched'
+    order.updated_at = new Date().toISOString()
+
+    this.saveAll()
+    this.logAudit(
+      userEmail,
+      'Fast Physical Stock Reduction & Dispatch',
+      'Dispatch',
+      order.so_number,
+      null,
+      { deliveryNote, totalDispatchedPcs, itemsSummary }
+    )
+    this.notify()
+
+    return {
+      success: true,
+      message: `Physical stock successfully reduced by ${totalDispatchedPcs} PCS! Order ${order.so_number} marked as Dispatched under Delivery Note ${deliveryNote}.`,
+      dispatchedCount: totalDispatchedPcs
+    }
+  }
+
+  // 1-Click Cloud Sync to Supabase PostgreSQL & Storage
+  public async syncToSupabase(): Promise<{ success: boolean; message: string; details: any }> {
+    const res = await pushAllTablesToSupabase(this)
+    if (res.success) {
+      this.logAudit('system', 'Supabase Cloud Sync', 'Database Sync', 'ALL_TABLES', null, res.details)
+      this.notify()
+    }
+    return res
+  }
+
+  // 1-Click Cloud Restore from Supabase
+  public async pullFromSupabase(): Promise<{ success: boolean; message: string }> {
+    const res = await pullAllTablesFromSupabase()
+    if (!res.success || !res.data) {
+      return { success: false, message: res.message }
+    }
+    if (res.data.suppliers?.length) this.suppliers = res.data.suppliers
+    if (res.data.customers?.length) this.customers = res.data.customers
+    if (res.data.items?.length) this.items = res.data.items
+    if (res.data.lots?.length) this.lots = res.data.lots
+    if (res.data.balances?.length) this.balances = res.data.balances
+    if (res.data.orders?.length) this.orders = res.data.orders
+    if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
+    if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
+
+    this.saveAll()
+    this.logAudit('system', 'Supabase Cloud Pull', 'Database Sync', 'ALL_TABLES')
+    this.notify()
+    return { success: true, message: 'All ERP tables and MTC metadata restored from Supabase Cloud!' }
+  }
+
+  // User Provisioning & Account Management (IT Engineer & Super Admin)
+  public addUser(user: Partial<UserProfile>, userEmail: string = 'it.engineer@msgoilfield.ae'): UserProfile {
+    const id = user.id || `USR-${String(this.users.length + 1).padStart(3, '0')}`
+    const newUser: UserProfile = {
+      id,
+      employee_name: user.employee_name || 'New Staff Member',
+      email: user.email || `staff.${Date.now()}@msgoilfield.ae`,
+      department: user.department || 'Operations',
+      role: user.role || 'sales_team',
+      account_status: user.account_status || 'Active',
+      created_at: new Date().toISOString().slice(0, 10),
+      last_login: undefined,
+      password: user.password || 'Pass@123',
+      allowed_modules: user.allowed_modules || []
+    }
+    this.users.push(newUser)
+    this.saveAll()
+    this.logAudit(
+      userEmail,
+      'Provision New Employee Account',
+      'User Management',
+      newUser.id,
+      null,
+      { employee_name: newUser.employee_name, email: newUser.email, role: newUser.role, department: newUser.department }
+    )
+    this.notify()
+    return newUser
+  }
+
+  public updateUser(userId: string, updates: Partial<UserProfile>, userEmail: string = 'it.engineer@msgoilfield.ae'): UserProfile | null {
+    const idx = this.users.findIndex(u => u.id === userId)
+    if (idx === -1) return null
+    const old = { ...this.users[idx] }
+    this.users[idx] = { ...this.users[idx], ...updates }
+    this.saveAll()
+    this.logAudit(
+      userEmail,
+      'Update Employee Account',
+      'User Management',
+      userId,
+      old,
+      updates
+    )
+    this.notify()
+    return this.users[idx]
+  }
+
+  public deleteUser(userId: string, userEmail: string = 'it.engineer@msgoilfield.ae'): boolean {
+    const idx = this.users.findIndex(u => u.id === userId)
+    if (idx === -1) return false
+    const deleted = this.users[idx]
+    this.users.splice(idx, 1)
+    this.saveAll()
+    this.logAudit(
+      userEmail,
+      'Delete Employee Account',
+      'User Management',
+      userId,
+      deleted,
+      null
+    )
+    this.notify()
+    return true
   }
 }
 

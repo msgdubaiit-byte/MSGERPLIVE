@@ -27,6 +27,7 @@ import { PDFPreviewModal } from './components/common/PDFPreviewModal'
 import { ERPChatbot } from './components/chat/ERPChatbot'
 import { CentralizedSoloHub } from './components/solo/CentralizedSoloHub'
 import { ITSystemConfigConsole } from './components/it/ITSystemConfigConsole'
+import { OnboardingGuideModal } from './components/common/OnboardingGuideModal'
 import { db } from './services/db'
 
 const MainApp: React.FC = () => {
@@ -70,6 +71,9 @@ const MainApp: React.FC = () => {
   // Order status filter when navigating from dashboard
   const [orderInitialFilter, setOrderInitialFilter] = useState<string | undefined>()
 
+  // Interactive Onboarding Demo Guide Modal state
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false)
+
   if (!isAuthenticated) {
     return <LoginPage />
   }
@@ -92,6 +96,7 @@ const MainApp: React.FC = () => {
       <Navbar
         onSearchSelect={handleGlobalSearchSelect}
         onOpenSettings={() => setActiveTab('settings')}
+        onOpenGuide={() => setIsOnboardingModalOpen(true)}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -256,6 +261,13 @@ const MainApp: React.FC = () => {
         onPreviewMTC={(docName, itemCode, heat) =>
           setActivePdfPreview({ docName, itemCode, heatNumber: heat })
         }
+      />
+
+      {/* Global Initial User Onboarding & Interactive Demo Guide Modal */}
+      <OnboardingGuideModal
+        isOpen={isOnboardingModalOpen ? true : undefined}
+        onClose={() => setIsOnboardingModalOpen(false)}
+        forceOpen={isOnboardingModalOpen}
       />
     </div>
   )

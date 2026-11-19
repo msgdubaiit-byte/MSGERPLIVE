@@ -6,6 +6,7 @@ import JSZip from 'jszip'
 import { getUploadedCertificateBytes } from './zipExtractor'
 import { SalesOrder } from '../types'
 import { autoDetectMake, autoDetectSupplier } from './sourcingEngine'
+import { db } from './db'
 
 export interface StampOptions {
   poNo: string
@@ -172,30 +173,56 @@ export async function stampMTCDocument(
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const fontOblique = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
 
+  const sysConfig = db.getSystemConfig()
   const pages = pdfDoc.getPages()
-  const sign = options.sign || 'MSG/QC-04'
+  const sign = options.sign || sysConfig.inspectorSignName || 'MSG/QC-04'
 
-  // Load transparent official MSG seals (rectangular for Page 1, round for subsequent pages)
+  // Load transparent official MSG seals (custom IT seal image if uploaded, or transparent PNGs)
   let sealImg: any = null
   let roundSealImg: any = null
-  try {
-    const sealRes = await fetch('/assets/seal_transparent.png').catch(() => fetch('/seal_transparent.png'))
-    if (sealRes && sealRes.ok) {
-      const buf = await sealRes.arrayBuffer()
-      sealImg = await pdfDoc.embedPng(buf)
+  let customSigImg: any = null
+
+  if (sysConfig.customSealDataUrl) {
+    try {
+      const sealBytes = await fetch(sysConfig.customSealDataUrl).then(r => r.arrayBuffer())
+      sealImg = await pdfDoc.embedPng(sealBytes).catch(() => pdfDoc.embedJpg(sealBytes))
+      roundSealImg = sealImg
+    } catch (err) {
+      console.warn('Could not load custom IT seal image', err)
     }
-  } catch (err) {
-    console.warn('Could not load seal_transparent.png', err)
   }
 
-  try {
-    const roundRes = await fetch('/assets/seal_round_transparent.png').catch(() => fetch('/seal_round_transparent.png'))
-    if (roundRes && roundRes.ok) {
-      const buf = await roundRes.arrayBuffer()
-      roundSealImg = await pdfDoc.embedPng(buf)
+  if (sysConfig.customSignatureDataUrl) {
+    try {
+      const sigBytes = await fetch(sysConfig.customSignatureDataUrl).then(r => r.arrayBuffer())
+      customSigImg = await pdfDoc.embedPng(sigBytes).catch(() => pdfDoc.embedJpg(sigBytes))
+    } catch (err) {
+      console.warn('Could not load custom IT signature image', err)
     }
-  } catch (err) {
-    console.warn('Could not load seal_round_transparent.png', err)
+  }
+
+  if (!sealImg) {
+    try {
+      const sealRes = await fetch('/assets/seal_transparent.png').catch(() => fetch('/seal_transparent.png'))
+      if (sealRes && sealRes.ok) {
+        const buf = await sealRes.arrayBuffer()
+        sealImg = await pdfDoc.embedPng(buf)
+      }
+    } catch (err) {
+      console.warn('Could not load seal_transparent.png', err)
+    }
+  }
+
+  if (!roundSealImg) {
+    try {
+      const roundRes = await fetch('/assets/seal_round_transparent.png').catch(() => fetch('/seal_round_transparent.png'))
+      if (roundRes && roundRes.ok) {
+        const buf = await roundRes.arrayBuffer()
+        roundSealImg = await pdfDoc.embedPng(buf)
+      }
+    } catch (err) {
+      console.warn('Could not load seal_round_transparent.png', err)
+    }
   }
 
   const redInk = rgb(0.85, 0.05, 0.05)
@@ -228,7 +255,7 @@ export async function stampMTCDocument(
           width: stampW,
           height: stampH,
           borderColor: redInk,
-          borderWidth: 2,
+          borderWidth: sysConfig.sealBorderWidth || 2,
         })
       }
 
@@ -261,14 +288,26 @@ export async function stampMTCDocument(
         color: redInk,
       })
 
-      // Row 4: Sign (in dark ink navy)
-      page.drawText(sign, {
-        x: stampX + 148 * scale,
-        y: stampY + stampH * 0.300,
-        size: 8.5 * scale,
-        font: fontOblique,
-        color: signInk,
-      })
+      // Row 4: Sign (draw custom inspector signature image if uploaded, or drawn text)
+      if (customSigImg) {
+        const sigW = 48 * scale
+        const sigH = sigW * (customSigImg.height / customSigImg.width)
+        page.drawImage(customSigImg, {
+          x: stampX + 138 * scale,
+          y: stampY + stampH * 0.24,
+          width: sigW,
+          height: Math.min(stampH * 0.28, sigH),
+          opacity: 0.95,
+        })
+      } else {
+        page.drawText(sign, {
+          x: stampX + 148 * scale,
+          y: stampY + stampH * 0.300,
+          size: 8.5 * scale,
+          font: fontOblique,
+          color: signInk,
+        })
+      }
     } else {
       // SUBSEQUENT PAGES (Page 2, 3...): Official Round Seal with "VERIFIED TRUE COPY" & Sign Line
       const roundSize = Math.min(130, width * 0.25, height * 0.22)
@@ -290,18 +329,30 @@ export async function stampMTCDocument(
           y: roundY + roundSize / 2,
           size: roundSize / 2,
           borderColor: redInk,
-          borderWidth: 2,
+          borderWidth: sysConfig.sealBorderWidth || 2,
         })
       }
 
       // Autofill Sign on the round seal dotted line (baseline is y = 0.298 * roundSize)
-      page.drawText(sign, {
-        x: roundX + roundSize * 0.46,
-        y: roundY + roundSize * 0.298,
-        size: Math.max(7, roundSize * 0.072),
-        font: fontOblique,
-        color: signInk,
-      })
+      if (customSigImg) {
+        const roundSigW = roundSize * 0.3
+        const roundSigH = roundSigW * (customSigImg.height / customSigImg.width)
+        page.drawImage(customSigImg, {
+          x: roundX + roundSize * 0.42,
+          y: roundY + roundSize * 0.25,
+          width: roundSigW,
+          height: Math.min(roundSize * 0.22, roundSigH),
+          opacity: 0.95,
+        })
+      } else {
+        page.drawText(sign, {
+          x: roundX + roundSize * 0.46,
+          y: roundY + roundSize * 0.298,
+          size: Math.max(7, roundSize * 0.072),
+          font: fontOblique,
+          color: signInk,
+        })
+      }
     }
   }
 

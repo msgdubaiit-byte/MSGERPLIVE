@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { initialUsers } from '../../services/db'
+import { initialUsers, db } from '../../services/db'
 import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, Zap, Cpu, Wrench } from 'lucide-react'
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth()
-  const [email, setEmail] = useState('admin@msgoilfield.ae')
+  const [email, setEmail] = useState('it.engineer@msgoilfield.ae')
   const [password, setPassword] = useState('Admin@123')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -47,46 +47,46 @@ export const LoginPage: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold tracking-tight uppercase">MSG Oilfield Equipment Trading LLC</h1>
           <p className="text-xs text-slate-300 mt-1">Automated Stock, Heat Traceability & MTC Management</p>
-          <div className="inline-block bg-red-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase mt-2">
-            Enterprise Portal
+          <div className="inline-block bg-indigo-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase mt-2">
+            IT Administrator &amp; Enterprise Portal
           </div>
         </div>
 
-        {/* Special Solo Operator / Workers Away Fast Access */}
-        <div className="bg-amber-500/10 border-b border-amber-500/30 p-3.5 text-center">
-          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-amber-600 uppercase tracking-wide">
-            <Zap className="h-4 w-4 fill-current text-amber-500" />
-            <span>Special Solo Login (Workers Away Mode)</span>
+        {/* IT Systems Engineer Fast Access (Primary Root Initial Administrator) */}
+        <div className="bg-indigo-50 border-b border-indigo-200 p-3.5 text-center">
+          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-indigo-900 uppercase tracking-wide">
+            <Cpu className="h-4 w-4 text-indigo-600" />
+            <span>Root IT Systems Engineer (Main Setup &amp; User Provisioning)</span>
           </div>
           <p className="text-[11px] text-slate-600 mt-0.5">
+            Full software configuration, seal/sign calibration, and employee provisioning. Sensitive commercial pricing is masked.
+          </p>
+          <button
+            type="button"
+            onClick={() => handleQuickLogin('it.engineer@msgoilfield.ae')}
+            className="mt-2 w-full bg-gradient-to-r from-indigo-700 via-indigo-800 to-blue-800 hover:from-indigo-800 hover:to-blue-900 text-white font-black py-2 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer transform hover:-translate-y-0.5"
+          >
+            <Wrench className="h-4 w-4 text-indigo-300" />
+            <span>Sign In as Primary Root IT Administrator (Alex Turner)</span>
+          </button>
+        </div>
+
+        {/* Special Solo Operator / Workers Away Fast Access */}
+        <div className="bg-amber-500/10 border-b border-amber-500/30 p-3 text-center">
+          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-amber-700 uppercase tracking-wide">
+            <Zap className="h-3.5 w-3.5 fill-current text-amber-500" />
+            <span>Special Solo Login (Workers Away Mode)</span>
+          </div>
+          <p className="text-[10px] text-slate-600 mt-0.5">
             Centralized fast-track portal for solo operators, weekends &amp; after-hours when staff is absent.
           </p>
           <button
             type="button"
             onClick={() => handleQuickLogin('admin@msgoilfield.ae')}
-            className="mt-2 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black py-2 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer transform hover:-translate-y-0.5"
+            className="mt-1.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black py-1.5 rounded-xl text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
           >
-            <Zap className="h-4 w-4 fill-current text-slate-950" />
+            <Zap className="h-3.5 w-3.5 fill-current text-slate-950" />
             <span>Enter Centralized Solo Hub (1-Click)</span>
-          </button>
-        </div>
-
-        {/* IT Systems Engineer Fast Access */}
-        <div className="bg-indigo-500/10 border-b border-indigo-500/30 p-3 text-center">
-          <div className="flex items-center justify-center space-x-1.5 text-xs font-black text-indigo-700 uppercase tracking-wide">
-            <Cpu className="h-3.5 w-3.5 text-indigo-600" />
-            <span>IT Systems Engineer Access (Config Only)</span>
-          </div>
-          <p className="text-[10px] text-slate-600 mt-0.5">
-            Full software &amp; system parameters configuration. Zero business data access.
-          </p>
-          <button
-            type="button"
-            onClick={() => handleQuickLogin('it.engineer@msgoilfield.ae')}
-            className="mt-1.5 w-full bg-gradient-to-r from-indigo-700 to-blue-700 hover:from-indigo-800 hover:to-blue-800 text-white font-black py-2 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
-          >
-            <Wrench className="h-3.5 w-3.5 text-indigo-300" />
-            <span>Login as IT Engineer (Software Config Mode)</span>
           </button>
         </div>
 
@@ -178,15 +178,24 @@ export const LoginPage: React.FC = () => {
               Quick Role-Based Access Evaluation (1-Click)
             </div>
             <div className="grid grid-cols-2 gap-1.5">
-              {initialUsers.slice(0, 6).map(u => (
+              {(db.getUsers() || initialUsers).slice(0, 8).map(u => (
                 <button
                   key={u.id}
                   type="button"
                   onClick={() => handleQuickLogin(u.email)}
-                  className="text-left p-2 rounded-lg bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-300 transition-colors"
+                  className={`text-left p-2 rounded-lg border transition-colors ${
+                    u.role === 'it_engineer'
+                      ? 'bg-indigo-50/80 hover:bg-indigo-100 border-indigo-300'
+                      : 'bg-slate-50 hover:bg-red-50 border-slate-200 hover:border-red-300'
+                  }`}
                 >
-                  <div className="font-bold text-[11px] text-slate-800 truncate">{u.employee_name}</div>
-                  <div className="text-[10px] text-red-700 capitalize font-medium">{u.role.replace('_', ' ')}</div>
+                  <div className="font-bold text-[11px] text-slate-800 truncate flex items-center justify-between">
+                    <span>{u.employee_name}</span>
+                    {u.role === 'it_engineer' && <span className="text-[9px] bg-indigo-600 text-white px-1 rounded font-mono">ROOT</span>}
+                  </div>
+                  <div className={`text-[10px] capitalize font-medium ${u.role === 'it_engineer' ? 'text-indigo-700 font-bold' : 'text-red-700'}`}>
+                    {u.role.replace('_', ' ')}
+                  </div>
                 </button>
               ))}
             </div>
