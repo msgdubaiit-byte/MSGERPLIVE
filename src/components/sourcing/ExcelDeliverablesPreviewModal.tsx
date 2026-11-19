@@ -40,6 +40,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
   const [activeTab, setActiveTab] = useState<SourcingPreviewTab>(initialTab)
   const [isExporting, setIsExporting] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [useSupplierPO, setUseSupplierPO] = useState(data.use_supplier_po || false)
 
   useEffect(() => {
     if (initialTab) {
@@ -96,7 +97,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
   const handleDownloadCIPL = async () => {
     setIsExporting(true)
     try {
-      await generateCIPLLogisticExcel(data)
+      await generateCIPLLogisticExcel({ ...data, use_supplier_po: useSupplierPO })
       showToast('CIPL Logistics Workbook (.xlsx) downloaded successfully!')
     } catch (err: any) {
       alert('Error exporting CIPL: ' + err.message)
@@ -418,6 +419,17 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                       <div><strong className="text-slate-600">INVOICE DATE:</strong> <span className="font-mono">{new Date().toISOString().substring(0, 10)}</span></div>
                       <div><strong className="text-slate-600">CLIENT PO NO:</strong> <span className="font-mono font-bold">{data.po_number || '-'}</span></div>
                       <div><strong className="text-slate-600">CURRENCY:</strong> <span className="font-bold">{data.currency || 'AED'}</span></div>
+                      <div className="pt-1">
+                        <label className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-purple-900 bg-purple-100/70 hover:bg-purple-100 px-2 py-0.5 rounded border border-purple-300 cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={useSupplierPO}
+                            onChange={(e) => setUseSupplierPO(e.target.checked)}
+                            className="rounded text-purple-600 focus:ring-purple-500 h-3.5 w-3.5"
+                          />
+                          <span>Use Supplier PO Reference in CIPL</span>
+                        </label>
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <div><strong className="text-slate-600">BUYER / CONSIGNEE:</strong> <span className="font-bold">{data.client || 'Customer'}</span></div>
@@ -433,7 +445,8 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                         <tr className="bg-purple-100 font-bold border-b border-purple-200 text-purple-950 text-center">
                           <th className="p-2 border-r border-purple-200 w-12">ITEM</th>
                           <th className="p-2 border-r border-purple-200 text-left min-w-[240px]">DESCRIPTION OF GOODS</th>
-                          <th className="p-2 border-r border-purple-200 w-24">HS CODE</th>
+                          <th className="p-2 border-r border-purple-200 w-24">SUPPLIER PO</th>
+                          <th className="p-2 border-r border-purple-200 w-20">HS CODE</th>
                           <th className="p-2 border-r border-purple-200 w-20">COO</th>
                           <th className="p-2 border-r border-purple-200 w-16">QTY</th>
                           <th className="p-2 border-r border-purple-200 w-14">UOM</th>
@@ -446,6 +459,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                           <tr key={idx} className="hover:bg-purple-50/20">
                             <td className="p-2 text-center font-mono border-r border-slate-200">{it.client_po_item_no || idx + 1}</td>
                             <td className="p-2 border-r border-slate-200 text-left font-sans">{it.description}</td>
+                            <td className="p-2 text-center font-mono text-[10px] font-bold text-slate-700 border-r border-slate-200">{it.supplier_po_number || (it as any).supplier_po || '-'}</td>
                             <td className="p-2 text-center font-mono border-r border-slate-200">{it.hs_code || '7307.93.00'}</td>
                             <td className="p-2 text-center border-r border-slate-200">{it.country_of_origin || 'Thailand'}</td>
                             <td className="p-2 text-center font-bold border-r border-slate-200">{it.qty}</td>
@@ -457,7 +471,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                       </tbody>
                       <tfoot>
                         <tr className="bg-purple-50 font-bold border-t-2 border-purple-300">
-                          <td colSpan={4} className="p-2 text-right uppercase text-purple-950">TOTAL INVOICE VALUE:</td>
+                          <td colSpan={5} className="p-2 text-right uppercase text-purple-950">TOTAL INVOICE VALUE:</td>
                           <td className="p-2 text-center font-bold">{totalQty}</td>
                           <td colSpan={2}></td>
                           <td className="p-2 text-right font-mono text-purple-950 font-extrabold text-xs">
@@ -495,6 +509,17 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                       <div><strong className="text-slate-600">PACKING LIST NO:</strong> <span className="font-mono font-bold text-indigo-900">PL-{(data.msg_ref || 'MSG-2026').replace(/[^0-9]/g, '') || '2227'}</span></div>
                       <div><strong className="text-slate-600">DATE:</strong> <span className="font-mono">{new Date().toISOString().substring(0, 10)}</span></div>
                       <div><strong className="text-slate-600">CLIENT PO NO:</strong> <span className="font-mono font-bold">{data.po_number || '-'}</span></div>
+                      <div className="pt-1">
+                        <label className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-indigo-900 bg-indigo-100/70 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-300 cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={useSupplierPO}
+                            onChange={(e) => setUseSupplierPO(e.target.checked)}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                          />
+                          <span>Use Supplier PO Reference in CIPL</span>
+                        </label>
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <div><strong className="text-slate-600">CONSIGNEE:</strong> <span className="font-bold">{data.client || 'Customer'}</span></div>
@@ -509,6 +534,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                         <tr className="bg-indigo-100 font-bold border-b border-indigo-200 text-indigo-950 text-center">
                           <th className="p-2 border-r border-indigo-200 w-14">PKG #</th>
                           <th className="p-2 border-r border-indigo-200 text-left min-w-[240px]">DESCRIPTION OF GOODS</th>
+                          <th className="p-2 border-r border-indigo-200 w-24">SUPPLIER PO</th>
                           <th className="p-2 border-r border-indigo-200 w-16">QTY</th>
                           <th className="p-2 border-r border-indigo-200 w-14">UOM</th>
                           <th className="p-2 border-r border-indigo-200 w-24">HEAT #</th>
@@ -521,6 +547,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                           <tr key={idx} className="hover:bg-indigo-50/20">
                             <td className="p-2 text-center font-mono font-semibold border-r border-slate-200">{it.package_no || `PKG # 01`}</td>
                             <td className="p-2 border-r border-slate-200 text-left font-sans">{it.description}</td>
+                            <td className="p-2 text-center font-mono text-[10px] font-bold text-slate-700 border-r border-slate-200">{it.supplier_po_number || (it as any).supplier_po || '-'}</td>
                             <td className="p-2 text-center font-bold border-r border-slate-200">{it.qty}</td>
                             <td className="p-2 text-center border-r border-slate-200">{it.uom}</td>
                             <td className="p-2 text-center font-mono font-bold text-red-700 border-r border-slate-200">{it.heat_number || '-'}</td>
@@ -531,7 +558,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
                       </tbody>
                       <tfoot>
                         <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-300">
-                          <td colSpan={2} className="p-2 text-right uppercase text-indigo-950">TOTALS:</td>
+                          <td colSpan={3} className="p-2 text-right uppercase text-indigo-950">TOTALS:</td>
                           <td className="p-2 text-center font-bold">{totalQty}</td>
                           <td colSpan={2}></td>
                           <td className="p-2 text-right font-mono text-indigo-950 font-extrabold">{totalNet.toFixed(2)} KG</td>

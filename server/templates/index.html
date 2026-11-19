@@ -693,8 +693,19 @@
                 </div>
                 <div class="modal-body p-4 bg-light">
                     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                        <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i> Edit Pallet/Box packaging, <strong>Unit Weight (KG)</strong>, <strong>Dimensions (CM)</strong>, prices, <strong>HS Codes</strong>, and <strong>Country of Origin</strong>.</p>
+                        <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i> Edit Pallet/Box packaging, <strong>Supplier PO</strong>, <strong>Unit Weight (KG)</strong>, <strong>Dimensions (CM)</strong>, prices, <strong>HS Codes</strong>, and <strong>Country of Origin</strong>.</p>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="d-flex align-items-center gap-1 bg-white px-2 py-1 border rounded shadow-sm">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="modalCiplUseSupplierPO" style="cursor: pointer;">
+                                    <label class="form-check-label small fw-semibold text-primary" for="modalCiplUseSupplierPO" style="cursor: pointer;">
+                                        <i class="bi bi-cart-check me-1"></i>Supplier PO Reference
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="quickFillSupplierPOInCIPL()" title="Bulk apply or set Supplier PO for all items in CIPL">
+                                <i class="bi bi-cart-plus me-1"></i>Assign Supplier PO
+                            </button>
                             <div class="d-flex align-items-center gap-1">
                                 <label class="form-label fw-semibold small mb-0 text-nowrap"><i class="bi bi-currency-exchange me-1"></i>Currency:</label>
                                 <select id="modalCiplCurrency" class="form-select form-select-sm" style="max-width: 120px;" onchange="updateModalCurrency(this.value)">
@@ -719,6 +730,7 @@
                                     <th style="width: 40px;" class="text-center">#</th>
                                     <th>Description</th>
                                     <th style="width: 75px;" class="text-center">Qty</th>
+                                    <th style="width: 110px;" class="text-center">Supplier PO</th>
                                     <th style="width: 135px;" class="text-center">Packaging</th>
                                     <th style="width: 85px;" class="text-end">Unit Rate</th>
                                     <th style="width: 90px;" class="text-end">Amount</th>
@@ -1767,6 +1779,7 @@
                 const uom = r.querySelector('.item-uom').value;
                 const pkgType = r.querySelector('.item-pkg-type').value;
                 const pkgNo = r.querySelector('.item-pkg-no').value;
+                const suppPo = r.querySelector('.item-supplier-po')?.value || r.getAttribute('data-supplier-po') || '';
                 const rate = r.querySelector('.item-rate').value;
                 const amt = r.querySelector('.item-amount').value;
                 
@@ -1802,6 +1815,9 @@
                     <td class="text-center">${sl}</td>
                     <td style="font-size:0.83rem;"><div style="max-height:48px; overflow-y:auto;">${escapeHtml(desc)}</div></td>
                     <td class="text-center font-monospace">${escapeHtml(rawQty)} ${escapeHtml(uom)}</td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm text-center modal-cipl-supp-po font-monospace" value="${escapeHtml(suppPo)}" placeholder="Supplier PO">
+                    </td>
                     <td>
                         <div class="input-group input-group-sm">
                             <select class="form-select form-select-sm modal-cipl-pkg-type" style="font-size:0.8rem;" onchange="onPackageSelectionChange(this)">
@@ -1942,6 +1958,19 @@
             }
         }
 
+        function quickFillSupplierPOInCIPL() {
+            const val = prompt('Enter Supplier PO Number to apply to all items in CIPL:', '');
+            if (val === null) return;
+            const trimmed = val.trim();
+            if (!trimmed) return;
+            const inputs = document.querySelectorAll('#ciplItemsModalTable .modal-cipl-supp-po');
+            inputs.forEach(inp => {
+                inp.value = trimmed;
+            });
+            const sw = document.getElementById('modalCiplUseSupplierPO');
+            if (sw) sw.checked = true;
+        }
+
         function setAllModalPackaging(pkgType) {
             document.querySelectorAll('#ciplItemsModalTable .modal-cipl-pkg-type').forEach(sel => sel.value = pkgType);
         }
@@ -1952,6 +1981,7 @@
 
             modalRows.forEach(mr => {
                 const targetSl = mr.getAttribute('data-target-row-id');
+                const suppPo = mr.querySelector('.modal-cipl-supp-po')?.value.trim();
                 const pkgType = mr.querySelector('.modal-cipl-pkg-type').value;
                 const pkgNo = mr.querySelector('.modal-cipl-pkg-no').value;
                 const unitRate = mr.querySelector('.modal-cipl-rate')?.value.trim();
@@ -1968,6 +1998,12 @@
                         mrMain.querySelector('.item-pkg-no').value = pkgNo;
                         if (unitRate) mrMain.querySelector('.item-rate').value = unitRate;
                         if (amount) mrMain.querySelector('.item-amount').value = amount;
+                        if (suppPo !== undefined && mrMain.querySelector('.item-supplier-po')) {
+                            mrMain.querySelector('.item-supplier-po').value = suppPo;
+                        }
+                        if (suppPo !== undefined) {
+                            mrMain.setAttribute('data-supplier-po', suppPo);
+                        }
                         
                         mrMain.setAttribute('data-unit-weight', unitWt);
                         mrMain.setAttribute('data-total-weight', totWt);
@@ -2664,6 +2700,7 @@
 
         function downloadCIPL() {
             const payload = buildPayload();
+            payload.use_supplier_po = document.getElementById('modalCiplUseSupplierPO')?.checked || false;
             const poStr = payload.po_number ? "_" + payload.po_number.replace(/\s+/g, '_') : "";
             const msgStr = payload.msg_ref ? payload.msg_ref.replace(/\s+/g, '_') : "CIPL";
             const filename = `CIPL_${msgStr}${poStr}.xlsx`;

@@ -74,6 +74,7 @@ export interface SourcingWorksheetData {
   bapco_transmittal?: string
   items: SourcingLineItem[]
   filter_machined_only?: boolean
+  use_supplier_po?: boolean
   saved_at?: string
   editor_username?: string
 }
@@ -701,6 +702,7 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
     unit_weight: number
     total_weight: number
     po_number: string
+    supplier_po?: string
   }> = []
 
   const distinctOrigins = new Set<string>()
@@ -748,8 +750,11 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
     const totWt = it.total_net_weight_kg || Math.round(qtyVal * unitWt * 100) / 100
     const dims = pkgNo === '1' ? '120 X 80 X 100 CM' : '100 X 80 X 80 CM'
 
+    const suppPoVal = (it.supplier_po_number || (it as any).supplier_po || '').trim()
     let itemPo = poNumber
-    if (poNumber.includes('//')) {
+    if (data.use_supplier_po && suppPoVal) {
+      itemPo = suppPoVal
+    } else if (poNumber.includes('//')) {
       const parts = poNumber.split('//').map(p => p.trim())
       itemPo = pkgNo === '1' ? parts[0] : parts[parts.length - 1]
     }
@@ -770,7 +775,8 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
       dims,
       unit_weight: unitWt,
       total_weight: totWt,
-      po_number: itemPo
+      po_number: itemPo,
+      supplier_po: suppPoVal
     })
   })
 
@@ -926,7 +932,7 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
     // PO Header Row
     wsInv.mergeCells(`A${currRowInv}:H${currRowInv}`)
     const cPo = wsInv.getCell(`A${currRowInv}`)
-    cPo.value = `PO NO: ${pNum}`
+    cPo.value = data.use_supplier_po ? `SUPPLIER PO NO: ${pNum}` : `PO NO: ${pNum}`
     cPo.font = fDataBold
     cPo.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
     applyRegionBorders(wsInv, currRowInv, 1, currRowInv, 8, thinBorder)
@@ -1139,7 +1145,7 @@ export async function generateCIPLLogisticWorkbook(data: SourcingWorksheetData):
     for (const [pNum, poItems] of Object.entries(pkgPoGroups)) {
       wsPk.mergeCells(`A${currRowPk}:H${currRowPk}`)
       const cPo = wsPk.getCell(`A${currRowPk}`)
-      cPo.value = `PO NO: ${pNum}`
+      cPo.value = data.use_supplier_po ? `SUPPLIER PO NO: ${pNum}` : `PO NO: ${pNum}`
       cPo.font = fDataBold
       cPo.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
       applyRegionBorders(wsPk, currRowPk, 1, currRowPk, 8, thinBorder)

@@ -228,7 +228,12 @@ def generate_cipl_excel(data, logo_path=None, output_path=None):
                 tot_wt = round(qty_val * unit_wt, 2)
                 
         dims = it.get('dimensions') or ('25 X 20 X 10 CM' if pkg_no == '1' else '35 X 20 X 15 CM')
-        item_po = it.get('po_number') or (po_number.split('//')[0].strip() if '//' in po_number and pkg_no == '1' else (po_number.split('//')[-1].strip() if '//' in po_number else po_number))
+        use_supp_po = data.get('use_supplier_po', False)
+        supp_po_val = str(it.get('supplier_po') or '').strip()
+        if use_supp_po and supp_po_val:
+            item_po = supp_po_val
+        else:
+            item_po = it.get('po_number') or (po_number.split('//')[0].strip() if '//' in po_number and pkg_no == '1' else (po_number.split('//')[-1].strip() if '//' in po_number else po_number))
         
         processed_items.append({
             'sl_no': sl,
@@ -245,7 +250,8 @@ def generate_cipl_excel(data, logo_path=None, output_path=None):
             'dims': dims,
             'unit_weight': unit_wt,
             'total_weight': tot_wt,
-            'po_number': item_po
+            'po_number': item_po,
+            'supplier_po': supp_po_val
         })
 
     origin_summary_str = ", ".join(sorted(list(distinct_origins))) if distinct_origins else "FRANCE, ITALY, TAIWAN"
@@ -438,7 +444,8 @@ def generate_cipl_excel(data, logo_path=None, output_path=None):
     for p_num, p_items in po_groups.items():
         # PO Header Row
         ws_inv.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=8)
-        c_po = ws_inv.cell(row=curr_row, column=1, value=f"PO NO: {p_num}")
+        po_header_text = f"SUPPLIER PO NO: {p_num}" if data.get('use_supplier_po') else f"PO NO: {p_num}"
+        c_po = ws_inv.cell(row=curr_row, column=1, value=po_header_text)
         c_po.font = f_data_bold
         c_po.alignment = Alignment(horizontal='left', vertical='center', indent=1)
         apply_cell_border(ws_inv, curr_row, 1, curr_row, 8, thin_border)
@@ -633,7 +640,8 @@ def generate_cipl_excel(data, logo_path=None, output_path=None):
         for p_num, po_items in pkg_po_groups.items():
             # PO Subheader Row
             ws_pk.merge_cells(start_row=curr_pk_row, start_column=1, end_row=curr_pk_row, end_column=8)
-            c_po = ws_pk.cell(row=curr_pk_row, column=1, value=f"PO NO: {p_num}")
+            po_header_text = f"SUPPLIER PO NO: {p_num}" if data.get('use_supplier_po') else f"PO NO: {p_num}"
+            c_po = ws_pk.cell(row=curr_pk_row, column=1, value=po_header_text)
             c_po.font = f_data_bold
             c_po.alignment = Alignment(horizontal='left', vertical='center', indent=1)
             apply_cell_border(ws_pk, curr_pk_row, 1, curr_pk_row, 8, thin_border)
