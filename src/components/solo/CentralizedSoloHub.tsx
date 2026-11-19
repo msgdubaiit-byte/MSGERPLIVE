@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import {
   Zap,
   Search,
@@ -18,7 +18,14 @@ import {
   Tag,
   AlertTriangle,
   Layers,
-  ArrowRight
+  ArrowRight,
+  FileUp,
+  FileText,
+  Loader2,
+  RefreshCw,
+  X,
+  UploadCloud,
+  Check
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
@@ -35,6 +42,8 @@ import {
   autoDetectHSCode,
   estimateUnitWeight
 } from '../../services/sourcingEngine'
+import { parseCustomerSOPDF } from '../../services/pdfEngine'
+import { parseSalesOrderExcel } from '../../services/excelEngine'
 import { LocalPurchaseAllocationModal } from '../sourcing/LocalPurchaseAllocationModal'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from '../sourcing/ExcelDeliverablesPreviewModal'
 
@@ -48,18 +57,25 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   onOpenHeatModal
 }) => {
   const { currentUser } = useAuth()
+  const [dbRefreshKey, setDbRefreshKey] = useState(0)
+  const refreshData = () => setDbRefreshKey(k => k + 1)
 
   // Real-time data from local DB
-  const orders = db.getOrders()
-  const lots = db.getLots()
-  const balances = db.getBalances()
-  const mtcs = db.getMTCs()
+  const orders = useMemo(() => db.getOrders(), [dbRefreshKey])
+  const lots = useMemo(() => db.getLots(), [dbRefreshKey])
+  const balances = useMemo(() => db.getBalances(), [dbRefreshKey])
+  const mtcs = useMemo(() => db.getMTCs(), [dbRefreshKey])
 
   // Selected Order for Instant Deliverables
   const [selectedOrderId, setSelectedOrderId] = useState<string>(() => orders[0]?.id || '')
   const [heatSearchQuery, setHeatSearchQuery] = useState('')
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+
+  // Uploading state
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Modals state
   const [isLpModalOpen, setIsLpModalOpen] = useState(false)
@@ -89,7 +105,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
       return {
         id: `SOLO-ITM-${idx + 1}`,
         sl_no: idx + 1,
-        client_po_item_no: `${idx + 1}`,
+        client_po_item_no: it.client_po_item_no || `${idx + 1}`,
         description: desc,
         qty: it.required_qty,
         uom: it.uom || 'PCS',
@@ -148,6 +164,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
       'Approved',
       'Fast-track approved by Solo Operator / Centralized Mode (Staff Absent)'
     )
+    refreshData()
     setStatusNotice(`Order ${orderId} fast-track approved & released for dispatch!`)
     setTimeout(() => setStatusNotice(null), 4000)
   }
@@ -155,6 +172,77 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const handleOpenPreview = (tab: SourcingPreviewTab) => {
     setPreviewTab(tab)
     setIsPreviewModalOpen(true)
+  }
+
+  // Handle Drag & Drop / Direct Sales Order Upload (PDF / Excel)
+  const handleFileUpload = async (file: File) => {
+    if (!file) return
+    setIsUploading(true)
+    setStatusNotice(`Processing ${file.name}...`)
+
+    try {
+      const fileNameLower = file.name.toLowerCase()
+      const isPdf = fileNameLower.endsWith('.pdf')
+      const isExcel =
+        fileNameLower.endsWith('.xlsx') ||
+        fileNameLower.endsWith('.xls') ||
+        fileNameLower.endsWith('.csv')
+
+      if (isPdf) {
+        const parsed = await parseCustomerSOPDF(file)
+        const res = db.createSalesOrder({
+          customer_name: parsed.customerName || 'Direct Customer',
+          po_number: parsed.poNumber || `PO-${Date.now().toString().slice(-6)}`,
+          so_number: parsed.soNumber || `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          required_delivery_date: parsed.deliveryDate || new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
+          items: parsed.items.map((it, idx) => ({
+            item_code: it.itemCode || `ITEM-${idx + 1}`,
+            item_description: it.itemDescription,
+            required_qty: it.requiredQty || 1,
+            heat_number: it.heatNumber || '',
+            location: it.location || 'Yard Stock',
+            client_po_item_no: it.clientPoItemNo || `${idx + 1}`,
+            position: it.position || idx + 1
+          })),
+          po_document_name: file.name,
+          po_document_url: parsed.pdfBlobUrl,
+          userEmail: currentUser?.email || 'solo.operator@cipl.ae'
+        })
+
+        if (res.success && res.order) {
+          refreshData()
+          setSelectedOrderId(res.order.id)
+          setStatusNotice(
+            `🎉 Sales Order ${res.order.so_number} (${res.order.customer_name}) loaded with ${res.order.items.length} items! 1-Click deliverables are ready below.`
+          )
+        } else {
+          setStatusNotice(res.message || 'Sales order created.')
+        }
+      } else if (isExcel) {
+        const rows = await parseSalesOrderExcel(file)
+        const res = db.importSalesOrdersFromExcel(
+          rows,
+          currentUser?.email || 'solo.operator@cipl.ae'
+        )
+        if (res.success && res.orders && res.orders.length > 0) {
+          refreshData()
+          setSelectedOrderId(res.orders[0].id)
+          setStatusNotice(
+            `🎉 Successfully imported ${res.orders.length} order(s) with ${rows.length} line items from spreadsheet!`
+          )
+        } else {
+          setStatusNotice(res.message || 'Imported Excel successfully.')
+        }
+      } else {
+        alert('Please upload a PDF or Excel (.xlsx, .xls, .csv) Sales Order document.')
+      }
+    } catch (err: any) {
+      console.error('File parse error:', err)
+      alert(`Failed to parse file: ${err.message || 'Unknown error'}`)
+      setStatusNotice(`Error parsing ${file.name}: ${err.message}`)
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -169,19 +257,19 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
             <div className="flex items-center space-x-2.5">
               <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-[11px] px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center space-x-1 shadow-sm">
                 <Zap className="h-3 w-3 fill-current" />
-                <span>Centralized Solo Mode</span>
+                <span>Centralized Solo Hub</span>
               </span>
               <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
                 <ShieldCheck className="h-3 w-3" />
-                <span>Staff Absent Mode Active</span>
+                <span>Workers Away / Solo Access</span>
               </span>
             </div>
 
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Centralized Fast-Track Operations Portal
+              All-In-One Centralized Operations Hub
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-3xl">
-              Designed for solo operators, after-hours shifts, and emergency management when team members are absent. Perform order processing, heat lookups, local purchase splits, stickers, and fast approvals from this one screen.
+              Upload customer sales orders, extract line items, allocate local purchases, match heat certificates, generate publication sheets, and approve dispatches — all from this single unified screen.
             </p>
           </div>
 
@@ -203,9 +291,17 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         </div>
 
         {statusNotice && (
-          <div className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-200 flex items-center space-x-2 animate-in slide-in-from-top-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-            <span>{statusNotice}</span>
+          <div className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-200 flex items-center justify-between space-x-2 animate-in slide-in-from-top-2">
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              <span>{statusNotice}</span>
+            </div>
+            <button
+              onClick={() => setStatusNotice(null)}
+              className="text-emerald-300 hover:text-white text-xs font-bold px-2 py-0.5 rounded cursor-pointer"
+            >
+              &times;
+            </button>
           </div>
         )}
       </div>
@@ -216,7 +312,94 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         {/* LEFT COLUMN: Fast Order Deliverables & Local Purchase Studio (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* Box 1: 1-Click Order Deliverables Hub */}
+          {/* Card 1: Direct Sales Order Upload Zone */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500/10 via-slate-50 to-emerald-500/10 px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-black">
+                  <UploadCloud className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-xs text-slate-900 uppercase tracking-wider">
+                    Upload Sales Order in One Place
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    PDF, Scanned PO, or Excel Spreadsheet &bull; Instant Heat &amp; Line Extraction
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                Drag &amp; Drop Ready
+              </span>
+            </div>
+
+            <div className="p-5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.xlsx,.xls,.csv"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) handleFileUpload(f)
+                  e.target.value = ''
+                }}
+              />
+
+              <div
+                onDragOver={e => {
+                  e.preventDefault()
+                  setIsDragOver(true)
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setIsDragOver(false)
+                  const f = e.dataTransfer.files?.[0]
+                  if (f) handleFileUpload(f)
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer flex flex-col items-center justify-center space-y-2.5 ${
+                  isDragOver
+                    ? 'border-amber-500 bg-amber-50 ring-4 ring-amber-300/30'
+                    : 'border-slate-300 hover:border-amber-500 hover:bg-amber-50/40 bg-slate-50/50'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-700 flex items-center justify-center shadow-inner">
+                  {isUploading ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+                  ) : (
+                    <FileUp className="h-6 w-6 stroke-[2.2]" />
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-bold text-sm text-slate-900">
+                    Drag &amp; Drop Sales Order PDF or Excel Here
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    or <span className="text-amber-700 font-bold underline">click to browse</span> from your computer
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 text-[10px] text-slate-400 font-medium flex-wrap justify-center">
+                  <span className="bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded font-mono">.PDF</span>
+                  <span className="bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded font-mono">.XLSX</span>
+                  <span className="bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded font-mono">.CSV</span>
+                  <span>&bull; Automatically populates items, certs, and deliverables below</span>
+                </div>
+
+                {isUploading && (
+                  <div className="flex items-center space-x-2 text-xs font-bold text-amber-800 bg-amber-100 px-3.5 py-1.5 rounded-lg animate-pulse border border-amber-300">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Parsing order document &amp; linking stock heats... please wait</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: 1-Click Order Deliverables Hub & Active Order Preview */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
@@ -225,22 +408,32 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                   <span>1-Click Deliverables Generator</span>
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Select any sales order to preview and export all official publication sheets.
+                  Select or switch active order to preview &amp; download official sheets.
                 </p>
               </div>
 
               {/* Order Dropdown */}
-              <select
-                value={selectedOrderId}
-                onChange={e => setSelectedOrderId(e.target.value)}
-                className="text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                {orders.map(o => (
-                  <option key={o.id} value={o.id}>
-                    {o.so_number} — {o.customer_name} ({o.items.length} items)
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedOrderId}
+                  onChange={e => setSelectedOrderId(e.target.value)}
+                  className="text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {orders.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {o.so_number} — {o.customer_name} ({o.items.length} items)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Upload Another Order"
+                  className="p-1.5 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                >
+                  <FileUp className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Selected Order Summary Card */}
@@ -265,6 +458,22 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                       {selectedOrder.status}
                     </span>
                   </div>
+                </div>
+
+                {/* Line Items Quick Peek */}
+                <div className="mt-3 pt-2.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-600">
+                  <div className="flex items-center space-x-1.5 font-medium">
+                    <Package className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Loaded Items: <strong className="text-slate-900">{selectedOrder.items.length}</strong> lines</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLpModalOpen(true)}
+                    className="text-amber-700 hover:text-amber-900 font-bold underline flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Wrench className="h-3 w-3" />
+                    <span>Configure Local Purchase Split &rarr;</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -392,7 +601,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
             </div>
           </div>
 
-          {/* Box 2: Pending Storekeeper Approvals Fast-Pass */}
+          {/* Card 3: Pending Storekeeper Approvals Fast-Pass */}
           {pendingApprovals.length > 0 && (
             <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
