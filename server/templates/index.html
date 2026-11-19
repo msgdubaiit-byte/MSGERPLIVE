@@ -499,7 +499,7 @@
                     <div class="col-lg-6 text-lg-end">
                         <div class="d-inline-flex gap-2 flex-wrap align-items-center bg-light p-2 rounded border">
                             <span class="fw-bold text-dark small"><i class="bi bi-box-seam text-warning me-1"></i>Quick Actions:</span>
-                            <button type="button" class="btn btn-xs btn-warning text-dark fw-bold" onclick="selectLocalPurchaseRows()" title="Automatically select all items with Machined/Fabricated/Local remarks"><i class="bi bi-check2-all me-1"></i>Select Local Purchase</button>
+                            <button type="button" class="btn btn-xs btn-warning text-dark fw-bold" onclick="openLocalPurchaseModal()" title="Select Local Supplier, which items, and how many PCS"><i class="bi bi-tools me-1"></i>Local Purchase</button>
                             <button type="button" class="btn btn-xs btn-outline-primary" onclick="openSupplierPOModal()"><i class="bi bi-cart-plus me-1"></i>Supplier PO</button>
                             <button type="button" class="btn btn-xs btn-outline-info text-dark" onclick="openCIPLConfigModal()"><i class="bi bi-file-earmark-spreadsheet me-1"></i>CIPL Builder</button>
                             <button type="button" class="btn btn-xs btn-outline-dark" onclick="setAllPackaging('Pallet')"><i class="bi bi-stack me-1"></i>All Pallet</button>
@@ -566,9 +566,9 @@
                         <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">11 Columns (Includes Supplier Details)</div>
                     </button>
 
-                    <button class="btn btn-warning text-dark fw-bold shadow-sm" onclick="downloadLocalPurchaseSheet()">
+                    <button class="btn btn-warning text-dark fw-bold shadow-sm" onclick="openLocalPurchaseModal()" title="Select Local Supplier, which items and how many PCS">
                         <i class="bi bi-tools me-2"></i>Download Local Purchase (.xlsx)
-                        <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Separate Sheet with Machined &amp; Local Items</div>
+                        <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.9;">Select Local Supplier, Items &amp; PCS</div>
                     </button>
 
                     <button class="btn btn-cipl-download" onclick="openCIPLConfigModal()" title="Open CIPL Builder & Packaging Modal">
@@ -614,6 +614,99 @@
             <p class="mb-0 text-muted">Sourcing - Reliable & Systematic &bull; Technical & Quality Engineering</p>
         </div>
 
+    </div>
+
+    <!-- Local Purchase & Supplier Allocation Modal -->
+    <div class="modal fade" id="localPurchaseModal" tabindex="-1" aria-labelledby="localPurchaseModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-tools text-warning fs-5"></i>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0" id="localPurchaseModalLabel">Local Purchase &amp; Supplier Allocation Portal</h5>
+                            <small class="text-white-50">Select Local Supplier, choose which items to procure, and specify PCS to separate or export.</small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <!-- Supplier Header Bar -->
+                    <div class="card card-body bg-white border mb-3 shadow-sm py-3">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold small mb-1 text-dark"><i class="bi bi-building me-1 text-warning"></i>Local Supplier Name</label>
+                                <input type="text" id="lpModalSupplierName" class="form-control form-control-sm" list="suppliersList" placeholder="Select or type Local Supplier (e.g. Al Ghaith, Local Machine Shop)..." oninput="onLPSupplierChange()">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small mb-1 text-dark"><i class="bi bi-file-earmark-text me-1 text-primary"></i>Local Supplier PO #</label>
+                                <input type="text" id="lpModalSupplierPO" class="form-control form-control-sm font-monospace" placeholder="e.g. LP-PO-2026-001" oninput="onLPSupplierPOChange()">
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100 fw-bold" onclick="bulkApplyLPSupplier()">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>Apply to Selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filter & Selection Bar -->
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-warning text-dark fw-bold" onclick="selectLPMachinedItems()">
+                                <i class="bi bi-check2-circle me-1"></i>Select Machined / Local Items
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAllLP(true)">
+                                Select All
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAllLP(false)">
+                                Deselect All
+                            </button>
+                        </div>
+                        <div>
+                            <span class="badge bg-dark fs-7" id="lpSelectedItemsBadge">0 Items Selected for Local Purchase</span>
+                        </div>
+                    </div>
+
+                    <!-- Items Table -->
+                    <div class="table-responsive bg-white rounded border shadow-sm" style="max-height: 400px;">
+                        <table class="table table-sm table-hover align-middle mb-0" id="lpItemsModalTable">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th style="width: 40px;" class="text-center">
+                                        <input type="checkbox" id="lpSelectAllCheck" onchange="toggleSelectAllLP(this.checked)">
+                                    </th>
+                                    <th style="width: 45px;" class="text-center">#</th>
+                                    <th style="width: 75px;" class="text-center">Client #</th>
+                                    <th>Item Description</th>
+                                    <th style="width: 100px;" class="text-center">Total Qty</th>
+                                    <th style="width: 130px;" class="text-center">Local Qty (PCS)</th>
+                                    <th style="width: 150px;" class="text-center">Remaining Balance</th>
+                                    <th style="width: 180px;">Local Supplier</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rows dynamically injected -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-outline-warning text-dark fw-bold" onclick="saveLPAsSeparateDraft()">
+                            <i class="bi bi-save me-1"></i>Save as Separate Draft
+                        </button>
+                        <button type="button" class="btn btn-primary fw-bold" onclick="applyLPAndSplitWorksheet()">
+                            <i class="bi bi-diagram-3-fill me-1"></i>Apply &amp; Split on Worksheet
+                        </button>
+                        <button type="button" class="btn btn-success fw-bold" onclick="downloadLPSeparateExcel()">
+                            <i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Download Local Purchase (.xlsx)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Supplier PO Conversion Modal -->
@@ -1209,59 +1302,260 @@
         }
 
         // =========================================================================
-        // LOCAL PURCHASE SEPARATION ENGINE: Select & Make Separate Sheet / PO
+        // LOCAL PURCHASE ENGINE: Select Local Supplier, Which Items & How Many PCS
         // =========================================================================
-        function selectLocalPurchaseRows() {
-            let count = 0;
+        function openLocalPurchaseModal() {
+            const allRows = Array.from(itemsTableBody.querySelectorAll('tr'));
+            if (allRows.length === 0) {
+                alert('No items found on worksheet. Please upload or load an order first.');
+                return;
+            }
+
+            const selectedMainRows = getSelectedRows();
             const keywords = ['machined', 'machining', 'fabricated', 'fabrication', 'made from', 'modified', 'locally', 'local', 'offered', 'l-'];
-            itemsTableBody.querySelectorAll('tr').forEach(tr => {
-                const desc = (tr.querySelector('.item-desc')?.value || '').toLowerCase();
-                const remarks = (tr.querySelector('.item-remarks')?.value || '').toLowerCase();
-                const supplier = (tr.querySelector('.item-supplier-name')?.value || '').toLowerCase();
-                const isLocal = keywords.some(k => desc.includes(k) || remarks.includes(k) || supplier.includes(k)) || (supplier && supplier !== 'stock' && supplier !== 'supplier');
-                
-                const cb = tr.querySelector('.item-select-check');
-                if (cb) {
-                    cb.checked = isLocal;
-                    if (isLocal) count++;
+
+            // Find default supplier if already set on any local/machined row
+            let initialSupplier = '';
+            let initialPO = '';
+            for (const r of allRows) {
+                const sName = r.querySelector('.item-supplier-name')?.value?.trim();
+                const sPO = r.querySelector('.item-supplier-po')?.value?.trim();
+                if (sName && sName.toUpperCase() !== 'STOCK' && sName.toUpperCase() !== 'SUPPLIER') {
+                    initialSupplier = sName;
+                    if (sPO) initialPO = sPO;
+                    break;
                 }
+            }
+
+            const nameInput = document.getElementById('lpModalSupplierName');
+            const poInput = document.getElementById('lpModalSupplierPO');
+            if (nameInput) nameInput.value = initialSupplier;
+            if (poInput) poInput.value = initialPO;
+
+            const tbody = document.querySelector('#lpItemsModalTable tbody');
+            tbody.innerHTML = '';
+
+            allRows.forEach(r => {
+                const sl = r.querySelector('.row-sl-no').innerText;
+                const clientPoIt = r.querySelector('.item-client-po-item-no')?.value || sl;
+                const desc = r.querySelector('.item-desc').value;
+                const rawQty = r.querySelector('.item-qty').value;
+                const uom = r.querySelector('.item-uom').value;
+                const supp = r.querySelector('.item-supplier-name').value;
+                const remarks = r.querySelector('.item-remarks')?.value || '';
+                
+                const qtyNum = extractQtyNumber(rawQty);
+
+                // Determine if this item should be pre-checked
+                const isSelectedOnMain = selectedMainRows.includes(r);
+                const descLower = (desc + ' ' + remarks).toLowerCase();
+                const isMachinedKeyword = keywords.some(k => descLower.includes(k));
+                const isNonStock = (supp && supp.toUpperCase() !== 'STOCK' && supp.toUpperCase() !== 'SUPPLIER');
+                
+                const shouldCheck = selectedMainRows.length > 0 ? isSelectedOnMain : (isMachinedKeyword || isNonStock);
+
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-sl-no', sl);
+                tr.setAttribute('data-total-qty', qtyNum);
+                tr.setAttribute('data-uom', uom);
+                tr.className = shouldCheck ? 'table-warning' : '';
+
+                tr.innerHTML = `
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input lp-item-check" ${shouldCheck ? 'checked' : ''} onchange="onLPRowCheckChange(this)">
+                    </td>
+                    <td class="text-center fw-semibold font-monospace small">${sl}</td>
+                    <td class="text-center font-monospace small">${escapeHtml(clientPoIt)}</td>
+                    <td style="font-size:0.83rem;"><div style="max-height:48px; overflow-y:auto;">${escapeHtml(desc)}</div></td>
+                    <td class="text-center font-monospace fw-bold">${qtyNum} <span class="small text-muted">${escapeHtml(uom)}</span></td>
+                    <td class="text-center">
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="any" min="0.01" max="${qtyNum}" class="form-control form-control-sm text-center fw-bold lp-item-qty font-monospace" value="${qtyNum}" oninput="recalcLPRowBalance(this)" style="max-width:90px;">
+                            <span class="input-group-text px-1 small">${escapeHtml(uom)}</span>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success text-white lp-item-balance">Full Allocation (0 rem)</span>
+                    </td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm lp-row-supplier" list="suppliersList" value="${escapeHtml(supp && supp.toUpperCase() !== 'STOCK' ? supp : initialSupplier)}" placeholder="Local Supplier">
+                    </td>
+                `;
+                tbody.appendChild(tr);
             });
 
-            updateSelectionBar();
-            if (count > 0) {
-                alert(`Selected ${count} Local Purchase / Machined item(s)!\n\nYou can now click "Make Separate Local Purchase" to export or separate them.`);
+            updateLPSelectedBadge();
+
+            const modal = new bootstrap.Modal(document.getElementById('localPurchaseModal'));
+            modal.show();
+        }
+
+        function recalcLPRowBalance(input) {
+            const tr = input.closest('tr');
+            if (!tr) return;
+            const total = parseFloat(tr.getAttribute('data-total-qty')) || 0;
+            const val = parseFloat(input.value) || 0;
+            const uom = tr.getAttribute('data-uom') || 'PCS';
+            const balSpan = tr.querySelector('.lp-item-balance');
+            if (!balSpan) return;
+
+            if (val <= 0) {
+                balSpan.className = 'badge bg-secondary text-white';
+                balSpan.innerText = '0 PCS';
+            } else if (Math.abs(val - total) < 0.0001) {
+                balSpan.className = 'badge bg-success text-white';
+                balSpan.innerText = 'Full Allocation (0 rem)';
+            } else if (val < total) {
+                const rem = Math.round((total - val) * 100) / 100;
+                balSpan.className = 'badge bg-primary text-white';
+                balSpan.innerText = `Split: ${rem} ${uom} in Stock`;
             } else {
-                alert('No items matching Machined/Fabricated/Local were found. You can manually check any items using the checkboxes on the left.');
+                balSpan.className = 'badge bg-danger text-white';
+                balSpan.innerText = `Exceeds Total (${total})!`;
             }
         }
 
-        async function makeSeparateLocalPurchase() {
-            const selectedRows = getSelectedRows();
-            if (selectedRows.length === 0) {
-                alert('Please select at least one item using the checkboxes on the left to make a separate Local Purchase sheet.');
-                return;
+        function onLPRowCheckChange(cb) {
+            const tr = cb.closest('tr');
+            if (tr) {
+                if (cb.checked) tr.classList.add('table-warning');
+                else tr.classList.remove('table-warning');
             }
-
-            const choice = confirm(`You have selected ${selectedRows.length} item(s) for Local Purchase.\n\n[OK]: Download separate Local Purchase Stores Excel (.xlsx)\n[Cancel]: Save as a separate Local Purchase draft`);
-
-            if (choice) {
-                downloadSelectedAsLocalPurchase();
-            } else {
-                saveSelectedAsSeparateLocalDraft();
-            }
+            updateLPSelectedBadge();
         }
 
-        async function downloadSelectedAsLocalPurchase() {
-            const selectedRows = getSelectedRows();
-            if (selectedRows.length === 0) {
-                alert('Please select at least one item using the checkboxes on the left to export.');
+        function updateLPSelectedBadge() {
+            const modalRows = document.querySelectorAll('#lpItemsModalTable tbody tr');
+            let selCount = 0;
+            modalRows.forEach(r => {
+                if (r.querySelector('.lp-item-check')?.checked) selCount++;
+            });
+            const badge = document.getElementById('lpSelectedItemsBadge');
+            if (badge) badge.innerText = `${selCount} of ${modalRows.length} Items Selected for Local Purchase`;
+
+            const masterCheck = document.getElementById('lpSelectAllCheck');
+            if (masterCheck) masterCheck.checked = (selCount === modalRows.length && modalRows.length > 0);
+        }
+
+        function toggleSelectAllLP(checked) {
+            const modalRows = document.querySelectorAll('#lpItemsModalTable tbody tr');
+            modalRows.forEach(r => {
+                const cb = r.querySelector('.lp-item-check');
+                if (cb) {
+                    cb.checked = checked;
+                    if (checked) r.classList.add('table-warning');
+                    else r.classList.remove('table-warning');
+                }
+            });
+            updateLPSelectedBadge();
+        }
+
+        function selectLPMachinedItems() {
+            const keywords = ['machined', 'machining', 'fabricated', 'fabrication', 'made from', 'modified', 'locally', 'local', 'offered', 'l-'];
+            const modalRows = document.querySelectorAll('#lpItemsModalTable tbody tr');
+            let count = 0;
+            modalRows.forEach(r => {
+                const descText = (r.innerText || '').toLowerCase();
+                const isMatch = keywords.some(k => descText.includes(k));
+                const cb = r.querySelector('.lp-item-check');
+                if (cb) {
+                    cb.checked = isMatch;
+                    if (isMatch) {
+                        r.classList.add('table-warning');
+                        count++;
+                    } else {
+                        r.classList.remove('table-warning');
+                    }
+                }
+            });
+            updateLPSelectedBadge();
+            alert(`Selected ${count} Machined/Fabricated/Local item(s) in Local Purchase modal.`);
+        }
+
+        function onLPSupplierChange() {
+            const val = document.getElementById('lpModalSupplierName').value.trim();
+            if (!val) return;
+            document.querySelectorAll('#lpItemsModalTable tbody tr').forEach(r => {
+                const cb = r.querySelector('.lp-item-check');
+                const suppInput = r.querySelector('.lp-row-supplier');
+                if (cb && cb.checked && suppInput) {
+                    suppInput.value = val;
+                }
+            });
+        }
+
+        function onLPSupplierPOChange() {
+            // Handled during apply & download
+        }
+
+        function bulkApplyLPSupplier() {
+            const val = document.getElementById('lpModalSupplierName').value.trim();
+            if (!val) {
+                alert('Please enter a Local Supplier Name above.');
+                return;
+            }
+            let updated = 0;
+            document.querySelectorAll('#lpItemsModalTable tbody tr').forEach(r => {
+                const cb = r.querySelector('.lp-item-check');
+                const suppInput = r.querySelector('.lp-row-supplier');
+                if (cb && cb.checked && suppInput) {
+                    suppInput.value = val;
+                    updated++;
+                }
+            });
+            alert(`Applied "${val}" to ${updated} selected item(s).`);
+        }
+
+        async function downloadLPSeparateExcel() {
+            const checkedModalRows = Array.from(document.querySelectorAll('#lpItemsModalTable tbody tr')).filter(r => r.querySelector('.lp-item-check')?.checked);
+            if (checkedModalRows.length === 0) {
+                alert('Please select at least one item using the checkboxes to download Local Purchase Excel.');
                 return;
             }
 
+            const bulkSupplier = document.getElementById('lpModalSupplierName').value.trim();
+            const bulkPO = document.getElementById('lpModalSupplierPO').value.trim();
             const client = document.getElementById('clientInput').value.trim();
             const poNumber = document.getElementById('poInput').value.trim();
             const msgRef = document.getElementById('msgRefInput').value.trim();
             const currency = document.getElementById('currencyInput')?.value || 'AED';
+
+            const mainRows = Array.from(itemsTableBody.querySelectorAll('tr'));
+            const exportItems = [];
+
+            checkedModalRows.forEach((mr, idx) => {
+                const sl = mr.getAttribute('data-sl-no');
+                const localQty = parseFloat(mr.querySelector('.lp-item-qty').value) || 1;
+                const localSupp = mr.querySelector('.lp-row-supplier')?.value.trim() || bulkSupplier || 'LOCAL PURCHASE';
+                const mainTr = mainRows.find(r => r.querySelector('.row-sl-no').innerText === sl);
+
+                if (mainTr) {
+                    const desc = mainTr.querySelector('.item-desc').value;
+                    const uom = mainTr.querySelector('.item-uom').value;
+                    const clientPoIt = mainTr.querySelector('.item-client-po-item-no')?.value || `${idx + 1}`;
+                    const heat = mainTr.querySelector('.item-heat').value;
+                    const cert = mainTr.querySelector('.item-cert').value;
+                    const make = mainTr.querySelector('.item-make').value;
+                    const unitPrice = mainTr.querySelector('.item-rate')?.value || '0.00';
+                    const amount = (localQty * (parseFloat(unitPrice.replace(/,/g, '')) || 0)).toFixed(2);
+
+                    exportItems.push({
+                        sl_no: idx + 1,
+                        client_po_item_no: clientPoIt,
+                        description: desc,
+                        qty: `${localQty}`,
+                        uom: uom,
+                        heat_number: heat,
+                        certificate_number: cert,
+                        make: make,
+                        remarks: 'Local Purchase',
+                        supplier_name: localSupp,
+                        supplier_po_number: bulkPO || mainTr.querySelector('.item-supplier-po')?.value || `LP-PO-${idx + 1}`,
+                        unit_price: unitPrice,
+                        amount: amount
+                    });
+                }
+            });
 
             const payload = {
                 client,
@@ -1270,7 +1564,7 @@
                 currency,
                 is_internal: true,
                 filter_machined_only: false,
-                items: selectedRows
+                items: exportItems
             };
 
             try {
@@ -1282,7 +1576,7 @@
 
                 if (!resp.ok) {
                     const err = await resp.json();
-                    alert('Error generating Local Purchase sheet: ' + (err.error || resp.statusText));
+                    alert('Error generating Local Purchase Excel: ' + (err.error || resp.statusText));
                     return;
                 }
 
@@ -1290,7 +1584,8 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `Local_Purchase_${(msgRef || 'MSG').replace(/ /g, '_')}_${(poNumber || 'PO').replace(/ /g, '_')}.xlsx`;
+                const suppSlug = (bulkSupplier || 'LOCAL').replace(/\s+/g, '_');
+                a.download = `Local_Purchase_${(msgRef || 'MSG').replace(/\s+/g, '_')}_${suppSlug}.xlsx`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -1300,21 +1595,188 @@
             }
         }
 
-        async function saveSelectedAsSeparateLocalDraft() {
-            const selectedRows = getSelectedRows();
-            if (selectedRows.length === 0) return;
+        function applyLPAndSplitWorksheet() {
+            const checkedModalRows = Array.from(document.querySelectorAll('#lpItemsModalTable tbody tr')).filter(r => r.querySelector('.lp-item-check')?.checked);
+            if (checkedModalRows.length === 0) {
+                alert('Please select at least one item to apply to worksheet.');
+                return;
+            }
 
+            const bulkSupplier = document.getElementById('lpModalSupplierName').value.trim();
+            const bulkPO = document.getElementById('lpModalSupplierPO').value.trim();
+            const mainRows = Array.from(itemsTableBody.querySelectorAll('tr'));
+            let appliedCount = 0;
+            let splitCount = 0;
+
+            checkedModalRows.forEach(mr => {
+                const sl = mr.getAttribute('data-sl-no');
+                const totalQty = parseFloat(mr.getAttribute('data-total-qty')) || 0;
+                const localQty = parseFloat(mr.querySelector('.lp-item-qty').value) || 0;
+                const localSupp = mr.querySelector('.lp-row-supplier')?.value.trim() || bulkSupplier || 'LOCAL PURCHASE';
+                const mainTr = mainRows.find(r => r.querySelector('.row-sl-no').innerText === sl);
+
+                if (!mainTr || localQty <= 0) return;
+
+                const clientPoItVal = mainTr.querySelector('.item-client-po-item-no')?.value || sl;
+                const uomVal = mainTr.querySelector('.item-uom').value;
+                const descVal = mainTr.querySelector('.item-desc').value;
+                const rateVal = mainTr.querySelector('.item-rate')?.value || '0.00';
+                const pkgTypeVal = mainTr.querySelector('.item-pkg-type')?.value || 'Pallet';
+                const pkgNoVal = mainTr.querySelector('.item-pkg-no')?.value || '1';
+
+                // CASE 1: Full Allocation (Local Qty == Total Qty)
+                if (Math.abs(localQty - totalQty) < 0.0001 || localQty >= totalQty) {
+                    mainTr.querySelector('.item-supplier-name').value = localSupp;
+                    if (bulkPO) mainTr.querySelector('.item-supplier-po').value = bulkPO;
+                    const remInput = mainTr.querySelector('.item-remarks');
+                    if (remInput && !remInput.value.toLowerCase().includes('local')) {
+                        remInput.value = remInput.value ? `${remInput.value}; Local Purchase` : 'Local Purchase';
+                    }
+                    appliedCount++;
+                } 
+                // CASE 2: Partial Allocation -> Split into 2 rows (Remaining in Stock + Local Qty from Local Supplier)
+                else {
+                    const remainingQty = Math.round((totalQty - localQty) * 100) / 100;
+                    
+                    // Update original row as Remaining in Stock
+                    mainTr.querySelector('.item-qty').value = `${remainingQty} OF ${totalQty}`;
+                    mainTr.setAttribute('data-total-qty', totalQty);
+                    const remInput = mainTr.querySelector('.item-remarks');
+                    if (remInput && !remInput.value.toLowerCase().includes('stock')) {
+                        remInput.value = remInput.value ? `${remInput.value}; Main Stock` : 'Main Stock';
+                    }
+                    calculateRowAmount(mainTr.querySelector('.item-qty'));
+
+                    // Create new split row for Local Purchase
+                    const newTr = document.createElement('tr');
+                    newTr.setAttribute('data-group-id', 'grp-' + clientPoItVal);
+                    newTr.setAttribute('data-total-qty', totalQty);
+                    newTr.className = 'table-warning';
+
+                    newTr.innerHTML = `
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input item-select-check" onchange="updateSelectionBar()">
+                        </td>
+                        <td class="text-center fw-semibold row-sl-no font-monospace">-</td>
+                        <td class="text-center">
+                            <input type="text" class="form-control form-control-sm text-center font-monospace fw-bold item-client-po-item-no" value="${escapeHtml(clientPoItVal)}" onchange="onClientPoItemNoChange(this)">
+                        </td>
+                        <td>
+                            <textarea class="form-control form-control-sm item-desc" rows="2">${escapeHtml(descVal)}</textarea>
+                        </td>
+                        <td>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm text-center font-monospace fw-bold item-qty" value="${localQty} OF ${totalQty}" oninput="calculateRowAmount(this)">
+                                <input type="text" class="form-control form-control-sm text-center item-uom" value="${escapeHtml(uomVal)}" style="max-width: 55px;">
+                            </div>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm item-remarks" value="Local Purchase" placeholder="Local Purchase">
+                        </td>
+                        <td class="internal-col">
+                            <input type="text" class="form-control form-control-sm item-supplier-name" list="suppliersList" value="${escapeHtml(localSupp)}" placeholder="Local Supplier">
+                        </td>
+                        <td class="internal-col">
+                            <input type="text" class="form-control form-control-sm text-center font-monospace item-supplier-po" value="${escapeHtml(bulkPO || 'LP-PO')}" placeholder="PO #">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm text-center font-monospace fw-semibold item-heat" value="${escapeHtml(mainTr.querySelector('.item-heat')?.value || '')}" placeholder="Heat #">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm text-center font-monospace item-cert" value="${escapeHtml(mainTr.querySelector('.item-cert')?.value || '')}" placeholder="Cert #">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm text-center item-make" value="${escapeHtml(mainTr.querySelector('.item-make')?.value || '')}" placeholder="MAKE">
+                        </td>
+                        <td>
+                            <div class="input-group input-group-sm">
+                                <select class="form-select form-select-sm item-pkg-type" style="font-size: 0.8rem;">
+                                    <option value="Pallet" ${pkgTypeVal === 'Pallet' ? 'selected' : ''}>Pallet</option>
+                                    <option value="Box" ${pkgTypeVal === 'Box' ? 'selected' : ''}>Box</option>
+                                    <option value="Crate" ${pkgTypeVal === 'Crate' ? 'selected' : ''}>Crate</option>
+                                    <option value="Wooden Box" ${pkgTypeVal === 'Wooden Box' ? 'selected' : ''}>W.Box</option>
+                                </select>
+                                <input type="text" class="form-control form-control-sm text-center item-pkg-no" value="${escapeHtml(pkgNoVal)}" style="max-width: 40px; font-size: 0.8rem;">
+                            </div>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm text-end font-monospace item-rate" value="${escapeHtml(rateVal)}" oninput="calculateRowAmount(this)">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm text-end font-monospace fw-bold item-amount" value="0.00" readonly>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-xs btn-outline-secondary" onclick="duplicateRow(this)" title="Split / Duplicate Row"><i class="bi bi-copy"></i></button>
+                                <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteRow(this)" title="Delete Row"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </td>
+                    `;
+
+                    mainTr.parentNode.insertBefore(newTr, mainTr.nextSibling);
+                    calculateRowAmount(newTr.querySelector('.item-qty'));
+                    splitCount++;
+                    appliedCount++;
+                }
+            });
+
+            reindexRows();
+            recalculateClientItemGroups();
+            updateSelectionBar();
+            triggerAutoSave();
+
+            bootstrap.Modal.getInstance(document.getElementById('localPurchaseModal')).hide();
+            alert(`Local Purchase Applied!\n\n• ${appliedCount} line(s) allocated to Local Supplier.\n• ${splitCount} item(s) split into separate Local Purchase lines.`);
+        }
+
+        async function saveLPAsSeparateDraft() {
+            const checkedModalRows = Array.from(document.querySelectorAll('#lpItemsModalTable tbody tr')).filter(r => r.querySelector('.lp-item-check')?.checked);
+            if (checkedModalRows.length === 0) {
+                alert('Please select at least one item using the checkboxes to save as draft.');
+                return;
+            }
+
+            const bulkSupplier = document.getElementById('lpModalSupplierName').value.trim();
+            const bulkPO = document.getElementById('lpModalSupplierPO').value.trim();
             const client = document.getElementById('clientInput').value.trim();
             const poNumber = document.getElementById('poInput').value.trim();
             const msgRef = document.getElementById('msgRefInput').value.trim();
             const currency = document.getElementById('currencyInput')?.value || 'AED';
 
+            const mainRows = Array.from(itemsTableBody.querySelectorAll('tr'));
+            const exportItems = [];
+
+            checkedModalRows.forEach((mr, idx) => {
+                const sl = mr.getAttribute('data-sl-no');
+                const localQty = parseFloat(mr.querySelector('.lp-item-qty').value) || 1;
+                const localSupp = mr.querySelector('.lp-row-supplier')?.value.trim() || bulkSupplier || 'LOCAL PURCHASE';
+                const mainTr = mainRows.find(r => r.querySelector('.row-sl-no').innerText === sl);
+
+                if (mainTr) {
+                    exportItems.push({
+                        sl_no: idx + 1,
+                        client_po_item_no: mainTr.querySelector('.item-client-po-item-no')?.value || `${idx + 1}`,
+                        description: mainTr.querySelector('.item-desc').value,
+                        qty: `${localQty}`,
+                        uom: mainTr.querySelector('.item-uom').value,
+                        heat_number: mainTr.querySelector('.item-heat').value,
+                        certificate_number: mainTr.querySelector('.item-cert').value,
+                        make: mainTr.querySelector('.item-make').value,
+                        remarks: 'Local Purchase',
+                        supplier_name: localSupp,
+                        supplier_po_number: bulkPO || mainTr.querySelector('.item-supplier-po')?.value || `LP-PO-${idx + 1}`,
+                        unit_price: mainTr.querySelector('.item-rate')?.value || '0.00',
+                        amount: (localQty * (parseFloat(mainTr.querySelector('.item-rate')?.value?.replace(/,/g, '') || '0') || 0)).toFixed(2)
+                    });
+                }
+            });
+
             const payload = {
                 client,
                 po_number: poNumber,
-                msg_ref: (msgRef ? msgRef : 'MSG') + ' [LOCAL PURCHASE]',
+                msg_ref: (msgRef ? msgRef : 'MSG') + ` [LOCAL PURCHASE - ${bulkSupplier || 'SUPPLIER'}]`,
                 currency,
-                items: selectedRows,
+                items: exportItems,
                 save_as_new: true,
                 editor_name: (currentUsername || 'Editor') + ' (Local Purchase)'
             };
@@ -1327,28 +1789,23 @@
                 });
 
                 if (resp.ok) {
-                    alert(`Saved separate Local Purchase draft with ${selectedRows.length} items! You can view and manage it anytime in the Sales Orders & Drafts Portal.`);
+                    bootstrap.Modal.getInstance(document.getElementById('localPurchaseModal')).hide();
+                    alert(`Saved separate Local Purchase draft with ${exportItems.length} items for "${bulkSupplier || 'Local Supplier'}"!\n\nYou can access it anytime from the Sales Orders & Drafts Portal below.`);
                     loadHistory();
                 } else {
-                    alert('Failed to save separate draft');
+                    alert('Failed to save separate Local Purchase draft');
                 }
             } catch (e) {
                 alert('Save error: ' + e.message);
             }
         }
 
-        async function downloadLocalPurchaseSheet() {
-            const selected = getSelectedRows();
-            if (selected.length > 0) {
-                downloadSelectedAsLocalPurchase();
-                return;
-            }
+        function makeSeparateLocalPurchase() {
+            openLocalPurchaseModal();
+        }
 
-            selectLocalPurchaseRows();
-            const count = getSelectedRows().length;
-            if (count > 0) {
-                downloadSelectedAsLocalPurchase();
-            }
+        function downloadLocalPurchaseSheet() {
+            openLocalPurchaseModal();
         }
 
         function populateEditor(data) {

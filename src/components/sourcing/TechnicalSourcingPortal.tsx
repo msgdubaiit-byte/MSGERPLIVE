@@ -24,6 +24,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDeliverablesPreviewModal'
+import { LocalPurchaseAllocationModal } from './LocalPurchaseAllocationModal'
 import {
   SourcingWorksheetData,
   SourcingLineItem,
@@ -167,6 +168,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  const [isLocalPurchaseModalOpen, setIsLocalPurchaseModalOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
   const [draftsList, setDraftsList] = useState<SourcingWorksheetData[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>(() => existingOrders[0]?.id || '')
@@ -824,14 +826,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
             </button>
           </div>
 
-          {/* Local Purchase Sheet: Opens Preview & Download Modal */}
+          {/* Local Purchase Sheet: Opens Dedicated Allocation Modal */}
           <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-amber-800">
             <button
-              onClick={() => handleOpenPreview('stores')}
+              onClick={() => setIsLocalPurchaseModalOpen(true)}
               className="bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open Local Purchase Preview & Download Modal"
+              title="Open Local Purchase Modal (Select Local Supplier, Items & PCS)"
             >
-              <Eye className="h-4 w-4" />
+              <Wrench className="h-4 w-4" />
               <span>Download Local Purchase</span>
             </button>
             <button
@@ -1018,6 +1020,15 @@ export const TechnicalSourcingPortal: React.FC = () => {
               >
                 <Plus className="h-3 w-3 text-amber-700" />
                 <span>Supplier PO</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsLocalPurchaseModalOpen(true)}
+                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Select Local Supplier, which items and how many PCS"
+              >
+                <Wrench className="h-3 w-3 text-amber-700" />
+                <span>Local Purchase</span>
               </button>
               <button
                 type="button"
@@ -1350,6 +1361,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
         initialTab={previewTab}
         data={currentWorksheetData}
         filterMachinedOnly={filterMachinedOnly}
+      />
+
+      {/* Local Purchase & Supplier Allocation Modal */}
+      <LocalPurchaseAllocationModal
+        isOpen={isLocalPurchaseModalOpen}
+        onClose={() => setIsLocalPurchaseModalOpen(false)}
+        data={currentWorksheetData}
+        onApplyLocalPurchase={updatedItems => {
+          setItems(updatedItems)
+        }}
+        showToast={msg => setStatusNotice(msg)}
       />
     </div>
   )
