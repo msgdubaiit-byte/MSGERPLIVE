@@ -174,40 +174,105 @@ export function autoDetectCountryOfOrigin(make: string = '', desc: string = '', 
   return 'Italy'
 }
 
-export function autoDetectHSCode(descText: string = ''): string {
-  if (!descText) return '7307.93.00'
-  const text = descText.toUpperCase()
-  if (/\b(FLANGE|WNRF|BLIND|SPECTACLE|SLIP-ON|SO\s*FLANGE|SW\s*FLANGE|RTJ\s*FLANGE)\b/.test(text)) {
-    if (/\b(316|316L|304|304L|SS|STAINLESS|INCONEL|DUPLEX|SUPER DUPLEX)\b/.test(text)) {
-      return '7307.21.00'
-    }
-    return '7307.91.00'
+export function normalizeHSCode(rawCode: string = ''): string | null {
+  if (!rawCode) return null
+  const str = String(rawCode).trim()
+  if (!str) return null
+  
+  // Extract 6 to 8 digit number sequence
+  const match = str.match(/\b([0-9]{4})(?:\.?([0-9]{2}))?(?:\.?([0-9]{2}))?\b/)
+  if (match) {
+    const p1 = match[1]
+    const p2 = match[2] || '00'
+    const p3 = match[3] || '00'
+    return `${p1}.${p2}.${p3}`
   }
-  if (/\b(ELBOW|TEE|REDUCER|CAP|CROSS|ECC\.?\s*RED|CONC\.?\s*RED|BEND)\b/.test(text)) {
-    if (/\b(316|316L|304|304L|SS|STAINLESS)\b/.test(text)) {
-      return '7307.23.00'
-    }
-    return '7307.93.00'
+
+  const digits = str.replace(/[^0-9]/g, '')
+  if (digits.length >= 8) {
+    return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`
+  } else if (digits.length === 6) {
+    return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.00`
+  } else if (digits.length >= 4) {
+    return `${digits.slice(0, 4)}.${digits.slice(4).padEnd(2, '0')}.00`
   }
-  if (/\b(SWAGE|NIPPLE|COUPLING|UNION|WELDOLET|SOCKOLET|THREADOLET|NIPPOLET|LATROLET|BUSHING|PLUG|OLET)\b/.test(text)) {
-    if (/\b(316|316L|304|304L|SS|STAINLESS)\b/.test(text)) {
-      return '7307.29.00'
-    }
-    return '7307.92.00'
+  return null
+}
+
+export function autoDetectHSCode(descText: string = '', itemCode: string = '', explicitHS: string = ''): string {
+  // 1. If explicit HSN was passed, validate & normalize it
+  if (explicitHS && explicitHS.trim()) {
+    const norm = normalizeHSCode(explicitHS)
+    if (norm) return norm
   }
-  if (/\b(PIPE|TUBE|SMLS|TUBING)\b/.test(text)) {
-    return '7304.19.00'
+
+  const combined = `${descText} ${itemCode}`.toUpperCase()
+
+  // 2. Check for embedded HSN / HS Code in description or code
+  const embeddedMatch = combined.match(/(?:HSN|HS\s*CODE|HS|TARIFF|COMMODITY)[\s:#\-]+([0-9]{4}(?:\.?[0-9]{2,4})?)/i)
+  if (embeddedMatch) {
+    const norm = normalizeHSCode(embeddedMatch[1])
+    if (norm) return norm
   }
-  if (/\b(STUD|BOLT|NUT|FASTENER)\b/.test(text)) {
+
+  // 3. Material Grade Classification: Stainless/Duplex vs Carbon Steel
+  const isStainless = /\b(316|316L|316TI|F316|F316L|WP316|WP316L|TP316|304|304L|304H|F304|WP304|SS|S\.S|STAINLESS|DUPLEX|F51|S31803|2205|SUPER\s*DUPLEX|F53|F55|S32750|S32760|INCONEL|625|825|HASTELLOY|C276|MONEL|400|ALLOY\s*20|TITANIUM|904L)\b/i.test(combined)
+
+  // 4. Component Type Identification
+
+  // A. FLANGES: WN, SORF, WSO, BLRF, RTJ, Spectacle Blind
+  const isFlange =
+    /\b(FLANGE|FLG|WNRF|WNFF|SORF|SOFF|WSO|BLRF|BLFF|BLIND|BLND|SWRF|SWFF|THRF|RTJ|SPECTACLE|SP\s*BLIND|PADDLE|ORIFICE\s*FLANGE|WELD\s*NECK|SLIP\s*ON|LAP\s*JOINT)\b/i.test(combined) ||
+    /^(?:WN|WSO|SORF|BLRF|SWRF|BLIND)\d+/i.test(itemCode)
+
+  if (isFlange) {
+    return isStainless ? '7307.21.00' : '7307.91.00'
+  }
+
+  // B. BUTT-WELD FITTINGS: Elbows, Tees, Reducers, Caps, Crosses
+  const isButtWeld =
+    /\b(ELBOW|ELB|EL90|EL45|90\s*DEG|45\s*DEG|180\s*DEG|LR\s*ELBOW|SR\s*ELBOW|EQUAL\s*TEE|RED\s*TEE|REDUCING\s*TEE|EQ\s*TEE|TEE|REDUCER|CONC\s*RED|ECC\s*RED|CONCENTRIC|ECCENTRIC|END\s*CAP|CAP\b|CROSS\b|BEND\b|BUTT\s*WELD|BW\s*FITTING)\b/i.test(combined) ||
+    /^(?:EL|TEE|RED|CAP)\d+/i.test(itemCode)
+
+  if (isButtWeld) {
+    return isStainless ? '7307.23.00' : '7307.93.00'
+  }
+
+  // C. FORGED / THREADED / SOCKET-WELD FITTINGS & BRANCH OUTLETS (Olets, Nipples, Couplings, Bushings)
+  const isForgedOrThreaded =
+    /\b(SWAGE|NIPPLE|HEX\s*NIPPLE|CONC\s*SWAGE|ECC\s*SWAGE|COUPLING|HALF\s*COUPLING|FULL\s*COUPLING|UNION|WELDOLET|SOCKOLET|THREADOLET|NIPPOLET|LATROLET|ELBOLET|FLANGEOLET|BUSHING|HEX\s*BUSHING|PLUG|HEX\s*PLUG|ROUND\s*PLUG|BULL\s*PLUG|OLET|FORGED\s*FITTING|3000#|6000#|9000#|SOCKET\s*WELD|THREADED|NPT)\b/i.test(combined) ||
+    /^(?:SW|CPL|UN|WOL|SOL|TOL|PLUG)\d+/i.test(itemCode)
+
+  if (isForgedOrThreaded) {
+    return isStainless ? '7307.29.00' : '7307.92.00'
+  }
+
+  // D. SEAMLESS PIPES & TUBING
+  const isPipe = /\b(PIPE|LINE\s*PIPE|SMLS\s*PIPE|SMLS|SEAMLESS|CASING|TUBING|TUBE|API\s*5L|A106|A333|A312)\b/i.test(combined)
+  if (isPipe) {
+    return isStainless ? '7304.11.00' : '7304.19.00'
+  }
+
+  // E. FASTENERS (Stud Bolts, Nuts)
+  const isFastener = /\b(STUD\s*BOLT|STUD|HEX\s*BOLT|BOLT|HEX\s*NUT|NUT|WASHER|FASTENER|B7\b|B7M\b|B8\b|B8M\b|2H\b|7M\b|A193|A194)\b/i.test(combined)
+  if (isFastener) {
     return '7318.15.00'
   }
-  if (/\b(GASKET|SPIRAL WOUND)\b/.test(text)) {
+
+  // F. GASKETS
+  const isGasket = /\b(GASKET|SWG|SPIRAL\s*WOUND|RTJ\s*GASKET|RING\s*JOINT|OCTAGONAL|OVAL|CNAF|GRAPHITE\s*GASKET|PTFE\s*GASKET)\b/i.test(combined)
+  if (isGasket) {
     return '8484.10.00'
   }
-  if (/\b(VALVE|BALL VALVE|CHECK VALVE|GATE VALVE)\b/.test(text)) {
+
+  // G. VALVES
+  const isValve = /\b(VALVE|BALL\s*VALVE|GATE\s*VALVE|GLOBE\s*VALVE|CHECK\s*VALVE|BUTTERFLY\s*VALVE|NEEDLE\s*VALVE|DBB|PLUG\s*VALVE)\b/i.test(combined)
+  if (isValve) {
     return '8481.80.00'
   }
-  return '7307.99.00'
+
+  // Fallback fitting HSN code
+  return isStainless ? '7307.29.00' : '7307.99.00'
 }
 
 export function estimateUnitWeight(desc: string = '', _uom: string = 'EA'): number {

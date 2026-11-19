@@ -5,7 +5,7 @@
 import * as XLSX from 'xlsx'
 import { db } from './db'
 import { uploadedCertificatesCache } from './zipExtractor'
-import { autoDetectMake, autoDetectSupplier } from './sourcingEngine'
+import { autoDetectMake, autoDetectSupplier, autoDetectHSCode, autoDetectCountryOfOrigin, normalizeHSCode } from './sourcingEngine'
 
 // Auto-match MTCs by Heat Number and Item Code
 export function matchCertificatesForHeat(heatNumber: string, itemCode?: string): any[] {
@@ -863,22 +863,43 @@ export function generateSalesOrderTemplate(): void {
     {
       'Customer Name': 'McDermott Middle East Inc',
       'Customer P.O.': 'PO-MCD-88412',
+      'Client PO Item No': '1',
       'Item Name': 'WSO15150F316',
+      'Description': '1-1/2" 150# SORF FLANGE ASTM A182 F316/316L ASME B16.5',
+      'HSN Code': '7307.21.00',
+      'Make': 'BENKAN THAILAND',
+      'Country of Origin': 'THAILAND',
       'Required Qty': 5,
+      'UOM': 'PCS',
+      'Unit Price': 145.00,
       'Required Delivery Date': '2026-11-15'
     },
     {
       'Customer Name': 'McDermott Middle East Inc',
       'Customer P.O.': 'PO-MCD-88412',
+      'Client PO Item No': '2',
       'Item Name': 'WSO20150F316',
+      'Description': '2" 150# WNRF SCH 40 FLANGE ASTM A182 F316/316L ASME B16.5',
+      'HSN Code': '7307.21.00',
+      'Make': 'BENKAN THAILAND',
+      'Country of Origin': 'THAILAND',
       'Required Qty': 10,
+      'UOM': 'PCS',
+      'Unit Price': 195.00,
       'Required Delivery Date': '2026-11-15'
     },
     {
       'Customer Name': 'Petrofac International Ltd',
       'Customer P.O.': 'PO-PET-4911',
+      'Client PO Item No': '1',
       'Item Name': 'EL9050S80WPBBENKAN-STOCK',
+      'Description': '2" 90 DEG LR ELBOW SCH 80 ASTM A234 WPB ASME B16.9 SEAMLESS',
+      'HSN Code': '7307.93.00',
+      'Make': 'BENKAN THAILAND',
+      'Country of Origin': 'THAILAND',
       'Required Qty': 8,
+      'UOM': 'PCS',
+      'Unit Price': 62.50,
       'Required Delivery Date': '2026-11-20'
     }
   ]
@@ -889,15 +910,27 @@ export function generateSalesOrderTemplate(): void {
   XLSX.writeFile(wb, 'MSG_Sales_Orders_Import_Template.xlsx')
 }
 
-// Parse Sales Orders Excel
-export function parseSalesOrderExcel(file: File): Promise<{
+export interface ParsedSalesOrderExcelRow {
   customerName: string
   poNumber: string
   itemCode: string
+  itemDescription?: string
   requiredQty: number
   deliveryDate?: string
+  hsCode?: string
+  make?: string
+  countryOfOrigin?: string
+  unitPrice?: number
+  uom?: string
+  clientPoItemNo?: string
+  position?: number
+  heatNumber?: string
+  location?: string
   sheetName?: string
-}[]> {
+}
+
+// Parse Sales Orders Excel (Extracts Item Description, HSN Code, Make, COO, Unit Price, etc.)
+export function parseSalesOrderExcel(file: File): Promise<ParsedSalesOrderExcelRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -905,26 +938,65 @@ export function parseSalesOrderExcel(file: File): Promise<{
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array' })
         const sheetNames = wb.SheetNames || []
-        const rows: any[] = []
+        const rows: ParsedSalesOrderExcelRow[] = []
 
         sheetNames.forEach(sheetName => {
           const sheet = wb.Sheets[sheetName]
           if (!sheet) return
           const json: any[] = XLSX.utils.sheet_to_json(sheet)
-          json.forEach(r => {
-            const cust = r['Customer Name'] || r['Customer'] || r['customer_name'] || 'General Client'
-            const po = r['Customer P.O.'] || r['PO Number'] || r['P.O. Number'] || r['po_number'] || 'PO-ONLINE'
-            const item = r['Item Name'] || r['Item Code'] || r['item_code'] || r['Item'] || ''
-            const qty = parseInt(String(r['Required Qty'] || r['Quantity'] || r['Qty'] || 1).replace(/[^0-9]/g, ''), 10) || 1
-            const date = r['Required Delivery Date'] || r['Delivery Date'] || r['delivery_date'] || ''
+          let rowPos = 0
 
-            if (String(item).trim()) {
+          json.forEach(r => {
+            const cust = r['Customer Name'] || r['Customer'] || r['Client'] || r['Client Name'] || r['customer_name'] || 'General Client'
+            const po = r['Customer P.O.'] || r['PO Number'] || r['P.O. Number'] || r['PO#'] || r['po_number'] || r['Order No'] || 'PO-ONLINE'
+            const item = r['Item Name'] || r['Item Code'] || r['item_code'] || r['Part Number'] || r['Part No'] || r['Item'] || r['Code'] || ''
+            const rawDesc = r['Description'] || r['Item Description'] || r['desc'] || r['description'] || r['Specification'] || r['Material Description'] || ''
+            
+            // Explicit HSN / HS Code column check (all common industry variations)
+            const rawHS = r['HSN Code'] || r['HS Code'] || r['HSN'] || r['HS_CODE'] || r['HS CODE'] || r['HS'] || r['HSN/SAC'] || r['Tariff Code'] || r['Tariff'] || r['Harmonized Code'] || r['Commodity Code'] || r['hsn_code'] || ''
+            
+            const rawQty = r['Required Qty'] || r['Quantity'] || r['Qty'] || r['QTY'] || r['Order Qty'] || 1
+            const qty = parseInt(String(rawQty).replace(/[^0-9]/g, ''), 10) || 1
+            const date = r['Required Delivery Date'] || r['Delivery Date'] || r['delivery_date'] || ''
+            
+            const rawMake = r['Make'] || r['Manufacturer'] || r['Brand'] || r['make'] || r['Maker'] || ''
+            const rawCOO = r['Country of Origin'] || r['Origin'] || r['COO'] || r['country_of_origin'] || r['Country'] || ''
+            const rawRate = r['Unit Price'] || r['Rate'] || r['Unit Rate'] || r['Price'] || r['unit_price'] || r['Rate AED'] || 0
+            const rate = parseFloat(String(rawRate).replace(/[^0-9.]/g, '')) || 0
+            const rawUom = r['UOM'] || r['Unit'] || r['uom'] || r['unit'] || 'PCS'
+            const rawPoItemNo = r['Client PO Item No'] || r['Item No'] || r['Item #'] || r['Sl No'] || r['Line No'] || r['Pos'] || ''
+            const rawHeat = r['Heat Number'] || r['Heat No'] || r['Heat#'] || r['heat_number'] || ''
+            const rawLoc = r['Location'] || r['Warehouse Location'] || r['Bay'] || r['LN'] || ''
+
+            if (String(item).trim() || String(rawDesc).trim()) {
+              rowPos++
+              const cleanItemCode = String(item || '').trim().toUpperCase() || `ITEM-${rowPos}`
+              let cleanDesc = String(rawDesc || '').trim()
+              if (!cleanDesc) {
+                cleanDesc = cleanItemCode
+              }
+
+              // Intelligent HS Code resolution: Check explicit column -> check embedded in desc -> auto-detect from component
+              const detectedHS = autoDetectHSCode(cleanDesc, cleanItemCode, String(rawHS || ''))
+              const detectedMake = rawMake ? String(rawMake).trim() : (autoDetectMake(`${cleanDesc} ${cleanItemCode}`) || 'BENKAN THAILAND')
+              const detectedCOO = rawCOO ? String(rawCOO).trim() : autoDetectCountryOfOrigin(detectedMake, cleanDesc, '')
+
               rows.push({
                 customerName: String(cust).trim(),
                 poNumber: String(po).trim(),
-                itemCode: String(item).trim().toUpperCase(),
+                itemCode: cleanItemCode,
+                itemDescription: cleanDesc,
                 requiredQty: qty,
                 deliveryDate: date ? String(date).trim() : undefined,
+                hsCode: detectedHS,
+                make: detectedMake,
+                countryOfOrigin: detectedCOO,
+                unitPrice: rate,
+                uom: String(rawUom).trim().toUpperCase() || 'PCS',
+                clientPoItemNo: rawPoItemNo ? String(rawPoItemNo).trim() : String(rowPos),
+                position: rowPos,
+                heatNumber: rawHeat ? String(rawHeat).trim() : undefined,
+                location: rawLoc ? String(rawLoc).trim() : undefined,
                 sheetName
               })
             }

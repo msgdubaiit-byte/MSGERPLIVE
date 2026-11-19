@@ -5,7 +5,7 @@ import { PDFDocument, rgb, StandardFonts, degrees, decodePDFRawStream, PDFRawStr
 import JSZip from 'jszip'
 import { getUploadedCertificateBytes } from './zipExtractor'
 import { SalesOrder } from '../types'
-import { autoDetectMake, autoDetectSupplier } from './sourcingEngine'
+import { autoDetectMake, autoDetectSupplier, autoDetectHSCode, autoDetectCountryOfOrigin } from './sourcingEngine'
 import { db } from './db'
 
 export interface StampOptions {
@@ -1217,6 +1217,9 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     purchaseType?: 'regular' | 'local_purchase'
     make?: string
     supplierName?: string
+    countryOfOrigin?: string
+    hsCode?: string
+    uom?: string
     packageType?: string
     packageNo?: string
     splitQty?: string
@@ -1457,6 +1460,18 @@ export async function parseCustomerSOPDF(file: File): Promise<{
 
     const detectedMake = autoDetectMake(code + ' ' + itemDesc) || (pos === 1 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
     const detectedSupplier = isStock ? 'STOCK' : (isLocal ? 'LOCAL UAE SUPPLIER' : autoDetectSupplier(detectedMake, itemDesc))
+    const detectedCOO = autoDetectCountryOfOrigin(detectedMake, itemDesc, '')
+
+    // Check for explicit HSN in description lines
+    let explicitHS = ''
+    for (const dl of descLines) {
+      const hsM = dl.match(/(?:HSN|HS\s*CODE|HS|TARIFF)[\s:#\-]+([0-9]{4}(?:\.?[0-9]{2,4})?)/i)
+      if (hsM) {
+        explicitHS = hsM[1]
+        break
+      }
+    }
+    const detectedHS = autoDetectHSCode(itemDesc, code, explicitHS)
 
     items.push({
       position: pos || items.length + 1,
@@ -1470,6 +1485,8 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       purchaseType: isStock ? 'regular' : (isLocal ? 'local_purchase' : 'regular'),
       make: detectedMake,
       supplierName: detectedSupplier,
+      countryOfOrigin: detectedCOO,
+      hsCode: detectedHS,
       packageType: 'Pallet',
       packageNo: `${Math.floor(items.length / 3) + 1}`
     })
@@ -1489,6 +1506,8 @@ export async function parseCustomerSOPDF(file: File): Promise<{
         const pos = items.length + 1
         const desc = `Oilfield Material ${c} ASME B16.9 / B16.5`
         const mMake = autoDetectMake(desc) || 'BENKAN, THAILAND'
+        const mCOO = autoDetectCountryOfOrigin(mMake, desc, '')
+        const mHS = autoDetectHSCode(desc, c)
         const isLoc = /^L/i.test(c)
         items.push({
           position: pos,
@@ -1499,6 +1518,8 @@ export async function parseCustomerSOPDF(file: File): Promise<{
           purchaseType: isLoc ? 'local_purchase' : 'regular',
           make: mMake,
           supplierName: isLoc ? 'LOCAL UAE SUPPLIER' : autoDetectSupplier(mMake, desc),
+          countryOfOrigin: mCOO,
+          hsCode: mHS,
           packageType: 'Pallet',
           packageNo: `${Math.floor(items.length / 3) + 1}`
         })

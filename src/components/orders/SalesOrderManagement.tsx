@@ -1403,6 +1403,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                           <th className="p-2">Customer</th>
                           <th className="p-2">P.O. Number</th>
                           <th className="p-2">Item Code</th>
+                          <th className="p-2">HSN / HS Code</th>
                           <th className="p-2 text-center">Qty</th>
                           <th className="p-2">Target Date</th>
                         </tr>
@@ -1413,7 +1414,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             <td className="p-2 font-medium text-slate-800">{r.customerName}</td>
                             <td className="p-2 font-mono text-slate-600">{r.poNumber}</td>
                             <td className="p-2 font-mono font-bold text-blue-700">{r.itemCode}</td>
-                            <td className="p-2 text-center font-bold text-slate-900">{r.requiredQty} PCS</td>
+                            <td className="p-2 font-mono text-indigo-700 font-bold text-[11px]">{r.hsCode || '7307.93.00'}</td>
+                            <td className="p-2 text-center font-bold text-slate-900">{r.requiredQty} {r.uom || 'PCS'}</td>
                             <td className="p-2 text-slate-500">{r.deliveryDate || 'Standard'}</td>
                           </tr>
                         ))}

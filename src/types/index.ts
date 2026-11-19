@@ -128,6 +128,9 @@ export interface SalesOrderItem {
   dispatched_qty: number
   uom: string
   line_status: 'Pending' | 'Allocated' | 'Approved' | 'Dispatched' | 'Cancelled'
+  hs_code?: string
+  country_of_origin?: string
+  unit_price?: number
 }
 
 export interface StockAllocation {

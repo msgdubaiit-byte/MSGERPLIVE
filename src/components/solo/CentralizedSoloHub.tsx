@@ -25,7 +25,11 @@ import {
   RefreshCw,
   X,
   UploadCloud,
-  Check
+  Check,
+  Edit3,
+  ChevronDown,
+  ChevronUp,
+  Hash
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
@@ -77,10 +81,13 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Modals state
+  // Modals & Review State
   const [isLpModalOpen, setIsLpModalOpen] = useState(false)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
+  const [showLineItemsReview, setShowLineItemsReview] = useState(true)
+  const [editingHsnIndex, setEditingHsnIndex] = useState<number | null>(null)
+  const [editingHsnValue, setEditingHsnValue] = useState<string>('')
 
   // Fast-track selected order details
   const selectedOrder = useMemo(() => {
@@ -95,9 +102,10 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
     const items: SourcingLineItem[] = selectedOrder.items.map((it, idx) => {
       const desc = it.item_description || `Item ${it.item_code}`
-      const detectedMake = autoDetectMake(desc) || 'BENKAN THAILAND'
-      const detectedCOO = autoDetectCountryOfOrigin(detectedMake, desc, '')
-      const detectedHS = autoDetectHSCode(desc)
+      const detectedMake = it.make || autoDetectMake(desc) || 'BENKAN THAILAND'
+      const detectedCOO = it.country_of_origin || autoDetectCountryOfOrigin(detectedMake, desc, '')
+      const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
+      const unitPrice = it.unit_price || 50
       const unitWt = estimateUnitWeight(desc, it.uom)
       const lineNet = Math.round(it.required_qty * unitWt * 100) / 100
       const lineGross = Math.round(lineNet * 1.15 * 100) / 100
@@ -113,12 +121,12 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         certificate_number: it.heat_number ? `MTC-${it.heat_number}.pdf` : '',
         make: detectedMake,
         remarks: it.location ? `Yard: ${it.location}` : 'Allocated',
-        supplier_name: detectedMake,
+        supplier_name: it.supplier_name || detectedMake,
         supplier_po_number: `PO-${idx + 1}`,
         hs_code: detectedHS,
         country_of_origin: detectedCOO,
-        unit_price: 50,
-        total_price: it.required_qty * 50,
+        unit_price: unitPrice,
+        total_price: it.required_qty * unitPrice,
         unit_weight_kg: unitWt,
         total_net_weight_kg: lineNet,
         total_gross_weight_kg: lineGross,
@@ -135,6 +143,46 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
       items
     }
   }, [selectedOrder])
+
+  // Save manual HSN code modification to the sales order in database
+  const handleSaveHsn = (idx: number, newHsn: string) => {
+    if (!selectedOrder) return
+    const trimmed = newHsn.trim()
+    if (!trimmed) return
+    const updatedItems = selectedOrder.items.map((it, i) => {
+      if (i === idx) {
+        return { ...it, hs_code: trimmed }
+      }
+      return it
+    })
+    db.updateSalesOrder({
+      id: selectedOrder.id,
+      items: updatedItems
+    })
+    setEditingHsnIndex(null)
+    refreshData()
+    setStatusNotice(`HSN Code updated to "${trimmed}" for Line #${idx + 1}`)
+    setTimeout(() => setStatusNotice(null), 3000)
+  }
+
+  // Re-detect all HSN codes using the enhanced oilfield heuristic engine
+  const handleAutoDetectAllHsns = () => {
+    if (!selectedOrder) return
+    let updatedCount = 0
+    const updatedItems = selectedOrder.items.map(it => {
+      const desc = it.item_description || it.item_code
+      const code = autoDetectHSCode(desc, it.item_code, it.hs_code)
+      if (code !== it.hs_code) updatedCount++
+      return { ...it, hs_code: code }
+    })
+    db.updateSalesOrder({
+      id: selectedOrder.id,
+      items: updatedItems
+    })
+    refreshData()
+    setStatusNotice(`✨ Re-evaluated HSN codes for ${updatedItems.length} lines (${updatedCount} updated)!`)
+    setTimeout(() => setStatusNotice(null), 4000)
+  }
 
   // Heat & Stock Search Results
   const filteredStockLots = useMemo(() => {
@@ -243,7 +291,13 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
             heat_number: it.heatNumber || '',
             location: it.location || 'Yard Stock',
             client_po_item_no: it.clientPoItemNo || `${idx + 1}`,
-            position: it.position || idx + 1
+            position: it.position || idx + 1,
+            hs_code: (it as any).hsCode,
+            make: (it as any).make,
+            country_of_origin: (it as any).countryOfOrigin,
+            unit_price: (it as any).rate || (it as any).unitPrice,
+            uom: (it as any).uom || 'PCS',
+            supplier_name: (it as any).supplierName
           })),
           po_document_name: file.name,
           po_document_url: parsed.pdfBlobUrl,
@@ -639,6 +693,140 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                   <ArrowRight className="h-3 w-3" />
                 </button>
               </div>
+
+              {/* Order Line Items & HSN Code Review Table */}
+              {selectedOrder && selectedOrder.items && selectedOrder.items.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLineItemsReview(!showLineItemsReview)}
+                      className="flex items-center space-x-1.5 text-xs font-bold text-slate-800 hover:text-indigo-600 transition-colors cursor-pointer"
+                    >
+                      <Hash className="h-3.5 w-3.5 text-indigo-500" />
+                      <span>Line Items &amp; HSN Codes ({selectedOrder.items.length} items)</span>
+                      {showLineItemsReview ? (
+                        <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      )}
+                    </button>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleAutoDetectAllHsns}
+                        title="Re-run intelligent oilfield classification on all items"
+                        className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 flex items-center space-x-1 transition-colors cursor-pointer"
+                      >
+                        <Sparkles className="h-3 w-3 text-indigo-600" />
+                        <span>Auto-Detect All HSN</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {showLineItemsReview && (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-inner">
+                      <div className="max-h-64 overflow-y-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-100 text-slate-700 font-bold text-[10px] uppercase sticky top-0 border-b border-slate-200">
+                            <tr>
+                              <th className="p-2 w-8 text-center">#</th>
+                              <th className="p-2">Item Code &amp; Description</th>
+                              <th className="p-2 text-center">Qty</th>
+                              <th className="p-2">Make / COO</th>
+                              <th className="p-2">HSN / HS Code</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 bg-white">
+                            {selectedOrder.items.map((it, idx) => {
+                              const desc = it.item_description || it.item_code
+                              const currentHsn = it.hs_code || autoDetectHSCode(desc, it.item_code)
+                              const isEditing = editingHsnIndex === idx
+
+                              return (
+                                <tr key={it.id || idx} className="hover:bg-slate-50 transition-colors">
+                                  <td className="p-2 text-center text-slate-400 font-mono text-[11px]">
+                                    {it.client_po_item_no || idx + 1}
+                                  </td>
+                                  <td className="p-2">
+                                    <div className="font-bold font-mono text-slate-900 text-[11px] leading-tight">
+                                      {it.item_code}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 line-clamp-1">
+                                      {desc}
+                                    </div>
+                                    {it.heat_number && (
+                                      <div className="text-[10px] text-amber-700 font-mono mt-0.5">
+                                        Heat: {it.heat_number}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-2 text-center font-bold text-slate-800 text-[11px] whitespace-nowrap">
+                                    {it.required_qty} {it.uom || 'PCS'}
+                                  </td>
+                                  <td className="p-2 text-[10px] text-slate-600 whitespace-nowrap">
+                                    <div className="font-medium text-slate-800">{it.make || 'BENKAN THAILAND'}</div>
+                                    <div className="text-slate-400">{it.country_of_origin || 'THAILAND'}</div>
+                                  </td>
+                                  <td className="p-2 whitespace-nowrap">
+                                    {isEditing ? (
+                                      <div className="flex items-center space-x-1">
+                                        <input
+                                          type="text"
+                                          value={editingHsnValue}
+                                          onChange={e => setEditingHsnValue(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') handleSaveHsn(idx, editingHsnValue)
+                                            if (e.key === 'Escape') setEditingHsnIndex(null)
+                                          }}
+                                          autoFocus
+                                          className="w-28 px-1.5 py-0.5 text-xs font-mono border-2 border-indigo-500 rounded bg-white shadow-sm focus:outline-none"
+                                          placeholder="e.g. 7307.21.00"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveHsn(idx, editingHsnValue)}
+                                          className="p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors cursor-pointer"
+                                          title="Save HSN"
+                                        >
+                                          <Check className="h-3 w-3" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingHsnIndex(null)}
+                                          className="p-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition-colors cursor-pointer"
+                                          title="Cancel"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center space-x-1.5">
+                                        <span
+                                          onClick={() => {
+                                            setEditingHsnIndex(idx)
+                                            setEditingHsnValue(currentHsn)
+                                          }}
+                                          className="font-mono text-[11px] font-bold px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50/70 text-indigo-900 cursor-pointer hover:bg-indigo-100 hover:border-indigo-400 transition-colors flex items-center space-x-1 group"
+                                          title="Click to edit HSN Code"
+                                        >
+                                          <span>{currentHsn}</span>
+                                          <Edit3 className="h-2.5 w-2.5 text-indigo-400 group-hover:text-indigo-700 ml-0.5" />
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
