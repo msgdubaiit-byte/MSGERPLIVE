@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test output binaries
+test_*.pdf
+test_*.png
+test_*.xlsx
