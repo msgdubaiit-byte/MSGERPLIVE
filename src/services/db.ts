@@ -552,9 +552,13 @@ class DBService {
   private systemConfig: SystemCustomConfig = defaultSystemCustomConfig
 
   private listeners: (() => void)[] = []
+  private autoSyncTimer: any = null
+  private syncTimeout: any = null
+  private isPullingCloud: boolean = false
 
   constructor() {
     this.init()
+    this.startSupabaseAutoSync()
   }
 
   private init() {
@@ -2029,7 +2033,7 @@ class DBService {
     saveToStorage('audits', this.audits)
   }
 
-  private saveAll() {
+  public saveLocalStorageOnly() {
     saveToStorage('customers', this.customers)
     saveToStorage('items', this.items)
     saveToStorage('lots', this.lots)
@@ -2046,6 +2050,11 @@ class DBService {
     saveToStorage('importJobs', this.importJobs)
     saveToStorage('users', this.users)
     saveToStorage('suppliers', this.suppliers)
+  }
+
+  private saveAll() {
+    this.saveLocalStorageOnly()
+    this.triggerCloudSync()
   }
 
   // Bulk Upload Certificates (from ZIP or multi-PDF files)
@@ -2643,25 +2652,60 @@ class DBService {
   }
 
   // 1-Click Cloud Restore from Supabase
-  public async pullFromSupabase(): Promise<{ success: boolean; message: string }> {
-    const res = await pullAllTablesFromSupabase()
-    if (!res.success || !res.data) {
-      return { success: false, message: res.message }
-    }
-    if (res.data.suppliers?.length) this.suppliers = res.data.suppliers
-    if (res.data.customers?.length) this.customers = res.data.customers
-    if (res.data.items?.length) this.items = res.data.items
-    if (res.data.lots?.length) this.lots = res.data.lots
-    if (res.data.balances?.length) this.balances = res.data.balances
-    if (res.data.orders?.length) this.orders = res.data.orders
-    if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
-    if (res.data.users?.length) this.users = res.data.users
-    if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
+  // Automatic Background Cloud Synchronization
+  public startSupabaseAutoSync() {
+    if (typeof window === 'undefined') return
+    // 1. Initial background pull on app load
+    setTimeout(() => {
+      if (isSupabaseConfigured() && !this.isPullingCloud) {
+        this.pullFromSupabase().catch(() => {})
+      }
+    }, 1000)
 
-    this.saveAll()
-    this.logAudit('system', 'Supabase Cloud Pull', 'Database Sync', 'ALL_TABLES')
-    this.notify()
-    return { success: true, message: 'All ERP tables, users, and MTC metadata restored from Supabase Cloud!' }
+    // 2. Periodic background sync every 15 seconds so different systems stay in real-time sync
+    if (!this.autoSyncTimer) {
+      this.autoSyncTimer = setInterval(() => {
+        if (isSupabaseConfigured() && !this.isPullingCloud) {
+          this.pullFromSupabase().catch(() => {})
+        }
+      }, 15000)
+    }
+  }
+
+  public triggerCloudSync() {
+    if (!isSupabaseConfigured() || this.isPullingCloud) return
+    if (this.syncTimeout) clearTimeout(this.syncTimeout)
+    this.syncTimeout = setTimeout(() => {
+      pushAllTablesToSupabase(this).catch(err => console.warn('Supabase auto-push error:', err))
+    }, 1500)
+  }
+
+  // 1-Click Cloud Restore from Supabase
+  public async pullFromSupabase(): Promise<{ success: boolean; message: string }> {
+    if (this.isPullingCloud) return { success: false, message: 'Sync already in progress' }
+    this.isPullingCloud = true
+    try {
+      const res = await pullAllTablesFromSupabase()
+      if (!res.success || !res.data) {
+        return { success: false, message: res.message }
+      }
+      if (res.data.suppliers?.length) this.suppliers = res.data.suppliers
+      if (res.data.customers?.length) this.customers = res.data.customers
+      if (res.data.items?.length) this.items = res.data.items
+      if (res.data.lots?.length) this.lots = res.data.lots
+      if (res.data.balances?.length) this.balances = res.data.balances
+      if (res.data.orders?.length) this.orders = res.data.orders
+      if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
+      if (res.data.users?.length) this.users = res.data.users
+      if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
+
+      // Save locally to cache without triggering outbound push
+      this.saveLocalStorageOnly()
+      this.notify()
+      return { success: true, message: 'All ERP tables, users, and MTC metadata restored from Supabase Cloud!' }
+    } finally {
+      this.isPullingCloud = false
+    }
   }
 
   // User Provisioning & Account Management (IT Engineer & Super Admin)
