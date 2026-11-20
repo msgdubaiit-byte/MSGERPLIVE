@@ -328,6 +328,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         split_qty: it.splitQty,
         total_qty: it.totalQty,
         group_id: it.groupId,
+        hs_code: (it as any).hsCode,
+        country_of_origin: (it as any).countryOfOrigin,
+        unit_price: (it as any).rate || (it as any).unitPrice,
+        uom: (it as any).uom || 'PCS',
       })),
       po_document_name: pdfParsedData.fileName,
       po_document_url: pdfParsedData.pdfBlobUrl,
@@ -365,7 +369,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
       const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
       const make = item.make || autoDetectMake(item.item_description) || (idx === 0 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
-      const hs = autoDetectHSCode(item.item_description)
+      const hs = item.hs_code ? autoDetectHSCode(item.item_description, item.item_code, item.hs_code) : autoDetectHSCode(item.item_description, item.item_code)
       const origin = autoDetectCountryOfOrigin(make, item.item_description)
       const unitPrice = 125
       const qty = alloc?.allocated_qty || item.required_qty || 1

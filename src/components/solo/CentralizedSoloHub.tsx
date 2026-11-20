@@ -44,6 +44,7 @@ import {
   autoDetectMake,
   autoDetectCountryOfOrigin,
   autoDetectHSCode,
+  normalizeHSCode,
   estimateUnitWeight
 } from '../../services/sourcingEngine'
 import { parseCustomerSOPDF } from '../../services/pdfEngine'
@@ -149,9 +150,14 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
     if (!selectedOrder) return
     const trimmed = newHsn.trim()
     if (!trimmed) return
+    const targetItem = selectedOrder.items[idx]
+    const desc = targetItem ? (targetItem.item_description || targetItem.item_code) : ''
+    // Auto-normalize or reclassify typos like 700.7 / 7007 / 7307 to accurate 8-digit tariff lines
+    const normalizedHsn = autoDetectHSCode(desc, targetItem?.item_code || '', trimmed) || normalizeHSCode(trimmed) || trimmed
+
     const updatedItems = selectedOrder.items.map((it, i) => {
       if (i === idx) {
-        return { ...it, hs_code: trimmed }
+        return { ...it, hs_code: normalizedHsn }
       }
       return it
     })
@@ -161,7 +167,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
     })
     setEditingHsnIndex(null)
     refreshData()
-    setStatusNotice(`HSN Code updated to "${trimmed}" for Line #${idx + 1}`)
+    setStatusNotice(`HSN Code updated to "${normalizedHsn}" for Line #${idx + 1}`)
     setTimeout(() => setStatusNotice(null), 3000)
   }
 
@@ -171,7 +177,8 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
     let updatedCount = 0
     const updatedItems = selectedOrder.items.map(it => {
       const desc = it.item_description || it.item_code
-      const code = autoDetectHSCode(desc, it.item_code, it.hs_code)
+      // Freshly evaluate from item description & code (resolving any typos or general headings)
+      const code = autoDetectHSCode(desc, it.item_code)
       if (code !== it.hs_code) updatedCount++
       return { ...it, hs_code: code }
     })

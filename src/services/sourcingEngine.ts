@@ -179,40 +179,71 @@ export function normalizeHSCode(rawCode: string = ''): string | null {
   const str = String(rawCode).trim()
   if (!str) return null
   
-  // Extract 6 to 8 digit number sequence
-  const match = str.match(/\b([0-9]{4})(?:\.?([0-9]{2}))?(?:\.?([0-9]{2}))?\b/)
+  // 1. Detect and auto-correct known clerical/OCR typos:
+  // e.g. "700.7", "7007", "70.07", "730.7" are common typos for steel pipe fittings heading 7307.
+  // Note: Chapter 70 is Glassware (7007 = safety glass). In oilfield piping, 700.7 / 7007 is 100% a typo for 7307.
+  if (/^700[.\-_]?7$/i.test(str) || /^70\.07$/i.test(str) || /^7007$/i.test(str) || /^730[.\-_]?7$/i.test(str)) {
+    return '7307.99.00'
+  }
+
+  // 2. Extract standard 4 to 8 digit number sequence
+  // Handles: 7307, 7307.21, 7307.21.00, 73072100, 7307.93.00, 7304.11, etc.
+  const match = str.match(/\b([0-9]{4})(?:[.\-_]?([0-9]{2}))?(?:[.\-_]?([0-9]{2}))?\b/)
   if (match) {
-    const p1 = match[1]
+    let p1 = match[1]
+    if (p1 === '7007') p1 = '7307'
     const p2 = match[2] || '00'
     const p3 = match[3] || '00'
     return `${p1}.${p2}.${p3}`
   }
 
-  const digits = str.replace(/[^0-9]/g, '')
+  // 3. Fallback digits cleanup
+  let digits = str.replace(/[^0-9]/g, '')
+  if (digits === '7007') digits = '7307'
+
   if (digits.length >= 8) {
-    return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`
+    let head = digits.slice(0, 4)
+    if (head === '7007') head = '7307'
+    return `${head}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`
   } else if (digits.length === 6) {
-    return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.00`
+    let head = digits.slice(0, 4)
+    if (head === '7007') head = '7307'
+    return `${head}.${digits.slice(4, 6)}.00`
   } else if (digits.length >= 4) {
-    return `${digits.slice(0, 4)}.${digits.slice(4).padEnd(2, '0')}.00`
+    let head = digits.slice(0, 4)
+    if (head === '7007') head = '7307'
+    return `${head}.${digits.slice(4).padEnd(2, '0')}.00`
   }
   return null
 }
 
 export function autoDetectHSCode(descText: string = '', itemCode: string = '', explicitHS: string = ''): string {
-  // 1. If explicit HSN was passed, validate & normalize it
+  // 1. If explicit HSN was passed:
   if (explicitHS && explicitHS.trim()) {
-    const norm = normalizeHSCode(explicitHS)
-    if (norm) return norm
+    const raw = explicitHS.trim()
+    // If explicit is an obvious typo like 700.7 / 7007 or generic "7307" / "7307.00.00" / "7307.99.00",
+    // don't blindly stop — allow heuristic evaluation of the description to give the accurate 8-digit tariff line!
+    const isTypoOrGeneric = /^(?:700[.\-_]?7|70\.07|7007|730[.\-_]?7|7307|7307\.00(?:\.00)?|7307\.99(?:\.00)?)$/i.test(raw)
+
+    if (!isTypoOrGeneric) {
+      const norm = normalizeHSCode(explicitHS)
+      if (norm && norm !== '7307.00.00' && norm !== '7307.99.00' && !norm.startsWith('7007')) {
+        return norm
+      }
+    }
   }
 
   const combined = `${descText} ${itemCode}`.toUpperCase()
 
   // 2. Check for embedded HSN / HS Code in description or code
-  const embeddedMatch = combined.match(/(?:HSN|HS\s*CODE|HS|TARIFF|COMMODITY)[\s:#\-]+([0-9]{4}(?:\.?[0-9]{2,4})?)/i)
+  const embeddedMatch = combined.match(/(?:HSN|HS\s*CODE|HS|TARIFF|COMMODITY)[\s:#\-]+([0-9]{3,4}(?:[.\-_]?[0-9]{1,4})?)/i)
   if (embeddedMatch) {
-    const norm = normalizeHSCode(embeddedMatch[1])
-    if (norm) return norm
+    const rawFound = embeddedMatch[1]
+    const isTypoOrGeneric = /^(?:700[.\-_]?7|70\.07|7007|730[.\-_]?7|7307|7307\.00(?:\.00)?|7307\.99(?:\.00)?)$/i.test(rawFound)
+    if (!isTypoOrGeneric) {
+      const norm = normalizeHSCode(rawFound)
+      if (norm && !norm.startsWith('7007')) return norm
+    }
   }
 
   // 3. Material Grade Classification: Stainless/Duplex vs Carbon Steel

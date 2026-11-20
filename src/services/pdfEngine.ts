@@ -1465,7 +1465,7 @@ export async function parseCustomerSOPDF(file: File): Promise<{
     // Check for explicit HSN in description lines
     let explicitHS = ''
     for (const dl of descLines) {
-      const hsM = dl.match(/(?:HSN|HS\s*CODE|HS|TARIFF)[\s:#\-]+([0-9]{4}(?:\.?[0-9]{2,4})?)/i)
+      const hsM = dl.match(/(?:HSN|HS\s*CODE|HS|TARIFF)[\s:#\-]+([0-9]{3,4}(?:[.\-_]?[0-9]{1,4})?)/i)
       if (hsM) {
         explicitHS = hsM[1]
         break
