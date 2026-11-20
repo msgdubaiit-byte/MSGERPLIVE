@@ -4,7 +4,7 @@ Production-ready web-based Stock Management, Material Traceability, Sales Orders
  
 --- 
   
-## 🚀 Key Modules & Capabilities
+## 🚀 Key Modules & Capabilities 
 
 1. **Master Stock Inventory & Traceability**:
    - Item Codes, Descriptions, Heat Numbers, Year of Manufacturing (YOM).
