@@ -287,3 +287,35 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.system_config (id, company_name, trn_number, default_currency, mtc_inspector_name, inspector_designation, inspector_sign_name)
 VALUES ('SYSTEM_CONFIG_MAIN', 'MSG OILFIELD EQUIPMENT TRADING LLC', '100293847500003', 'AED', 'QA/QC Lead Inspector', 'Senior QA/QC Materials Inspector', 'MSG/QC-04')
 ON CONFLICT (id) DO NOTHING;
+
+-- ------------------------------------------------------------------------
+-- 14. USER PROFILES & EMPLOYEE ACCOUNTS (Provisioned by IT Systems Engineer)
+-- ------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id TEXT PRIMARY KEY,
+    employee_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    department TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN (
+        'super_admin',
+        'admin_inventory',
+        'sales_team',
+        'storekeeper',
+        'mtc_controller',
+        'dispatch_team',
+        'management_viewer',
+        'it_engineer'
+    )),
+    account_status TEXT NOT NULL DEFAULT 'Active' CHECK (account_status IN ('Active', 'Inactive', 'Suspended')),
+    password TEXT NOT NULL DEFAULT 'Pass@123',
+    allowed_modules JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_login TEXT
+);
+
+-- Seed Root Production Administrators (IT Engineer & Super Admin)
+INSERT INTO public.user_profiles (id, employee_name, email, department, role, account_status, password)
+VALUES 
+('USR-001', 'Alex Turner (IT Systems Engineer)', 'it.engineer@msgoilfield.ae', 'IT Systems & Architecture', 'it_engineer', 'Active', 'Admin@123'),
+('USR-002', 'Zaid Al-Mansoor (Super Administrator)', 'admin@msgoilfield.ae', 'Executive Management', 'super_admin', 'Active', 'Admin@123')
+ON CONFLICT (id) DO NOTHING;

@@ -2655,12 +2655,13 @@ class DBService {
     if (res.data.balances?.length) this.balances = res.data.balances
     if (res.data.orders?.length) this.orders = res.data.orders
     if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
+    if (res.data.users?.length) this.users = res.data.users
     if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
 
     this.saveAll()
     this.logAudit('system', 'Supabase Cloud Pull', 'Database Sync', 'ALL_TABLES')
     this.notify()
-    return { success: true, message: 'All ERP tables and MTC metadata restored from Supabase Cloud!' }
+    return { success: true, message: 'All ERP tables, users, and MTC metadata restored from Supabase Cloud!' }
   }
 
   // User Provisioning & Account Management (IT Engineer & Super Admin)

@@ -242,9 +242,27 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
       results['stock_movements'] = movements.length
     }
 
+    // 10. Sync User Profiles (IT Engineer Provisioned Users)
+    const users = dbInstance.getUsers()
+    if (users && users.length > 0) {
+      await currentClient.from('user_profiles').upsert(users.map((u: any) => ({
+        id: u.id,
+        employee_name: u.employee_name,
+        email: u.email,
+        department: u.department,
+        role: u.role,
+        account_status: u.account_status,
+        password: u.password || 'Pass@123',
+        allowed_modules: u.allowed_modules || [],
+        created_at: u.created_at || new Date().toISOString(),
+        last_login: u.last_login || null
+      })))
+      results['user_profiles'] = users.length
+    }
+
     return {
       success: true,
-      message: 'All ERP tables and MTC metadata pushed to Supabase Cloud PostgreSQL successfully!',
+      message: 'All ERP tables, users, and MTC metadata pushed to Supabase Cloud PostgreSQL successfully!',
       details: results
     }
   } catch (err: any) {
@@ -277,7 +295,8 @@ export async function pullAllTablesFromSupabase(): Promise<{
       { data: lotsData },
       { data: balData },
       { data: ordersData },
-      { data: mtcsData }
+      { data: mtcsData },
+      { data: usersData }
     ] = await Promise.all([
       currentClient.from('system_config').select('*').limit(1),
       currentClient.from('suppliers').select('*'),
@@ -286,7 +305,8 @@ export async function pullAllTablesFromSupabase(): Promise<{
       currentClient.from('stock_lots').select('*'),
       currentClient.from('stock_balances').select('*'),
       currentClient.from('sales_orders').select('*'),
-      currentClient.from('mtc_certificates').select('*')
+      currentClient.from('mtc_certificates').select('*'),
+      currentClient.from('user_profiles').select('*')
     ])
 
     return {
@@ -300,7 +320,8 @@ export async function pullAllTablesFromSupabase(): Promise<{
         lots: lotsData || [],
         balances: balData || [],
         orders: ordersData || [],
-        mtcs: mtcsData || []
+        mtcs: mtcsData || [],
+        users: usersData || []
       }
     }
   } catch (err: any) {
