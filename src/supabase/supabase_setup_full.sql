@@ -319,3 +319,66 @@ VALUES
 ('USR-001', 'Alex Turner (IT Systems Engineer)', 'it.engineer@msgoilfield.ae', 'IT Systems & Architecture', 'it_engineer', 'Active', 'Admin@123'),
 ('USR-002', 'Zaid Al-Mansoor (Super Administrator)', 'admin@msgoilfield.ae', 'Executive Management', 'super_admin', 'Active', 'Admin@123')
 ON CONFLICT (id) DO NOTHING;
+
+-- ========================================================================
+-- 15. PERMISSIONS & ROW LEVEL SECURITY (RLS) FOR API ROLES
+-- ========================================================================
+-- Grant schema usage and table privileges to anon and authenticated roles
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+
+-- Enable RLS and create permissive policies for all ERP tables
+ALTER TABLE IF EXISTS public.suppliers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to suppliers" ON public.suppliers;
+CREATE POLICY "Allow all access to suppliers" ON public.suppliers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.system_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to system_config" ON public.system_config;
+CREATE POLICY "Allow all access to system_config" ON public.system_config FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.customers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to customers" ON public.customers;
+CREATE POLICY "Allow all access to customers" ON public.customers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to items" ON public.items;
+CREATE POLICY "Allow all access to items" ON public.items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.stock_lots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to stock_lots" ON public.stock_lots;
+CREATE POLICY "Allow all access to stock_lots" ON public.stock_lots FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.stock_balances ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to stock_balances" ON public.stock_balances;
+CREATE POLICY "Allow all access to stock_balances" ON public.stock_balances FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.sales_orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to sales_orders" ON public.sales_orders;
+CREATE POLICY "Allow all access to sales_orders" ON public.sales_orders FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.mtc_certificates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to mtc_certificates" ON public.mtc_certificates;
+CREATE POLICY "Allow all access to mtc_certificates" ON public.mtc_certificates FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.local_purchases ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to local_purchases" ON public.local_purchases;
+CREATE POLICY "Allow all access to local_purchases" ON public.local_purchases FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.stock_movements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to stock_movements" ON public.stock_movements;
+CREATE POLICY "Allow all access to stock_movements" ON public.stock_movements FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.dispatch_records ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to dispatch_records" ON public.dispatch_records;
+CREATE POLICY "Allow all access to dispatch_records" ON public.dispatch_records FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.user_profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to user_profiles" ON public.user_profiles;
+CREATE POLICY "Allow all access to user_profiles" ON public.user_profiles FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+

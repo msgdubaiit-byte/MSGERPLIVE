@@ -42,6 +42,12 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
     // 1. Test database ping
     const { error: dbErr } = await testClient.from('suppliers').select('id').limit(1)
     if (dbErr && dbErr.code !== 'PGRST116' && dbErr.code !== '42P01') {
+      if (dbErr.message.toLowerCase().includes('permission denied')) {
+        return {
+          success: false,
+          message: `Database permission error: ${dbErr.message}. Please run the 'fix_permissions.sql' script in your Supabase SQL Editor to grant access to the API roles.`
+        }
+      }
       return { success: false, message: `Database error: ${dbErr.message}` }
     }
 
