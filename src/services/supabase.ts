@@ -25,10 +25,51 @@ let currentClient: SupabaseClient = createClient(
   getStoredSupabaseConfig().key
 )
 
+let realtimeChannel: any = null
+
+export function subscribeToRealtimeChanges(onTableChange: (tableName: string) => void) {
+  if (!isSupabaseConfigured()) return () => {}
+
+  if (realtimeChannel) {
+    try {
+      currentClient.removeChannel(realtimeChannel)
+    } catch {}
+    realtimeChannel = null
+  }
+
+  try {
+    realtimeChannel = currentClient
+      .channel('erp-public-sync')
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        onTableChange(payload.table)
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('⚡ Connected to Supabase Real-Time WebSocket Channel')
+        }
+      })
+  } catch (err) {
+    console.warn('Realtime subscription error:', err)
+  }
+
+  return () => {
+    if (realtimeChannel) {
+      try {
+        currentClient.removeChannel(realtimeChannel)
+      } catch {}
+      realtimeChannel = null
+    }
+  }
+}
+
 export function saveSupabaseConfig(url: string, key: string) {
   localStorage.setItem('msg_supabase_url', url.trim())
   localStorage.setItem('msg_supabase_anon_key', key.trim())
   currentClient = createClient(url.trim(), key.trim())
+  if (realtimeChannel) {
+    try { currentClient.removeChannel(realtimeChannel) } catch {}
+    realtimeChannel = null
+  }
 }
 
 export function getSupabase(): SupabaseClient {

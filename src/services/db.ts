@@ -27,7 +27,8 @@ import {
   isSupabaseConfigured,
   uploadMTCFileToSupabase,
   pushAllTablesToSupabase,
-  pullAllTablesFromSupabase
+  pullAllTablesFromSupabase,
+  subscribeToRealtimeChanges
 } from './supabase'
 import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin } from './sourcingEngine'
 
@@ -2662,7 +2663,14 @@ class DBService {
       }
     }, 1000)
 
-    // 2. Periodic background sync every 15 seconds so different systems stay in real-time sync
+    // 2. Real-time WebSocket subscriber: updates in real-time (<500ms) when any system modifies database!
+    subscribeToRealtimeChanges((_table) => {
+      if (!this.isPullingCloud) {
+        this.pullFromSupabase().catch(() => {})
+      }
+    })
+
+    // 3. Fallback periodic background sync every 15 seconds
     if (!this.autoSyncTimer) {
       this.autoSyncTimer = setInterval(() => {
         if (isSupabaseConfigured() && !this.isPullingCloud) {

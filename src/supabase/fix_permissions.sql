@@ -94,3 +94,34 @@ CREATE POLICY "Public MTC Vault Write Access" ON storage.objects FOR INSERT TO a
 
 DROP POLICY IF EXISTS "Public MTC Vault Update Access" ON storage.objects;
 CREATE POLICY "Public MTC Vault Update Access" ON storage.objects FOR UPDATE TO anon, authenticated USING (bucket_id = 'mtc-vault');
+
+-- 6. Enable Supabase Realtime for instant multi-device synchronization
+-- Broadcasts changes instantaneously across all connected systems
+DO $$
+DECLARE
+    t text;
+    tables text[] := ARRAY[
+        'system_config',
+        'suppliers',
+        'customers',
+        'items',
+        'stock_lots',
+        'stock_balances',
+        'sales_orders',
+        'mtc_certificates',
+        'local_purchases',
+        'stock_movements',
+        'dispatch_records',
+        'user_profiles'
+    ];
+BEGIN
+    FOREACH t IN ARRAY tables LOOP
+        IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = t) THEN
+            BEGIN
+                EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I;', t);
+            EXCEPTION WHEN duplicate_object THEN
+                NULL;
+            END;
+        END IF;
+    END LOOP;
+END $$;
