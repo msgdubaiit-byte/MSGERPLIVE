@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { isCloudinaryConfigured, uploadToCloudinary } from './cloudinary'
 
 const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://snmafjucycnzikmtkrsr.supabase.co'
 const DEFAULT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNubWFmanVjeWNuemlrbXRrcnNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTgxOTcsImV4cCI6MjExMDczNDE5N30.-ZpWWjEZZ-m7DqIwaKyp0yC8zTMOXjc5O-4LXtWH9Ss'
@@ -131,8 +132,20 @@ export async function uploadMTCFileToSupabase(
   folder: string = 'mtcs'
 ): Promise<{ success: boolean; url?: string; path?: string; error?: string }> {
   try {
+    // 1. Prioritize Cloudinary Universal Storage if configured
+    if (isCloudinaryConfigured()) {
+      const cloudRes = await uploadToCloudinary(fileData, fileName, 'mtcs')
+      if (cloudRes.success && cloudRes.secureUrl) {
+        return {
+          success: true,
+          url: cloudRes.secureUrl,
+          path: cloudRes.publicId
+        }
+      }
+    }
+
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase URL/Key not yet configured. Operating in local mode.' }
+      return { success: false, error: 'Cloud storage is operating in local offline cache mode.' }
     }
 
     const cleanName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
