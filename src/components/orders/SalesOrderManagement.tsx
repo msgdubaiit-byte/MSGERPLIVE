@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { db } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 import { SalesOrder } from '../../types'
@@ -150,7 +150,16 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     setSummarySheetOrder(order)
   }
 
-  const orders = db.getOrders()
+  const [orders, setOrders] = useState<SalesOrder[]>(() => db.getOrders())
+
+  useEffect(() => {
+    setOrders([...db.getOrders()])
+    const unsub = db.subscribe(() => {
+      setOrders([...db.getOrders()])
+    })
+    return () => unsub()
+  }, [])
+
   const customers = db.getCustomers()
   const items = db.getItems()
 
@@ -198,6 +207,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     })
 
     if (res.success && res.order) {
+      setOrders([...db.getOrders()])
       setIsCreateModalOpen(false)
       setOrderLines([{ itemId: '', requiredQty: 5 }])
       setCustomerId('')
@@ -236,6 +246,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       )
 
       if (res.success) {
+        setOrders([...db.getOrders()])
         alert(res.message)
         setIsImportModalOpen(false)
         setParsedImportRows([])
@@ -339,6 +350,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     })
 
     if (res.success && res.order) {
+      setOrders([...db.getOrders()])
       alert(`Sales Order ${res.order.so_number} created successfully from customer PDF!`)
       setIsPdfModalOpen(false)
       setPdfParsedData(null)

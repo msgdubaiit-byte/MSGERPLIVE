@@ -25,6 +25,7 @@ import {
 import { uploadedCertificatesCache } from './certificateVault'
 import {
   isSupabaseConfigured,
+  getSupabase,
   uploadMTCFileToSupabase,
   pushAllTablesToSupabase,
   pullAllTablesFromSupabase,
@@ -46,9 +47,18 @@ function loadFromStorage<T>(key: string, defaultVal: T): T {
 
 function saveToStorage<T>(key: string, data: T) {
   try {
-    localStorage.setItem(STORAGE_KEY_PREFIX + key, JSON.stringify(data))
+    let payload = data
+    if (key === 'mtcs' && Array.isArray(data)) {
+      payload = data.map((m: any) => {
+        if (m.original_file_path && m.original_file_path.startsWith('data:') && m.original_file_path.length > 500) {
+          return { ...m, original_file_path: '/sample-mtc.pdf' }
+        }
+        return m
+      }) as any
+    }
+    localStorage.setItem(STORAGE_KEY_PREFIX + key, JSON.stringify(payload))
   } catch (e) {
-    console.error('Failed to save ' + key, e)
+    console.warn('Storage quota notice for ' + key + ' (data preserved in memory):', e)
   }
 }
 
@@ -181,6 +191,20 @@ export const initialSuppliers: Supplier[] = [
   { id: 'SUPP-010', supplier_code: 'APEX-LP', supplier_name: 'APEX PIPING & TUBULARS FZE', country: 'United Arab Emirates', make: 'APEX STOCK', supplier_type: 'local_stockist', approved_status: 'Approved', contact_person: 'Khurram Khan', contact_email: 'info@apexpiping.ae', contact_phone: '+971 6 526 8899', created_at: '2026-04-05' },
 ]
 
+// Helper for conflict-free intelligent entity merging between local memory and cloud
+function mergeEntities<T extends { id: string }>(localList: T[], remoteList: T[]): T[] {
+  if (!remoteList || !Array.isArray(remoteList)) return localList || []
+  if (!localList || localList.length === 0) return remoteList
+  const remoteMap = new Map(remoteList.map(item => [item.id, item]))
+  const result: T[] = [...remoteList]
+  for (const loc of localList) {
+    if (loc && loc.id && !remoteMap.has(loc.id)) {
+      result.unshift(loc)
+    }
+  }
+  return result
+}
+
 // Database singleton and state provider
 class DBService {
   private suppliers: Supplier[] = []
@@ -205,6 +229,8 @@ class DBService {
   private autoSyncTimer: any = null
   private syncTimeout: any = null
   private isPullingCloud: boolean = false
+  private lastLocalWriteTime: number = 0
+  private realtimeDebounceTimer: any = null
 
   constructor() {
     this.init()
@@ -1198,7 +1224,22 @@ class DBService {
     }
 
     this.orders.unshift(newOrder)
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    // Immediate direct write to Supabase Cloud so the order persists instantly
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('sales_orders').upsert(newOrder)).then((res: any) => {
+        if (res?.error) console.warn('Direct order push error:', res.error)
+      }).catch((err: any) => console.warn('Direct order push catch:', err))
+
+      if (allocations.length > 0) {
+        Promise.resolve(getSupabase().from('stock_lots').upsert(this.lots)).catch(() => {})
+        Promise.resolve(getSupabase().from('stock_balances').upsert(this.balances)).catch(() => {})
+        Promise.resolve(getSupabase().from('mtc_certificates').upsert(this.mtcs)).catch(() => {})
+      }
+    }
+
     this.logAudit(orderData.userEmail, 'Create Sales Order', 'Sales Orders', soNumber, null, newOrder)
     this.notify()
 
@@ -1724,6 +1765,11 @@ class DBService {
       const cleanFileName = cert.fileName.trim()
       const certRef = cleanFileName.replace(/\.[^/.]+$/, '')
 
+      // Keep DB filepath compact (or valid HTTPS cloud url) to prevent localStorage quota crashes
+      const safePath = (cert.fileDataUrl && !cert.fileDataUrl.startsWith('data:'))
+        ? cert.fileDataUrl
+        : (cert.fileDataUrl && cert.fileDataUrl.length < 500 ? cert.fileDataUrl : '/sample-mtc.pdf')
+
       // Find matching stock lots with this heat number
       const matchingLots = this.lots.filter(l => 
         l.heat_number.trim().toUpperCase() === cleanHeat.toUpperCase() ||
@@ -1753,7 +1799,7 @@ class DBService {
             l_code: lot.l_code,
             yom: lot.yom,
             certificate_reference: certRef,
-            original_file_path: cert.fileDataUrl || '/sample-mtc.pdf',
+            original_file_path: safePath,
             purchase_type: lot.purchase_type,
             supplier_name: lot.supplier_name,
             upload_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1776,7 +1822,7 @@ class DBService {
           heat_number: cleanHeat || 'UNKNOWN',
           yom: 2025,
           certificate_reference: certRef,
-          original_file_path: cert.fileDataUrl || '/sample-mtc.pdf',
+          original_file_path: safePath,
           purchase_type: cert.purchaseType || 'regular',
           supplier_name: cert.supplierName || 'Mill / Supplier',
           upload_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1789,7 +1835,18 @@ class DBService {
       }
     })
 
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    // Direct push to Supabase Cloud so certificates persist immediately
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('mtc_certificates').upsert(this.mtcs)).catch((e: any) => console.warn('Supabase MTC upsert notice:', e))
+      Promise.resolve(getSupabase().from('stock_lots').upsert(this.lots)).catch(() => {})
+      if (this.localPurchases.length > 0) {
+        Promise.resolve(getSupabase().from('local_purchases').upsert(this.localPurchases)).catch(() => {})
+      }
+    }
+
     this.logAudit(
       userEmail,
       'Bulk Certificate Upload',
@@ -2303,24 +2360,33 @@ class DBService {
       }
     }, 1000)
 
-    // 2. Real-time WebSocket subscriber: updates in real-time (<500ms) when any system modifies database!
+    // 2. Real-time WebSocket subscriber: updates in real-time when another system modifies database
+    // Debounced by 3.5s and checks that we did not perform a local write within the last 4 seconds
+    // to prevent echo loop storms that peg the CPU and wipe local in-flight records.
     subscribeToRealtimeChanges((_table) => {
-      if (!this.isPullingCloud) {
-        this.pullFromSupabase().catch(() => {})
+      if (Date.now() - this.lastLocalWriteTime < 4000) {
+        return // Ignore local write echo
       }
-    })
-
-    // 3. Fallback periodic background sync every 15 seconds
-    if (!this.autoSyncTimer) {
-      this.autoSyncTimer = setInterval(() => {
-        if (isSupabaseConfigured() && !this.isPullingCloud) {
+      if (this.realtimeDebounceTimer) clearTimeout(this.realtimeDebounceTimer)
+      this.realtimeDebounceTimer = setTimeout(() => {
+        if (!this.isPullingCloud && Date.now() - this.lastLocalWriteTime >= 4000) {
           this.pullFromSupabase().catch(() => {})
         }
-      }, 15000)
+      }, 3500)
+    })
+
+    // 3. Fallback periodic background sync every 120 seconds (2 mins)
+    if (!this.autoSyncTimer) {
+      this.autoSyncTimer = setInterval(() => {
+        if (isSupabaseConfigured() && !this.isPullingCloud && Date.now() - this.lastLocalWriteTime >= 4000) {
+          this.pullFromSupabase().catch(() => {})
+        }
+      }, 120000)
     }
   }
 
   public triggerCloudSync() {
+    this.lastLocalWriteTime = Date.now()
     if (!isSupabaseConfigured() || this.isPullingCloud) return
     if (this.syncTimeout) clearTimeout(this.syncTimeout)
     this.syncTimeout = setTimeout(() => {
@@ -2337,17 +2403,17 @@ class DBService {
       if (!res.success || !res.data) {
         return { success: false, message: res.message }
       }
-      if (res.data.suppliers !== undefined) this.suppliers = res.data.suppliers
-      if (res.data.customers !== undefined) this.customers = res.data.customers
-      if (res.data.items !== undefined) this.items = res.data.items
-      if (res.data.lots !== undefined) this.lots = res.data.lots
-      if (res.data.balances !== undefined) this.balances = res.data.balances
-      if (res.data.orders !== undefined) this.orders = res.data.orders
-      if (res.data.mtcs !== undefined) this.mtcs = res.data.mtcs
-      if (res.data.localPurchases !== undefined) this.localPurchases = res.data.localPurchases
-      if (res.data.movements !== undefined) this.movements = res.data.movements
-      if (res.data.dispatches !== undefined) this.dispatches = res.data.dispatches
-      if (res.data.users !== undefined) this.users = res.data.users
+      if (res.data.suppliers !== undefined) this.suppliers = mergeEntities(this.suppliers, res.data.suppliers)
+      if (res.data.customers !== undefined) this.customers = mergeEntities(this.customers, res.data.customers)
+      if (res.data.items !== undefined) this.items = mergeEntities(this.items, res.data.items)
+      if (res.data.lots !== undefined) this.lots = mergeEntities(this.lots, res.data.lots)
+      if (res.data.balances !== undefined) this.balances = mergeEntities(this.balances, res.data.balances)
+      if (res.data.orders !== undefined) this.orders = mergeEntities(this.orders, res.data.orders)
+      if (res.data.mtcs !== undefined) this.mtcs = mergeEntities(this.mtcs, res.data.mtcs)
+      if (res.data.localPurchases !== undefined) this.localPurchases = mergeEntities(this.localPurchases, res.data.localPurchases)
+      if (res.data.movements !== undefined) this.movements = mergeEntities(this.movements, res.data.movements)
+      if (res.data.dispatches !== undefined) this.dispatches = mergeEntities(this.dispatches, res.data.dispatches)
+      if (res.data.users !== undefined) this.users = mergeEntities(this.users, res.data.users)
       if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
 
       // Save locally to cache without triggering outbound push

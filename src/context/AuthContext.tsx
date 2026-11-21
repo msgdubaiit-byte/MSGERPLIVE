@@ -230,6 +230,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsRecoveryMode(true)
         }
 
+        // If the user explicitly logged out in this session, keep them at login screen
+        const hasExplicitlyLoggedOut = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msg_user_logged_out') === 'true'
+        if (hasExplicitlyLoggedOut) {
+          setIsLoadingSession(false)
+          return
+        }
+
         if (isSupabaseConfigured()) {
           const { data: { session }, error } = await getSupabase().auth.getSession()
           if (!error && session?.user?.email && isMounted) {
@@ -270,6 +277,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsRecoveryMode(true)
         }
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // If explicit logout is flagged in this tab, ignore automatic sign-in
+          if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msg_user_logged_out') === 'true') {
+            return
+          }
           if (session?.user?.email) {
             const profile = await fetchUserProfile(session.user.email)
             if (profile && profile.account_status === 'Active') {
@@ -301,6 +312,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const cleanEmail = email.trim().toLowerCase()
     const cleanPassword = password.trim()
+
+    // Clear explicit logout flag upon intentional login
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('msg_user_logged_out')
+    }
 
     try {
       // 1. Authenticate directly against Supabase GoTrue Auth
@@ -486,14 +502,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Real Supabase Logout
   const logout = async () => {
     try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('msg_user_logged_out', 'true')
+      }
       if (isSupabaseConfigured()) {
-        await getSupabase().auth.signOut()
+        await getSupabase().auth.signOut({ scope: 'local' })
       }
     } catch (err) {
       console.warn('Logout error:', err)
     } finally {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('msg_current_user')
+        // Clean out Supabase auth token keys from localStorage
+        try {
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+              localStorage.removeItem(key)
+            }
+          })
+        } catch {}
       }
       setCurrentUser(null)
     }
