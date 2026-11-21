@@ -17,6 +17,7 @@ export interface UserProfile {
   department: string
   role: UserRole
   account_status: 'Active' | 'Inactive' | 'Suspended'
+  password?: string
   created_at: string
   last_login?: string
   allowed_modules?: string[]

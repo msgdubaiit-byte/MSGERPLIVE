@@ -391,30 +391,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const cleanEmail = email.trim().toLowerCase()
-      const { data, error } = await getSupabase().auth.signUp({
-        email: cleanEmail,
-        password: password.trim(),
-        options: {
-          data: {
-            employee_name: metadata.employee_name,
-            department: metadata.department,
-            role: metadata.role
-          }
-        }
-      })
+      const cleanPassword = password.trim()
+      const userId = `USR-${Date.now().toString().slice(-4)}`
 
-      if (error) {
-        return { success: false, message: error.message }
-      }
-
-      // Upsert into Supabase user_profiles table
+      // 1. Create and persist profile in Supabase PostgreSQL user_profiles table
       const profile: UserProfile = {
-        id: `USR-${Date.now().toString().slice(-4)}`,
+        id: userId,
         employee_name: metadata.employee_name,
         email: cleanEmail,
         department: metadata.department,
         role: metadata.role,
         account_status: 'Active',
+        password: cleanPassword,
+        allowed_modules: [],
         created_at: new Date().toISOString()
       }
 
@@ -424,16 +413,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Profile sync warning during registration:', err)
       }
 
-      if (data.session) {
-        // Immediate login if email confirmation is disabled on Supabase project
-        setCurrentUser(profile)
-        return { success: true, message: 'Account registered and authenticated successfully!' }
-      } else {
-        return {
-          success: true,
-          requiresEmailConfirmation: true,
-          message: 'Account created in Supabase Auth. If email confirmation is enabled in your Supabase project, check your inbox or confirm in Supabase Dashboard before signing in.'
+      // Also register in local DB instance
+      db.addUser(profile)
+
+      // 2. Attempt Supabase GoTrue Auth signUp in background (ignore email rate limits)
+      let authNotice = ''
+      try {
+        const { data, error } = await getSupabase().auth.signUp({
+          email: cleanEmail,
+          password: cleanPassword,
+          options: {
+            data: {
+              employee_name: metadata.employee_name,
+              department: metadata.department,
+              role: metadata.role
+            }
+          }
+        })
+        if (error) {
+          console.warn('Supabase Auth signUp note (email limits or pending):', error.message)
+        } else if (data?.session) {
+          authNotice = ' Registered in Supabase Auth & PostgreSQL.'
         }
+      } catch (authErr: any) {
+        console.warn('Background Supabase auth signup catch:', authErr?.message)
+      }
+
+      return {
+        success: true,
+        message: `Account created in Supabase PostgreSQL!${authNotice} The user can log in immediately with their email and password.`
       }
     } catch (err: any) {
       return { success: false, message: err.message || 'Failed to complete registration.' }

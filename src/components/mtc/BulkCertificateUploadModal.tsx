@@ -20,6 +20,7 @@ import {
   Link2,
 } from 'lucide-react'
 import JSZip from 'jszip'
+import { pushAllTablesToSupabase, isSupabaseConfigured } from '../../services/supabase'
 
 interface BulkCertificateUploadModalProps {
   isOpen: boolean
@@ -120,7 +121,7 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
     }))
   }
 
-  const handleCommitCertificates = () => {
+  const handleCommitCertificates = async () => {
     if (extractedList.length === 0) return
     setIsCommitting(true)
 
@@ -137,7 +138,16 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
 
       const res = db.bulkUploadCertificates(certFiles, currentUser?.email || 'mtc@msgoilfield.ae')
 
-      onSuccess?.(`Successfully processed ${res.total} certificates! ${res.linkedToStock} certificates directly linked to stock lots (MTC status updated to Verified).`)
+      // Direct sync to Supabase Cloud PostgreSQL
+      let cloudMsg = ''
+      if (isSupabaseConfigured()) {
+        const pushRes = await pushAllTablesToSupabase(db)
+        if (pushRes.success) {
+          cloudMsg = ' Synchronized live to Supabase Cloud PostgreSQL!'
+        }
+      }
+
+      onSuccess?.(`Successfully processed ${res.total} certificates! ${res.linkedToStock} certificates directly linked to stock lots (MTC status updated to Verified).${cloudMsg}`)
       onClose()
     } catch (err: any) {
       alert('Error committing certificates: ' + err.message)

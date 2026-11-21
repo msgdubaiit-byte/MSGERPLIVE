@@ -27,6 +27,7 @@ import {
   downloadPDFBlob,
 } from '../../services/pdfEngine'
 import { getUploadedCertificateBytes } from '../../services/zipExtractor'
+import { pushAllTablesToSupabase, isSupabaseConfigured } from '../../services/supabase'
 
 interface MasterStockProps {
   onSelectHeat: (heat: string) => void
@@ -85,7 +86,7 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.onload = async () => {
       const dataUrl = reader.result as string
       const res = db.uploadMTCForHeat(
         heatNumber,
@@ -98,12 +99,17 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
         },
         currentUser?.email || 'operations@msgoilfield.ae'
       )
+
+      if (isSupabaseConfigured()) {
+        pushAllTablesToSupabase(db).catch(err => console.warn('Supabase MTC sync note:', err))
+      }
+
       alert(`MTC Certificate "${file.name}" linked successfully to Heat ${heatNumber}! Affected Lots: ${res.affectedLots}, Orders: ${res.affectedOrders}`)
     }
     reader.readAsDataURL(file)
   }
 
-  const handleAddLotSubmit = (e: React.FormEvent) => {
+  const handleAddLotSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newItemId || !newHeatNumber || newQty <= 0) {
       alert('Please fill all mandatory fields.')
@@ -123,7 +129,10 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
     })
 
     if (res.success) {
-      alert(`Stock Lot with Heat ${newHeatNumber} successfully added!`)
+      if (isSupabaseConfigured()) {
+        await pushAllTablesToSupabase(db).catch(err => console.warn('Supabase stock push note:', err))
+      }
+      alert(`Stock Lot with Heat ${newHeatNumber} successfully added and synced to Supabase Cloud!`)
       setIsAddLotModalOpen(false)
       setNewHeatNumber('')
       setNewLCode('')

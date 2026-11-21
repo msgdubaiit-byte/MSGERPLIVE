@@ -311,6 +311,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
         department: u.department,
         role: u.role,
         account_status: u.account_status,
+        password: u.password || 'Pass@123',
         allowed_modules: u.allowed_modules || [],
         created_at: u.created_at || new Date().toISOString(),
         last_login: u.last_login || null

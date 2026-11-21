@@ -12,6 +12,8 @@ import {
   extractCertificatesFromPDFFiles,
   ExtractedCertificate,
 } from '../../services/zipExtractor'
+import { getAllCachedCertificates } from '../../services/certificateVault'
+import { pushAllTablesToSupabase, isSupabaseConfigured } from '../../services/supabase'
 import {
   FileUp,
   Download,
@@ -226,21 +228,47 @@ export const ExcelStudio: React.FC<ExcelStudioProps> = ({ onPreviewMTC }) => {
   }
 
   // Commit Import to Live Inventory & Supabase
-  const handleCommitImport = () => {
+  const handleCommitImport = async () => {
     if (parsedRows.length === 0) return
     setIsImporting(true)
 
     try {
       const validRows = parsedRows.filter(r => r.isValid)
+      if (validRows.length === 0) {
+        alert('No valid rows found to import. Please check validation errors.')
+        return
+      }
+
       const res = db.importExcelStock(
         validRows,
         fileName || 'Imported_Stock.xlsx',
         currentUser?.email || 'admin@msgoilfield.ae'
       )
 
+      // If any MTCs were extracted into cache from uploaded ZIP/PDFs, commit them to db.mtcs
+      const cached = getAllCachedCertificates()
+      if (cached.length > 0) {
+        const certFiles = cached.map(c => ({
+          fileName: c.fileName,
+          heatNumber: c.detectedHeat || '',
+          fileDataUrl: c.url,
+          supplierName: 'Mill / Supplier'
+        }))
+        db.bulkUploadCertificates(certFiles, currentUser?.email || 'admin@msgoilfield.ae')
+      }
+
+      // Direct cloud sync to Supabase Cloud PostgreSQL
+      let cloudMsg = ''
+      if (isSupabaseConfigured()) {
+        const pushRes = await pushAllTablesToSupabase(db)
+        if (pushRes.success) {
+          cloudMsg = ' Synchronized live to Supabase Cloud PostgreSQL!'
+        }
+      }
+
       if (res.success) {
         const matchedCerts = validRows.filter(r => r.selected_mtc_ref || r.mtc_match_status === 'auto_matched').length
-        setImportSummary(`Successfully imported ${res.job.successful_rows} stock lots into Supabase database with ${matchedCerts} authentic MTC certificates linked! (${res.job.failed_rows} rows skipped).`)
+        setImportSummary(`Successfully imported ${res.job.successful_rows} stock lots into database with ${matchedCerts} authentic MTC certificates linked! (${res.job.failed_rows} rows skipped).${cloudMsg}`)
         setParsedRows([])
       }
     } catch (err: any) {

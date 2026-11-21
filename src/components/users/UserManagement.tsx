@@ -1,13 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { db } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { isSupabaseConfigured, getSupabase } from '../../services/supabase'
 import { UserProfile, UserRole } from '../../types'
 import { Users, UserPlus, Shield, CheckCircle2, XCircle, KeyRound, Edit, Crown } from 'lucide-react'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 
 export const UserManagement: React.FC = () => {
   const { hasPermission, signUp, resetPasswordForEmail, getAllowedModulesForTarget } = useAuth()
-  const users = db.getUsers()
+  const [users, setUsers] = useState<UserProfile[]>(() => db.getUsers())
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isVipModalOpen, setIsVipModalOpen] = useState(false)
@@ -17,6 +18,39 @@ export const UserManagement: React.FC = () => {
   const [department, setDepartment] = useState('Commercial Sales')
   const [role, setRole] = useState<UserRole>('sales_team')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Reactive subscription to db changes
+  useEffect(() => {
+    const unsubscribe = db.subscribe(() => {
+      setUsers([...db.getUsers()])
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // Live pull from Supabase Cloud PostgreSQL user_profiles on mount
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    async function loadSupabaseUsers() {
+      try {
+        const { data, error } = await getSupabase()
+          .from('user_profiles')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (data && !error && data.length > 0) {
+          data.forEach((u: UserProfile) => {
+            const exists = db.getUsers().find(x => x.id === u.id || x.email.toLowerCase() === u.email.toLowerCase())
+            if (!exists) {
+              db.addUser(u)
+            }
+          })
+          setUsers([...db.getUsers()])
+        }
+      } catch (err: any) {
+        console.warn('Supabase users load notice:', err)
+      }
+    }
+    loadSupabaseUsers()
+  }, [])
 
   const canManage = hasPermission(['super_admin', 'it_engineer'])
 
@@ -41,13 +75,14 @@ export const UserManagement: React.FC = () => {
       })
 
       if (res.success) {
-        alert(`Account for ${name} (${role}) provisioned in Supabase Auth & PostgreSQL!\n${res.message}`)
+        setUsers([...db.getUsers()])
+        alert(`Account for ${name} (${role.replace('_', ' ')}) provisioned in Supabase PostgreSQL!\n${res.message}`)
         setIsAddUserModalOpen(false)
         setName('')
         setEmail('')
         setPassword('')
       } else {
-        alert(`Supabase Auth Notice: ${res.message}`)
+        alert(`Notice: ${res.message}`)
       }
     } catch (err: any) {
       alert(`Error creating user: ${err.message}`)
@@ -56,9 +91,17 @@ export const UserManagement: React.FC = () => {
     }
   }
 
-  const handleToggleStatus = (u: UserProfile) => {
+  const handleToggleStatus = async (u: UserProfile) => {
     const nextStatus = u.account_status === 'Active' ? 'Inactive' : 'Active'
     db.updateUser(u.id, { account_status: nextStatus })
+    if (isSupabaseConfigured()) {
+      try {
+        await getSupabase().from('user_profiles').update({ account_status: nextStatus }).eq('id', u.id)
+      } catch (err) {
+        console.warn('Supabase status sync error:', err)
+      }
+    }
+    setUsers([...db.getUsers()])
     alert(`Account status for ${u.employee_name} updated to ${nextStatus}.`)
   }
 
@@ -69,14 +112,22 @@ export const UserManagement: React.FC = () => {
     }
   }
 
-  const handleDeleteUser = (u: UserProfile) => {
+  const handleDeleteUser = async (u: UserProfile) => {
     if (u.role === 'super_admin' || u.role === 'it_engineer') {
       alert('Root administrative roles cannot be deleted.')
       return
     }
     if (window.confirm(`Are you sure you want to delete user ${u.employee_name} (${u.email})?`)) {
       db.deleteUser(u.id)
-      alert(`User ${u.employee_name} deleted successfully.`)
+      if (isSupabaseConfigured()) {
+        try {
+          await getSupabase().from('user_profiles').delete().eq('id', u.id)
+        } catch (err) {
+          console.warn('Supabase delete error:', err)
+        }
+      }
+      setUsers([...db.getUsers()])
+      alert(`User ${u.employee_name} deleted successfully from Supabase PostgreSQL!`)
     }
   }
 

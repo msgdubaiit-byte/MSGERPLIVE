@@ -2369,6 +2369,7 @@ class DBService {
       department: user.department || 'Operations',
       role: user.role || 'sales_team',
       account_status: user.account_status || 'Active',
+      password: user.password || 'Pass@123',
       created_at: new Date().toISOString().slice(0, 10),
       last_login: undefined,
       allowed_modules: user.allowed_modules || []
