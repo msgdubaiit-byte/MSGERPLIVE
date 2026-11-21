@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { UserRole } from '../../types'
-import { Search, Shield, User, LogOut, ChevronDown, Bell, Database, Trash2, Crown, ShieldCheck, Sparkles } from 'lucide-react'
+import { Search, Shield, User, LogOut, Bell, Database, Crown, ShieldCheck, Sparkles } from 'lucide-react'
 import { db } from '../../services/db'
-import { ClearDataModal } from './ClearDataModal'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 
 interface NavbarProps {
@@ -13,11 +12,9 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, onOpenGuide }) => {
-  const { currentUser, currentRole, switchDemoRole, resetToAdmin, logout, isSimulatingRoleOrUser } = useAuth()
+  const { currentUser, currentRole, resetToAdmin, logout, isSimulatingRoleOrUser } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false)
-  const [isClearModalOpen, setIsClearModalOpen] = useState(false)
   const [isVipModalOpen, setIsVipModalOpen] = useState(false)
 
   const masterStock = db.getMasterStockView()
@@ -217,16 +214,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, 
             <span className="hidden sm:inline">VIP Customizer</span>
           </button>
 
-          {/* Clear / Reset Data Button for Test Mode */}
-          <button
-            onClick={() => setIsClearModalOpen(true)}
-            title="Clear All Data (Test Mode) or Reset Demo"
-            className="flex items-center space-x-1 bg-rose-900/60 hover:bg-rose-800 border border-rose-700/80 px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-200 hover:text-white transition-colors"
-          >
-            <Trash2 className="h-3.5 w-3.5 text-rose-300" />
-            <span className="hidden md:inline">Clear Data</span>
-          </button>
-
           {/* Database Sync / Supabase Settings Icon */}
           <button
             onClick={onOpenSettings}
@@ -245,44 +232,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, 
             </div>
           )}
 
-          {/* Role Switcher Pill / Dropdown for Fast Evaluation */}
-          <div className="relative">
-            <button
-              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-              className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-lg text-xs transition-colors"
-            >
-              <Shield className="h-3.5 w-3.5 text-red-400" />
-              <span className="font-semibold text-slate-200">
-                {rolesList.find(r => r.role === currentRole)?.label || currentRole}
-              </span>
-              <ChevronDown className="h-3 w-3 text-slate-400" />
-            </button>
-
-            {isRoleDropdownOpen && (
-              <div className="absolute right-0 mt-1.5 w-64 bg-white text-slate-800 rounded-lg shadow-xl border border-slate-200 py-1.5 z-50 text-xs">
-                <div className="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                  Switch Active Role (RBAC Demo)
-                </div>
-                {rolesList.map(r => (
-                  <button
-                    key={r.role}
-                    onClick={() => {
-                      switchDemoRole(r.role)
-                      setIsRoleDropdownOpen(false)
-                    }}
-                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors ${
-                      currentRole === r.role ? 'bg-red-50 text-red-700 font-bold' : 'text-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-medium">{r.label}</div>
-                      <div className="text-[10px] text-slate-400">{r.department}</div>
-                    </div>
-                    {currentRole === r.role && <span className="text-red-600 font-bold">✓</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* User Active Role Badge */}
+          <div className="flex items-center space-x-1.5 bg-slate-800/80 border border-slate-600 px-3 py-1.5 rounded-lg text-xs">
+            <Shield className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="font-semibold text-slate-200">
+              {rolesList.find(r => r.role === currentRole)?.label || currentRole}
+            </span>
           </div>
 
           {/* Current User & Logout */}
@@ -329,11 +284,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, 
           </div>
         </div>
       )}
-
-      <ClearDataModal
-        isOpen={isClearModalOpen}
-        onClose={() => setIsClearModalOpen(false)}
-      />
 
       <VipAdminCustomizerModal
         isOpen={isVipModalOpen}

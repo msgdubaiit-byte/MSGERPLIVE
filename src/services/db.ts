@@ -84,381 +84,30 @@ const initialItems: Item[] = [
   { id: 'ITEM-012', item_code: 'WSW20150S40F316', item_description: '3/4" Flange SWRF CL150 Sch 40S SS316/SS316L', material_grade: 'SS316/316L', specification: 'ASTM A182 / ASME B16.5', size: '3/4" Sch 40', uom: 'PCS', unit_price_aed: 33.0, is_active: true, created_at: '2026-01-01' },
 ]
 
-// Initial Stock Lots with Heat Numbers, YOM, Locations, and Purchase Types
-const initialLots: StockLot[] = [
-  { id: 'LOT-001', item_id: 'ITEM-001', item_code: 'WSO15150F316', item_description: '1/2" Flange SORF CL150 SS316/SS316L', heat_number: '889', yom: 2024, original_qty: 50, received_qty: 50, purchase_type: 'regular', supplier_name: 'WMASS GERMANY', stock_receipt_date: '2024-03-15', warehouse_location: 'LN-EB1', mtc_ref: 'MTC-WMASS-889.pdf', created_at: '2024-03-15', updated_at: '2026-10-15' },
-  { id: 'LOT-002', item_id: 'ITEM-002', item_code: 'WSO20150F316', item_description: '3/4" Flange SORF CL150 SS316/SS316L', heat_number: 'A-2212', yom: 2025, original_qty: 50, received_qty: 50, purchase_type: 'regular', supplier_name: 'WMASS GERMANY', stock_receipt_date: '2025-01-20', warehouse_location: 'LN-EB1', mtc_ref: 'MTC-WMASS-A2212.pdf', created_at: '2025-01-20', updated_at: '2026-10-15' },
-  { id: 'LOT-003', item_id: 'ITEM-002', item_code: 'WSO20150F316', item_description: '3/4" Flange SORF CL150 SS316/SS316L', heat_number: 'A-2211', yom: 2024, original_qty: 25, received_qty: 25, purchase_type: 'regular', supplier_name: 'WMASS GERMANY', stock_receipt_date: '2024-06-10', warehouse_location: 'LN-EC2', mtc_ref: 'MTC-WMASS-A2211.pdf', created_at: '2024-06-10', updated_at: '2026-10-15' },
-  { id: 'LOT-004', item_id: 'ITEM-003', item_code: 'WSO40150F316', item_description: '1 1/2" Flange SORF CL150 SS316/SS316L', heat_number: 'A-2212', yom: 2025, original_qty: 50, received_qty: 50, purchase_type: 'regular', supplier_name: 'WMASS GERMANY', stock_receipt_date: '2025-02-14', warehouse_location: 'LN-EB1', mtc_ref: 'MTC-WMASS-A2212.pdf', created_at: '2025-02-14', updated_at: '2026-10-15' },
-  { id: 'LOT-005', item_id: 'ITEM-004', item_code: 'WSO30150F316', item_description: '1 1/4" Flange SORF CL150 SS316/SS316L', heat_number: '980', yom: 2023, original_qty: 25, received_qty: 25, purchase_type: 'regular', supplier_name: 'WMASS GERMANY', stock_receipt_date: '2023-11-05', warehouse_location: 'LN-EB2', mtc_ref: 'MTC-WMASS-980.pdf', created_at: '2023-11-05', updated_at: '2026-10-15' },
-  { id: 'LOT-006', item_id: 'ITEM-005', item_code: 'EL9050S80WPBBENKAN-STOCK', item_description: 'ELBOW 2", 90DEG, SCH.80, LR, BW, SMLS, ASTM A234 WPB', heat_number: '67C00M083', yom: 2024, original_qty: 210, received_qty: 210, purchase_type: 'regular', supplier_name: 'BENKAN THAILAND', stock_receipt_date: '2024-04-12', warehouse_location: 'LN-AC4', mtc_ref: 'MTC-BENKAN-67C00M083.pdf', created_at: '2024-04-12', updated_at: '2026-10-15' },
-  { id: 'LOT-007', item_id: 'ITEM-006', item_code: 'EL9080S40WPBBENKAN-STOCK', item_description: 'ELBOW 3", 90DEG, SCH.40, LR, BW, SMLS, ASTM A234 WPB', heat_number: '65P00M036', yom: 2023, original_qty: 27, received_qty: 27, purchase_type: 'regular', supplier_name: 'BENKAN THAILAND', stock_receipt_date: '2023-08-20', warehouse_location: 'LN-AC4', mtc_ref: 'MTC-BENKAN-65P00M036.pdf', created_at: '2023-08-20', updated_at: '2026-10-15' },
-  { id: 'LOT-008', item_id: 'ITEM-007', item_code: 'WSO80150F316-LOC', item_description: '3" Flange SORF CL150 SS316/SS316L (Item #8 - Local Purchase)', heat_number: 'LOC-A2212-LP', yom: 2026, original_qty: 10, received_qty: 10, purchase_type: 'local_purchase', supplier_name: 'SHREE OILFIELD SUPPLY LLC', l_code: 'L-WSO80150-08', stock_receipt_date: '2026-09-01', warehouse_location: 'LOCAL-BAY-01', mtc_ref: 'SUPPLIER_MTC_SHREE_LOC8.pdf', created_at: '2026-09-01', updated_at: '2026-10-15' },
-  { id: 'LOT-009', item_id: 'ITEM-008', item_code: 'WSO100150F316-LOC', item_description: '4" Flange SORF CL150 SS316/SS316L (Item #9 - Local Purchase)', heat_number: 'LOC-A2211-LP', yom: 2026, original_qty: 10, received_qty: 10, purchase_type: 'local_purchase', supplier_name: 'PROMAT BD MIDDLE EAST', l_code: 'L-WSO100150-09', stock_receipt_date: '2026-09-15', warehouse_location: 'LOCAL-BAY-02', mtc_ref: 'SUPPLIER_MTC_PROMAT_LOC9.pdf', created_at: '2026-09-15', updated_at: '2026-10-15' },
-  { id: 'LOT-010', item_id: 'ITEM-009', item_code: 'WN15150S80RFA105SRI-STOCK', item_description: 'FLANGE 1/2", 150#, SCH.80, WNRF, SA105N, ASME B16.5', heat_number: 'SRI2786', yom: 2024, original_qty: 141, received_qty: 141, purchase_type: 'regular', supplier_name: 'SRI FLANGES', stock_receipt_date: '2024-05-18', warehouse_location: 'LN-CB12', mtc_ref: 'MTC-SRI-2786.pdf', created_at: '2024-05-18', updated_at: '2026-10-15' },
-  { id: 'LOT-011', item_id: 'ITEM-010', item_code: 'WN150150S80RFA105GB-STOCK', item_description: 'WNRF 6", 150#, SCH.80, ASTM A105N, ASME B16.5', heat_number: 'ULMA-8841', yom: 2025, original_qty: 20, received_qty: 20, purchase_type: 'regular', supplier_name: 'ULMA-SPAIN', stock_receipt_date: '2025-03-22', warehouse_location: 'LN-GB04', mtc_ref: 'MTC-ULMA-8841.pdf', created_at: '2025-03-22', updated_at: '2026-10-15' },
-  { id: 'LOT-012', item_id: 'ITEM-011', item_code: 'CPL253KNPTA105GB-STOCK', item_description: 'FULL COUPLING 1", 3000#, NPT, A105N, ASME B16.11', heat_number: 'MG-9921B', yom: 2024, original_qty: 45, received_qty: 45, purchase_type: 'regular', supplier_name: 'MEGA-ITALY', stock_receipt_date: '2024-07-08', warehouse_location: 'LN-MB02', mtc_ref: 'MTC-MEGA-9921B.pdf', created_at: '2024-07-08', updated_at: '2026-10-15' },
-]
+// Production Stock Lots (Populated from Supabase Cloud)
+const initialLots: StockLot[] = []
 
-// Initial Balances
-const initialBalances: StockBalance[] = [
-  { id: 'BAL-001', stock_lot_id: 'LOT-001', physical_qty: 40, reserved_qty: 5, available_qty: 35, dispatched_qty: 10, updated_at: '2026-10-15' },
-  { id: 'BAL-002', stock_lot_id: 'LOT-002', physical_qty: 38, reserved_qty: 0, available_qty: 38, dispatched_qty: 12, updated_at: '2026-10-15' },
-  { id: 'BAL-003', stock_lot_id: 'LOT-003', physical_qty: 25, reserved_qty: 0, available_qty: 25, dispatched_qty: 0, updated_at: '2026-10-15' },
-  { id: 'BAL-004', stock_lot_id: 'LOT-004', physical_qty: 40, reserved_qty: 0, available_qty: 40, dispatched_qty: 10, updated_at: '2026-10-15' },
-  { id: 'BAL-005', stock_lot_id: 'LOT-005', physical_qty: 20, reserved_qty: 0, available_qty: 20, dispatched_qty: 5, updated_at: '2026-10-15' },
-  { id: 'BAL-006', stock_lot_id: 'LOT-006', physical_qty: 180, reserved_qty: 15, available_qty: 165, dispatched_qty: 30, updated_at: '2026-10-15' },
-  { id: 'BAL-007', stock_lot_id: 'LOT-007', physical_qty: 7, reserved_qty: 0, available_qty: 7, dispatched_qty: 20, updated_at: '2026-10-15' },
-  { id: 'BAL-008', stock_lot_id: 'LOT-008', physical_qty: 10, reserved_qty: 4, available_qty: 6, dispatched_qty: 0, updated_at: '2026-10-15' },
-  { id: 'BAL-009', stock_lot_id: 'LOT-009', physical_qty: 10, reserved_qty: 0, available_qty: 10, dispatched_qty: 0, updated_at: '2026-10-15' },
-  { id: 'BAL-010', stock_lot_id: 'LOT-010', physical_qty: 101, reserved_qty: 0, available_qty: 101, dispatched_qty: 40, updated_at: '2026-10-15' },
-  { id: 'BAL-011', stock_lot_id: 'LOT-011', physical_qty: 14, reserved_qty: 0, available_qty: 14, dispatched_qty: 6, updated_at: '2026-10-15' },
-  { id: 'BAL-012', stock_lot_id: 'LOT-012', physical_qty: 35, reserved_qty: 0, available_qty: 35, dispatched_qty: 10, updated_at: '2026-10-15' },
-]
+// Production Balances
+const initialBalances: StockBalance[] = []
 
-// Initial Local Purchase Records
-const initialLocalPurchases: LocalPurchaseRecord[] = [
-  {
-    id: 'LP-001',
-    l_code: 'L-WSO80150-08',
-    item_id: 'ITEM-007',
-    item_code: 'WSO80150F316-LOC',
-    stock_lot_id: 'LOT-008',
-    supplier_name: 'SHREE OILFIELD SUPPLY LLC',
-    purchase_reference: 'PO-0326-3116 (Ref: MSG-0126-1752)',
-    purchase_date: '2026-09-01',
-    received_qty: 10,
-    yom: 2026,
-    supplier_mtc_uploaded: true,
-    created_by: 'Inventory Manager',
-    created_at: '2026-09-01',
-  },
-  {
-    id: 'LP-002',
-    l_code: 'L-WSO100150-09',
-    item_id: 'ITEM-008',
-    item_code: 'WSO100150F316-LOC',
-    stock_lot_id: 'LOT-009',
-    supplier_name: 'PROMAT BD MIDDLE EAST',
-    purchase_reference: 'PO-0726-3549 (Ref: MSG-0126-1752/1730)',
-    purchase_date: '2026-09-15',
-    received_qty: 10,
-    yom: 2026,
-    supplier_mtc_uploaded: false,
-    created_by: 'Inventory Manager',
-    created_at: '2026-09-15',
-  },
-]
+// Production Local Purchase Records
+const initialLocalPurchases: LocalPurchaseRecord[] = []
 
-// Initial MTC Certificates
-const initialMTCs: MTCCertificate[] = [
-  { id: 'MTC-001', item_id: 'ITEM-001', item_code: 'WSO15150F316', stock_lot_id: 'LOT-001', heat_number: '889', yom: 2024, certificate_reference: 'WMASS-EN10204-889', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'WMASS GERMANY', upload_date: '2024-03-15', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2024-03-15' },
-  { id: 'MTC-002', item_id: 'ITEM-002', item_code: 'WSO20150F316', stock_lot_id: 'LOT-002', heat_number: 'A-2212', yom: 2025, certificate_reference: 'WMASS-EN10204-A2212', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'WMASS GERMANY', upload_date: '2025-01-20', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2025-01-20' },
-  { id: 'MTC-003', item_id: 'ITEM-002', item_code: 'WSO20150F316', stock_lot_id: 'LOT-003', heat_number: 'A-2211', yom: 2024, certificate_reference: 'WMASS-EN10204-A2211', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'WMASS GERMANY', upload_date: '2024-06-10', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 2, created_at: '2024-06-10' },
-  { id: 'MTC-004', item_id: 'ITEM-003', item_code: 'WSO40150F316', stock_lot_id: 'LOT-004', heat_number: 'A-2212', yom: 2025, certificate_reference: 'WMASS-EN10204-A2212', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'WMASS GERMANY', upload_date: '2025-02-14', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2025-02-14' },
-  { id: 'MTC-005', item_id: 'ITEM-004', item_code: 'WSO30150F316', stock_lot_id: 'LOT-005', heat_number: '980', yom: 2023, certificate_reference: 'WMASS-EN10204-980', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'WMASS GERMANY', upload_date: '2023-11-05', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 2, created_at: '2023-11-05' },
-  { id: 'MTC-006', item_id: 'ITEM-005', item_code: 'EL9050S80WPBBENKAN-STOCK', stock_lot_id: 'LOT-006', heat_number: '67C00M083', yom: 2024, certificate_reference: 'BENKAN-3.1-67C00M083', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'BENKAN THAILAND', upload_date: '2024-04-12', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2024-04-12' },
-  { id: 'MTC-007', item_id: 'ITEM-006', item_code: 'EL9080S40WPBBENKAN-STOCK', stock_lot_id: 'LOT-007', heat_number: '65P00M036', yom: 2023, certificate_reference: 'BENKAN-3.1-65P00M036', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'BENKAN THAILAND', upload_date: '2023-08-20', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 2, created_at: '2023-08-20' },
-  { id: 'MTC-008', item_id: 'ITEM-007', item_code: 'WSO80150F316-LOC', stock_lot_id: 'LOT-008', heat_number: 'LOC-A2212-LP', l_code: 'L-WSO80150-08', yom: 2026, certificate_reference: 'SUPPLIER-SHREE-LOC8', original_file_path: '/sample-mtc.pdf', stamped_file_path: '/sample-mtc.pdf', purchase_type: 'local_purchase', supplier_name: 'SHREE OILFIELD SUPPLY LLC', upload_date: '2026-09-02', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2026-09-02' },
-  { id: 'MTC-009', item_id: 'ITEM-009', item_code: 'WN15150S80RFA105SRI-STOCK', stock_lot_id: 'LOT-010', heat_number: 'SRI2786', yom: 2024, certificate_reference: 'SRI-3.1-2786', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'SRI FLANGES', upload_date: '2024-05-18', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 2, created_at: '2024-05-18' },
-  { id: 'MTC-010', item_id: 'ITEM-010', item_code: 'WN150150S80RFA105GB-STOCK', stock_lot_id: 'LOT-011', heat_number: 'ULMA-8841', yom: 2025, certificate_reference: 'ULMA-EN10204-8841', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'ULMA-SPAIN', upload_date: '2025-03-22', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 3, created_at: '2025-03-22' },
-  { id: 'MTC-011', item_id: 'ITEM-011', item_code: 'CPL253KNPTA105GB-STOCK', stock_lot_id: 'LOT-012', heat_number: 'MG-9921B', yom: 2024, certificate_reference: 'MEGA-3.1-9921B', original_file_path: '/sample-mtc.pdf', purchase_type: 'regular', supplier_name: 'MEGA-ITALY', upload_date: '2024-07-08', uploaded_by: 'MTC Controller', verification_status: 'Verified', approval_status: 'Approved', pages: 1, created_at: '2024-07-08' },
-]
+// Production MTC Certificates
+const initialMTCs: MTCCertificate[] = []
 
-// Initial Sales Orders
-const initialOrders: SalesOrder[] = [
-  {
-    id: 'ORD-STS',
-    so_number: 'SO-2026-STS',
-    po_number: 'BSTSPO260300029-Location-1',
-    customer_id: 'CUST-STS',
-    customer_name: 'Bahrain Special Technical Services (STS) Co. W.L.L',
-    order_date: '2026-03-26',
-    required_delivery_date: '2026-04-15',
-    status: 'Ready for Dispatch',
-    created_by: 'Sales Representative',
-    mtc_package_generated: true,
-    created_at: '2026-03-26',
-    updated_at: '2026-03-26',
-    items: [
-      {
-        id: 'SOI-STS-17',
-        sales_order_id: 'ORD-STS',
-        item_id: 'ITEM-005',
-        item_code: 'EL90-1.5-6000-A105N',
-        item_description: '1.1/2" 90 DEGREE ELBOW, ASME B16.11, ASTM A105N, SW ENDS, 6000 LBS',
-        required_qty: 8,
-        allocated_qty: 8,
-        dispatched_qty: 0,
-        uom: 'Ea',
-        line_status: 'Allocated',
-        heat_number: 'EY7',
-        certificate_number: '232442/3',
-        make: 'DELCORTE, FRANCE',
-        location: 'LOCATION-1',
-        client_po_item_no: '17',
-        remarks: 'LOCATION-1',
-      } as any,
-      {
-        id: 'SOI-STS-27',
-        sales_order_id: 'ORD-STS',
-        item_id: 'ITEM-005',
-        item_code: 'EL90-2-S160-WPL6',
-        item_description: '2" X SCH160, 90 DEGREE ELBOW LONG RADIUS (R=1.5D), SEAMLESS, ASME B16.9, ASTM A420 GR.WPL6, BW ENDS',
-        required_qty: 4,
-        allocated_qty: 4,
-        dispatched_qty: 0,
-        uom: 'Ea',
-        line_status: 'Allocated',
-        heat_number: '67M01M085',
-        certificate_number: 'T202511670073',
-        make: 'BENKAN, THAILAND',
-        location: 'LOCATION-1',
-        client_po_item_no: '27',
-        remarks: 'LOCATION-1',
-      } as any,
-    ],
-    allocations: [
-      {
-        id: 'ALC-STS-1',
-        sales_order_item_id: 'SOI-STS-17',
-        sales_order_id: 'ORD-STS',
-        stock_lot_id: 'LOT-006',
-        heat_number: 'EY7',
-        allocated_qty: 8,
-        released_qty: 8,
-        dispatched_qty: 0,
-        allocation_status: 'Allocated',
-        created_at: '2026-03-26',
-        updated_at: '2026-03-26',
-      },
-      {
-        id: 'ALC-STS-2',
-        sales_order_item_id: 'SOI-STS-27',
-        sales_order_id: 'ORD-STS',
-        stock_lot_id: 'LOT-007',
-        heat_number: '67M01M085',
-        allocated_qty: 4,
-        released_qty: 4,
-        dispatched_qty: 0,
-        allocation_status: 'Allocated',
-        created_at: '2026-03-26',
-        updated_at: '2026-03-26',
-      }
-    ]
-  },
-  {
-    id: 'ORD-VALORIS',
-    so_number: 'SO-2026-VAL',
-    po_number: '10025 // 10044',
-    customer_id: 'CUST-VALORIS',
-    customer_name: 'Valoris Energy Services Company',
-    order_date: '2026-08-26',
-    required_delivery_date: '2026-09-15',
-    status: 'Approved',
-    created_by: 'Technical Sales',
-    mtc_package_generated: true,
-    created_at: '2026-08-26',
-    updated_at: '2026-08-26',
-    items: [
-      {
-        id: 'SOI-VAL-1',
-        sales_order_id: 'ORD-VALORIS',
-        item_id: 'ITEM-001',
-        item_code: 'FLG-1/2-150-SS316',
-        item_description: '1/2" Flange SORF CL150 SS316/SS316L ASTM A182',
-        required_qty: 12,
-        allocated_qty: 12,
-        dispatched_qty: 0,
-        uom: 'PCS',
-        line_status: 'Allocated',
-        heat_number: 'H-9921',
-        certificate_number: 'MTC-VAL-9921',
-        make: 'WMASS GERMANY',
-        location: 'BAY-A1',
-        client_po_item_no: '01',
-        remarks: 'Machined & Inspected',
-      } as any,
-      {
-        id: 'SOI-VAL-2',
-        sales_order_id: 'ORD-VALORIS',
-        item_id: 'ITEM-005',
-        item_code: 'EL90-2-S80-WPB',
-        item_description: '2" 90 DEG ELBOW SCH 80 ASTM A234 WPB SMLS',
-        required_qty: 20,
-        allocated_qty: 20,
-        dispatched_qty: 0,
-        uom: 'PCS',
-        line_status: 'Allocated',
-        heat_number: 'H-67C00',
-        certificate_number: 'MTC-BENKAN-083',
-        make: 'BENKAN THAILAND',
-        location: 'BAY-B3',
-        client_po_item_no: '02',
-        remarks: 'Heat Split / Sourced',
-      } as any,
-    ],
-    allocations: [
-      {
-        id: 'ALC-VAL-1',
-        sales_order_item_id: 'SOI-VAL-1',
-        sales_order_id: 'ORD-VALORIS',
-        stock_lot_id: 'LOT-001',
-        heat_number: 'H-9921',
-        allocated_qty: 12,
-        released_qty: 12,
-        dispatched_qty: 0,
-        allocation_status: 'Allocated',
-        created_at: '2026-08-26',
-        updated_at: '2026-08-26',
-      },
-      {
-        id: 'ALC-VAL-2',
-        sales_order_item_id: 'SOI-VAL-2',
-        sales_order_id: 'ORD-VALORIS',
-        stock_lot_id: 'LOT-006',
-        heat_number: 'H-67C00',
-        allocated_qty: 20,
-        released_qty: 20,
-        dispatched_qty: 0,
-        allocation_status: 'Allocated',
-        created_at: '2026-08-26',
-        updated_at: '2026-08-26',
-      }
-    ]
-  },
-  {
-    id: 'ORD-115',
-    so_number: 'SO-2026-115',
-    po_number: 'PO-MCD-88412',
-    customer_id: 'CUST-005',
-    customer_name: 'McDermott Middle East Inc',
-    order_date: '2026-10-15',
-    required_delivery_date: '2026-10-30',
-    status: 'Draft',
-    created_by: 'Sales Representative',
-    mtc_package_generated: false,
-    created_at: '2026-10-15',
-    updated_at: '2026-10-15',
-    items: [
-      { id: 'SOI-115-1', sales_order_id: 'ORD-115', item_id: 'ITEM-002', item_code: 'WSO20150F316', item_description: '3/4" Flange SORF CL150 SS316/SS316L', required_qty: 7, allocated_qty: 0, dispatched_qty: 0, uom: 'PCS', line_status: 'Pending' },
-      { id: 'SOI-115-2', sales_order_id: 'ORD-115', item_id: 'ITEM-005', item_code: 'EL9050S80WPBBENKAN-STOCK', item_description: 'ELBOW 2", 90DEG, SCH.80, LR, BW, SMLS, ASTM A234 WPB', required_qty: 15, allocated_qty: 0, dispatched_qty: 0, uom: 'PCS', line_status: 'Pending' }
-    ],
-    allocations: []
-  },
-  {
-    id: 'ORD-114',
-    so_number: 'SO-2026-114',
-    po_number: 'PO-PETROFAC-995',
-    customer_id: 'CUST-002',
-    customer_name: 'Petrofac Emirates LLC',
-    order_date: '2026-10-14',
-    required_delivery_date: '2026-10-25',
-    status: 'Pending Storekeeper Approval',
-    created_by: 'Sales Representative',
-    mtc_package_generated: false,
-    created_at: '2026-10-14',
-    updated_at: '2026-10-14',
-    items: [
-      { id: 'SOI-114-1', sales_order_id: 'ORD-114', item_id: 'ITEM-001', item_code: 'WSO15150F316', item_description: '1/2" Flange SORF CL150 SS316/SS316L', required_qty: 5, allocated_qty: 5, dispatched_qty: 0, uom: 'PCS', line_status: 'Allocated' },
-      { id: 'SOI-114-2', sales_order_id: 'ORD-114', item_id: 'ITEM-007', item_code: 'WSO80150F316-LOC', item_description: '3" Flange SORF CL150 SS316/SS316L (Item #8 - Local Purchase)', required_qty: 4, allocated_qty: 4, dispatched_qty: 0, uom: 'PCS', line_status: 'Allocated' }
-    ],
-    allocations: [
-      { id: 'ALC-114-1', sales_order_item_id: 'SOI-114-1', sales_order_id: 'ORD-114', stock_lot_id: 'LOT-001', heat_number: '889', allocated_qty: 5, released_qty: 0, dispatched_qty: 0, allocation_status: 'Allocated', created_at: '2026-10-14', updated_at: '2026-10-14' },
-      { id: 'ALC-114-2', sales_order_item_id: 'SOI-114-2', sales_order_id: 'ORD-114', stock_lot_id: 'LOT-008', heat_number: 'LOC-A2212-LP', allocated_qty: 4, released_qty: 0, dispatched_qty: 0, allocation_status: 'Allocated', created_at: '2026-10-14', updated_at: '2026-10-14' }
-    ]
-  },
-  {
-    id: 'ORD-113',
-    so_number: 'SO-2026-113',
-    po_number: 'PO-ADNOC-5502',
-    customer_id: 'CUST-001',
-    customer_name: 'ADNOC Refining & Petrochemicals',
-    order_date: '2026-10-12',
-    required_delivery_date: '2026-10-22',
-    status: 'Approved',
-    created_by: 'Sales Representative',
-    approved_by: 'Tariq Al-Hashimi (Head Storekeeper)',
-    store_remarks: 'Physical heat markings and tag LN-EB1 verified at Yard-1. Ready for MTC packaging & dispatch.',
-    mtc_package_generated: true,
-    mtc_package_url: '/sample-mtc.pdf',
-    created_at: '2026-10-12',
-    updated_at: '2026-10-13',
-    items: [
-      { id: 'SOI-113-1', sales_order_id: 'ORD-113', item_id: 'ITEM-002', item_code: 'WSO20150F316', item_description: '3/4" Flange SORF CL150 SS316/SS316L', required_qty: 10, allocated_qty: 10, dispatched_qty: 0, uom: 'PCS', line_status: 'Approved' }
-    ],
-    allocations: [
-      { id: 'ALC-113-1', sales_order_item_id: 'SOI-113-1', sales_order_id: 'ORD-113', stock_lot_id: 'LOT-002', heat_number: 'A-2212', allocated_qty: 10, released_qty: 0, dispatched_qty: 0, allocation_status: 'Allocated', created_at: '2026-10-12', updated_at: '2026-10-13' }
-    ]
-  },
-  {
-    id: 'ORD-101',
-    so_number: 'SO-2026-101',
-    po_number: 'PO-ADNOC-4410',
-    customer_id: 'CUST-001',
-    customer_name: 'ADNOC Refining & Petrochemicals',
-    order_date: '2026-08-10',
-    required_delivery_date: '2026-08-15',
-    status: 'Dispatched',
-    created_by: 'Sales Representative',
-    approved_by: 'Tariq Al-Hashimi',
-    mtc_package_generated: true,
-    mtc_package_url: '/sample-mtc.pdf',
-    created_at: '2026-08-10',
-    updated_at: '2026-08-12',
-    items: [
-      { id: 'SOI-101-1', sales_order_id: 'ORD-101', item_id: 'ITEM-001', item_code: 'WSO15150F316', item_description: '1/2" Flange SORF CL150 SS316/SS316L', required_qty: 10, allocated_qty: 10, dispatched_qty: 10, uom: 'PCS', line_status: 'Dispatched' }
-    ],
-    allocations: [
-      { id: 'ALC-101-1', sales_order_item_id: 'SOI-101-1', sales_order_id: 'ORD-101', stock_lot_id: 'LOT-001', heat_number: '889', allocated_qty: 10, released_qty: 0, dispatched_qty: 10, allocation_status: 'Dispatched', created_at: '2026-08-10', updated_at: '2026-08-12' }
-    ]
-  },
-  {
-    id: 'ORD-098',
-    so_number: 'SO-2026-098',
-    po_number: 'PO-ENOC-7712',
-    customer_id: 'CUST-003',
-    customer_name: 'Emirates Global Aluminium (DUBAL)',
-    order_date: '2026-07-15',
-    required_delivery_date: '2026-07-25',
-    status: 'Cancelled',
-    created_by: 'Sales Representative',
-    cancellation_date: '2026-07-20',
-    cancellation_reason: 'Client project cancelled by engineering team. Reserved stock released back to available inventory.',
-    mtc_package_generated: false,
-    created_at: '2026-07-15',
-    updated_at: '2026-07-20',
-    items: [
-      { id: 'SOI-098-1', sales_order_id: 'ORD-098', item_id: 'ITEM-001', item_code: 'WSO15150F316', item_description: '1/2" Flange SORF CL150 SS316/SS316L', required_qty: 8, allocated_qty: 8, dispatched_qty: 0, uom: 'PCS', line_status: 'Cancelled' }
-    ],
-    allocations: [
-      { id: 'ALC-098-1', sales_order_item_id: 'SOI-098-1', sales_order_id: 'ORD-098', stock_lot_id: 'LOT-001', heat_number: '889', allocated_qty: 8, released_qty: 8, dispatched_qty: 0, allocation_status: 'Released', created_at: '2026-07-15', updated_at: '2026-07-20' }
-    ]
-  }
-]
+// Production Sales Orders
+const initialOrders: SalesOrder[] = []
 
-// Initial Movements
-const initialMovements: StockMovement[] = [
-  { id: 'MOV-001', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Opening Stock', quantity: 50, reference_type: 'Receipt', reference_id: 'GRN-2024-0315', previous_balance: 0, new_balance: 50, performed_by: 'System Init', timestamp: '2024-03-15 09:00', remarks: 'Received from WMASS Germany' },
-  { id: 'MOV-002', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Reservation', quantity: 10, reference_type: 'SalesOrder', reference_id: 'SO-2026-101', previous_balance: 50, new_balance: 40, performed_by: 'Sales Team', timestamp: '2026-08-10 11:20', remarks: 'Allocated for SO-2026-101' },
-  { id: 'MOV-003', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Dispatch', quantity: 10, reference_type: 'DeliveryNote', reference_id: 'DN-2026-0812', previous_balance: 50, new_balance: 40, performed_by: 'Dispatch Team', timestamp: '2026-08-12 14:00', remarks: 'Delivered to ADNOC Refining' },
-  { id: 'MOV-004', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Reservation', quantity: 8, reference_type: 'SalesOrder', reference_id: 'SO-2026-098', previous_balance: 40, new_balance: 32, performed_by: 'Sales Team', timestamp: '2026-07-15 10:15', remarks: 'Allocated for SO-2026-098' },
-  { id: 'MOV-005', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Reservation Release', quantity: 8, reference_type: 'SalesOrderCancellation', reference_id: 'SO-2026-098', previous_balance: 32, new_balance: 40, performed_by: 'Sales Team', timestamp: '2026-07-20 16:45', remarks: 'Client cancelled order - Stock fully reversed to available balance' },
-  { id: 'MOV-006', stock_lot_id: 'LOT-001', item_code: 'WSO15150F316', heat_number: '889', movement_type: 'Reservation', quantity: 5, reference_type: 'SalesOrder', reference_id: 'SO-2026-114', previous_balance: 40, new_balance: 35, performed_by: 'Sales Team', timestamp: '2026-10-14 09:30', remarks: 'Allocated for SO-2026-114' },
-  { id: 'MOV-007', stock_lot_id: 'LOT-008', item_code: 'WSO80150F316-LOC', heat_number: 'LOC-A2212-LP', movement_type: 'Stock Receipt', quantity: 10, reference_type: 'LocalPurchase', reference_id: 'L-WSO80150-08', previous_balance: 0, new_balance: 10, performed_by: 'Inventory Manager', timestamp: '2026-09-01 10:00', remarks: 'Local purchase from Shree Oilfield' },
-  { id: 'MOV-008', stock_lot_id: 'LOT-008', item_code: 'WSO80150F316-LOC', heat_number: 'LOC-A2212-LP', movement_type: 'Reservation', quantity: 4, reference_type: 'SalesOrder', reference_id: 'SO-2026-114', previous_balance: 10, new_balance: 6, performed_by: 'Sales Team', timestamp: '2026-10-14 09:30', remarks: 'Allocated for SO-2026-114' },
-]
+
+// Production Movements
+const initialMovements: StockMovement[] = []
+
 
 // Initial Users with IT Administrator as USR-001 (Root Initial Administrator & System Provisioner)
 export const initialUsers: UserProfile[] = [
   { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00', password: 'Admin@123' },
   { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00', password: 'Pass@123' },
-  { id: 'USR-003', employee_name: 'Vikram Sharma', email: 'inventory@msgoilfield.ae', department: 'Inventory & Procurement', role: 'admin_inventory', account_status: 'Active', created_at: '2026-01-05', last_login: '2026-10-29 07:45', password: 'Pass@123' },
-  { id: 'USR-004', employee_name: 'Fahad Bin Rashid', email: 'sales@msgoilfield.ae', department: 'Commercial Sales', role: 'sales_team', account_status: 'Active', created_at: '2026-01-10', last_login: '2026-10-28 17:30', password: 'Pass@123' },
-  { id: 'USR-005', employee_name: 'Tariq Al-Hashimi', email: 'storekeeper@msgoilfield.ae', department: 'Warehouse & Yard-1', role: 'storekeeper', account_status: 'Active', created_at: '2026-01-12', last_login: '2026-10-29 07:15', password: 'Pass@123' },
-  { id: 'USR-006', employee_name: 'Maryam Al-Nuaimi', email: 'mtc@msgoilfield.ae', department: 'Quality Assurance & QA/QC', role: 'mtc_controller', account_status: 'Active', created_at: '2026-01-15', last_login: '2026-10-28 16:00', password: 'Pass@123' },
-  { id: 'USR-007', employee_name: 'Ramesh Patel', email: 'dispatch@msgoilfield.ae', department: 'Logistics & Dispatch', role: 'dispatch_team', account_status: 'Active', created_at: '2026-02-01', last_login: '2026-10-28 15:40', password: 'Pass@123' },
-  { id: 'USR-008', employee_name: 'Arthur Sterling', email: 'viewer@msgoilfield.ae', department: 'Board of Directors / Audit', role: 'management_viewer', account_status: 'Active', created_at: '2026-02-10', last_login: '2026-10-27 11:20', password: 'Pass@123' },
 ]
 
 export interface SystemCustomConfig {
@@ -568,17 +217,7 @@ class DBService {
     this.lots = loadFromStorage('lots', initialLots)
     this.balances = loadFromStorage('balances', initialBalances)
     this.orders = loadFromStorage('orders', initialOrders)
-    // Synchronize initial orders (STS Bahrain & Valoris) so historical allocations are always populated
-    for (const initOrder of initialOrders) {
-      const idx = this.orders.findIndex(o => o.id === initOrder.id)
-      if (idx === -1) {
-        this.orders.unshift(initOrder)
-      } else if (!this.orders[idx].allocations || this.orders[idx].allocations.length === 0) {
-        this.orders[idx].allocations = initOrder.allocations
-        this.orders[idx].items = initOrder.items
-        this.orders[idx].status = initOrder.status
-      }
-    }
+    // Production: orders synchronized from Supabase Cloud
 
     // Self-healing sanitizer: verify every order item's allocated_qty against real active allocations
     for (const order of this.orders) {
@@ -2698,17 +2337,17 @@ class DBService {
       if (!res.success || !res.data) {
         return { success: false, message: res.message }
       }
-      if (res.data.suppliers?.length) this.suppliers = res.data.suppliers
-      if (res.data.customers?.length) this.customers = res.data.customers
-      if (res.data.items?.length) this.items = res.data.items
-      if (res.data.lots?.length) this.lots = res.data.lots
-      if (res.data.balances?.length) this.balances = res.data.balances
-      if (res.data.orders?.length) this.orders = res.data.orders
-      if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
-      if (res.data.localPurchases?.length) this.localPurchases = res.data.localPurchases
-      if (res.data.movements?.length) this.movements = res.data.movements
-      if (res.data.dispatches?.length) this.dispatches = res.data.dispatches
-      if (res.data.users?.length) this.users = res.data.users
+      if (res.data.suppliers !== undefined) this.suppliers = res.data.suppliers
+      if (res.data.customers !== undefined) this.customers = res.data.customers
+      if (res.data.items !== undefined) this.items = res.data.items
+      if (res.data.lots !== undefined) this.lots = res.data.lots
+      if (res.data.balances !== undefined) this.balances = res.data.balances
+      if (res.data.orders !== undefined) this.orders = res.data.orders
+      if (res.data.mtcs !== undefined) this.mtcs = res.data.mtcs
+      if (res.data.localPurchases !== undefined) this.localPurchases = res.data.localPurchases
+      if (res.data.movements !== undefined) this.movements = res.data.movements
+      if (res.data.dispatches !== undefined) this.dispatches = res.data.dispatches
+      if (res.data.users !== undefined) this.users = res.data.users
       if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
 
       // Save locally to cache without triggering outbound push

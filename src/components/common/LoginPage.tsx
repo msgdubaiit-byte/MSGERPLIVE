@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { initialUsers, db } from '../../services/db'
-import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, Zap, Cpu, Wrench } from 'lucide-react'
+import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth()
@@ -27,11 +26,6 @@ export const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleSelectAccount = (userEmail: string) => {
-    setEmail(userEmail)
-    setPassword('')
   }
 
   return (
@@ -134,40 +128,6 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Collapsible Corporate Accounts Reference */}
-          <details className="mt-5 pt-4 border-t border-slate-200 text-slate-400">
-            <summary className="text-[11px] font-semibold text-slate-500 cursor-pointer hover:text-slate-700 text-center select-none">
-              Configured Employee Accounts (Click to select email)
-            </summary>
-            <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-              <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2 text-center">
-                Select Your Assigned Email
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(db.getUsers() || initialUsers).slice(0, 8).map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => handleSelectAccount(u.email)}
-                    className={`text-left p-2 rounded-lg border transition-colors ${
-                      u.role === 'it_engineer'
-                        ? 'bg-indigo-50/90 hover:bg-indigo-100 border-indigo-300'
-                        : 'bg-white hover:bg-slate-100 border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-[11px] text-slate-800 truncate flex items-center justify-between">
-                      <span>{u.employee_name}</span>
-                      {u.role === 'it_engineer' && <span className="text-[9px] bg-indigo-600 text-white px-1 rounded font-mono">ROOT</span>}
-                    </div>
-                    <div className={`text-[10px] capitalize font-medium ${u.role === 'it_engineer' ? 'text-indigo-700 font-bold' : 'text-slate-600'}`}>
-                      {u.role.replace('_', ' ')}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </details>
         </div>
 
         {/* Footer */}
