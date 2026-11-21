@@ -319,9 +319,23 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
       results['user_profiles'] = users.length
     }
 
+    // 11. Sync Local Purchases
+    const localPurchases = dbInstance.getLocalPurchases()
+    if (localPurchases && localPurchases.length > 0) {
+      await currentClient.from('local_purchases').upsert(localPurchases)
+      results['local_purchases'] = localPurchases.length
+    }
+
+    // 12. Sync Dispatch Records
+    const dispatches = dbInstance.getDispatches()
+    if (dispatches && dispatches.length > 0) {
+      await currentClient.from('dispatch_records').upsert(dispatches)
+      results['dispatch_records'] = dispatches.length
+    }
+
     return {
       success: true,
-      message: 'All ERP tables, users, and MTC metadata pushed to Supabase Cloud PostgreSQL successfully!',
+      message: 'All ERP tables, users, local purchases, and dispatches pushed to Supabase Cloud PostgreSQL successfully!',
       details: results
     }
   } catch (err: any) {
@@ -355,6 +369,9 @@ export async function pullAllTablesFromSupabase(): Promise<{
       { data: balData },
       { data: ordersData },
       { data: mtcsData },
+      { data: lpData },
+      { data: movData },
+      { data: dspData },
       { data: usersData }
     ] = await Promise.all([
       currentClient.from('system_config').select('*').limit(1),
@@ -365,6 +382,9 @@ export async function pullAllTablesFromSupabase(): Promise<{
       currentClient.from('stock_balances').select('*'),
       currentClient.from('sales_orders').select('*'),
       currentClient.from('mtc_certificates').select('*'),
+      currentClient.from('local_purchases').select('*'),
+      currentClient.from('stock_movements').select('*').order('id', { ascending: false }).limit(200),
+      currentClient.from('dispatch_records').select('*'),
       currentClient.from('user_profiles').select('*')
     ])
 
@@ -380,6 +400,9 @@ export async function pullAllTablesFromSupabase(): Promise<{
         balances: balData || [],
         orders: ordersData || [],
         mtcs: mtcsData || [],
+        localPurchases: lpData || [],
+        movements: movData || [],
+        dispatches: dspData || [],
         users: usersData || []
       }
     }

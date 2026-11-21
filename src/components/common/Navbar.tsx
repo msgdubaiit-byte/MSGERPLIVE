@@ -13,7 +13,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, onOpenGuide }) => {
-  const { currentUser, currentRole, switchDemoRole, resetToAdmin, logout } = useAuth()
+  const { currentUser, currentRole, switchDemoRole, resetToAdmin, logout, isSimulatingRoleOrUser } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false)
@@ -303,7 +303,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearchSelect, onOpenSettings, 
       </div>
 
       {/* Simulation Banner when previewing as employee or non-super_admin role */}
-      {currentUser?.role !== 'super_admin' && (
+      {isSimulatingRoleOrUser && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-slate-950 px-4 py-1 text-xs font-bold flex items-center justify-between border-t border-amber-400/50 shadow-xs">
           <div className="flex items-center space-x-2 truncate">
             <span className="bg-black text-amber-300 px-1.5 py-0.5 rounded text-[10px] uppercase font-extrabold shrink-0">

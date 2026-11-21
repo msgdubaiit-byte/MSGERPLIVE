@@ -25,29 +25,44 @@ export const UserManagement: React.FC = () => {
       return
     }
 
-    const newUser: UserProfile = {
-      id: 'USR-' + (users.length + 1).toString().padStart(3, '0'),
+    db.addUser({
       employee_name: name,
       email: email.trim().toLowerCase(),
       department,
       role,
       account_status: 'Active',
-      created_at: new Date().toISOString().substring(0, 10),
-    }
+      password: 'Pass@123'
+    })
 
-    users.push(newUser)
-    localStorage.setItem('msg_oilfield_v1_users', JSON.stringify(users))
-    alert(`Account for ${name} (${role}) created successfully! An invite link has been dispatched.`)
+    alert(`Account for ${name} (${role}) created and synchronized to Supabase Cloud! Default password: Pass@123`)
     setIsAddUserModalOpen(false)
     setName('')
     setEmail('')
   }
 
   const handleToggleStatus = (u: UserProfile) => {
-    u.account_status = u.account_status === 'Active' ? 'Inactive' : 'Active'
-    localStorage.setItem('msg_oilfield_v1_users', JSON.stringify(users))
-    alert(`Account status for ${u.employee_name} updated to ${u.account_status}.`)
-    window.location.reload()
+    const nextStatus = u.account_status === 'Active' ? 'Inactive' : 'Active'
+    db.updateUser(u.id, { account_status: nextStatus })
+    alert(`Account status for ${u.employee_name} updated to ${nextStatus}.`)
+  }
+
+  const handleResetPassword = (u: UserProfile) => {
+    const newPass = window.prompt(`Enter new password for ${u.employee_name} (${u.email}):`, 'Pass@123')
+    if (newPass && newPass.trim()) {
+      db.updateUser(u.id, { password: newPass.trim() })
+      alert(`Password updated successfully for ${u.employee_name} and synced to Supabase!`)
+    }
+  }
+
+  const handleDeleteUser = (u: UserProfile) => {
+    if (u.role === 'super_admin' || u.role === 'it_engineer') {
+      alert('Root administrative roles cannot be deleted.')
+      return
+    }
+    if (window.confirm(`Are you sure you want to delete user ${u.employee_name} (${u.email})?`)) {
+      db.deleteUser(u.id)
+      alert(`User ${u.employee_name} deleted successfully.`)
+    }
   }
 
   return (
@@ -152,11 +167,19 @@ export const UserManagement: React.FC = () => {
                           {u.account_status === 'Active' ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
-                          onClick={() => alert(`Password reset link sent to ${u.email}`)}
+                          onClick={() => handleResetPassword(u)}
                           className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
                         >
                           Reset Pass
                         </button>
+                        {u.role !== 'super_admin' && u.role !== 'it_engineer' && (
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

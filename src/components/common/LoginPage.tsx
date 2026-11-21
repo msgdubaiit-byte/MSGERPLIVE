@@ -29,11 +29,9 @@ export const LoginPage: React.FC = () => {
     }
   }
 
-  const handleQuickLogin = (demoEmail: string) => {
-    const pass = demoEmail.includes('it.engineer') || demoEmail.includes('admin@') ? 'Admin@123' : 'Pass@123'
-    setEmail(demoEmail)
-    setPassword(pass)
-    login(demoEmail, pass)
+  const handleSelectAccount = (userEmail: string) => {
+    setEmail(userEmail)
+    setPassword('')
   }
 
   return (
@@ -137,21 +135,21 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Collapsible Evaluation / Initial Setup Presets */}
+          {/* Collapsible Corporate Accounts Reference */}
           <details className="mt-5 pt-4 border-t border-slate-200 text-slate-400">
             <summary className="text-[11px] font-semibold text-slate-500 cursor-pointer hover:text-slate-700 text-center select-none">
-              Evaluation &amp; Initial Provisioning Presets (Click to expand)
+              Configured Employee Accounts (Click to select email)
             </summary>
             <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2 text-center">
-                Initial Administrative Roles
+                Select Your Assigned Email
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {(db.getUsers() || initialUsers).slice(0, 8).map(u => (
                   <button
                     key={u.id}
                     type="button"
-                    onClick={() => handleQuickLogin(u.email)}
+                    onClick={() => handleSelectAccount(u.email)}
                     className={`text-left p-2 rounded-lg border transition-colors ${
                       u.role === 'it_engineer'
                         ? 'bg-indigo-50/90 hover:bg-indigo-100 border-indigo-300'

@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { UserProfile, UserRole } from '../types'
 import { initialUsers, db } from '../services/db'
+import { getSupabase, isSupabaseConfigured } from '../services/supabase'
 
 export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
   super_admin: [
@@ -161,7 +162,7 @@ const MODULE_PERMISSIONS: Record<string, UserRole[]> = {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('msg_current_user')
-    return saved ? JSON.parse(saved) : initialUsers[0] // Default to Super Admin for smooth initial load
+    return saved ? JSON.parse(saved) : null
   })
 
   // Stored custom permissions map: { [userIdOrRole]: string[] }
@@ -186,8 +187,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser])
 
   const login = async (email: string, password?: string) => {
-    const allUsers = db.getUsers()
-    const user = allUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase())
+    let user: UserProfile | undefined
+
+    // 1. Authenticate against live Supabase PostgreSQL user_profiles
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await getSupabase()
+          .from('user_profiles')
+          .select('*')
+          .eq('email', email.trim().toLowerCase())
+          .maybeSingle()
+
+        if (data && !error) {
+          user = data as UserProfile
+        }
+      } catch (err) {
+        console.warn('Supabase direct auth query warning:', err)
+      }
+    }
+
+    // 2. Fallback to synced db users if offline or network glitch
+    if (!user) {
+      const allUsers = db.getUsers()
+      user = allUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase())
+    }
+
     if (!user) {
       return { success: false, message: 'Invalid credentials. User account not found.' }
     }
@@ -205,18 +229,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    user.last_login = new Date().toISOString().replace('T', ' ').substring(0, 16)
+    const lastLogin = new Date().toISOString().replace('T', ' ').substring(0, 16)
+    user.last_login = lastLogin
+
+    // Update in Supabase in background
+    if (isSupabaseConfigured()) {
+      try {
+        await getSupabase()
+          .from('user_profiles')
+          .update({ last_login: lastLogin })
+          .eq('id', user.id)
+      } catch {}
+    }
+
+    // Update in db service
+    db.updateUser(user.id, { last_login: lastLogin })
+
     setCurrentUser(user)
     return { success: true }
   }
 
+  const [isSimulated, setIsSimulated] = useState(false)
+
   const logout = () => {
+    setIsSimulated(false)
     setCurrentUser(null)
   }
 
   const switchDemoRole = (role: UserRole) => {
     const allUsers = db.getUsers()
-    const user = allUsers.find(u => u.role === role) || initialUsers.find(u => u.role === role) || initialUsers[0]
+    const user = allUsers.find(u => u.role === role) || allUsers[0]
+    setIsSimulated(true)
     setCurrentUser(user)
   }
 
@@ -224,17 +267,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const allUsers = db.getUsers()
     const user = allUsers.find(u => u.id === userId)
     if (user) {
+      setIsSimulated(true)
       setCurrentUser(user)
     }
   }
 
   const resetToAdmin = () => {
     const allUsers = db.getUsers()
-    const admin = allUsers.find(u => u.role === 'super_admin') || initialUsers[0]
+    const admin = allUsers.find(u => u.role === 'super_admin') || allUsers[0]
+    setIsSimulated(false)
     setCurrentUser(admin)
   }
 
-  const isSimulatingRoleOrUser = currentUser?.role !== 'super_admin'
+  const isSimulatingRoleOrUser = isSimulated
 
   const hasPermission = (requiredRoles: UserRole[]): boolean => {
     if (!currentUser) return false

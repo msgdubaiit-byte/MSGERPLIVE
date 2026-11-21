@@ -2228,6 +2228,7 @@ class DBService {
   public updateSystemConfig(config: Partial<SystemCustomConfig>, userEmail?: string): SystemCustomConfig {
     this.systemConfig = { ...this.systemConfig, ...config }
     saveToStorage('systemConfig', this.systemConfig)
+    this.triggerCloudSync()
     if (userEmail) {
       this.logAudit(userEmail, 'Update System Custom Config', 'IT Systems', 'SYSTEM_SETTINGS', null, config)
     }
@@ -2704,6 +2705,9 @@ class DBService {
       if (res.data.balances?.length) this.balances = res.data.balances
       if (res.data.orders?.length) this.orders = res.data.orders
       if (res.data.mtcs?.length) this.mtcs = res.data.mtcs
+      if (res.data.localPurchases?.length) this.localPurchases = res.data.localPurchases
+      if (res.data.movements?.length) this.movements = res.data.movements
+      if (res.data.dispatches?.length) this.dispatches = res.data.dispatches
       if (res.data.users?.length) this.users = res.data.users
       if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
 
