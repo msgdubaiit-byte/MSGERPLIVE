@@ -1,12 +1,11 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { UserRole } from '../../types'
-import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, UserPlus, KeyRound, ArrowLeft } from 'lucide-react'
+import { Shield, Lock, Mail, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ArrowLeft } from 'lucide-react'
 
-type AuthMode = 'login' | 'register' | 'forgot' | 'recovery'
+type AuthMode = 'login' | 'forgot' | 'recovery'
 
 export const LoginPage: React.FC = () => {
-  const { login, signUp, resetPasswordForEmail, updatePassword, isRecoveryMode } = useAuth()
+  const { login, resetPasswordForEmail, updatePassword, isRecoveryMode } = useAuth()
   
   const [mode, setMode] = useState<AuthMode>(isRecoveryMode ? 'recovery' : 'login')
   
@@ -14,11 +13,6 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  
-  // Registration State
-  const [name, setName] = useState('')
-  const [department, setDepartment] = useState('Commercial Sales')
-  const [role, setRole] = useState<UserRole>('sales_team')
   
   // Recovery State
   const [newPassword, setNewPassword] = useState('')
@@ -41,42 +35,6 @@ export const LoginPage: React.FC = () => {
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Authentication service error.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setErrorMessage('')
-    setSuccessMessage('')
-
-    if (password.length < 6) {
-      setIsLoading(false)
-      setErrorMessage('Password must be at least 6 characters.')
-      return
-    }
-
-    try {
-      const res = await signUp(email, password, {
-        employee_name: name,
-        department,
-        role
-      })
-
-      if (res.success) {
-        setSuccessMessage(res.message)
-        if (!res.requiresEmailConfirmation) {
-          // Logged in immediately
-        } else {
-          setMode('login')
-        }
-      } else {
-        setErrorMessage(res.message)
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to complete registration.')
     } finally {
       setIsLoading(false)
     }
@@ -143,29 +101,9 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-slate-300 mt-1">Automated Stock, Heat Traceability &amp; MTC Management</p>
           <div className="inline-flex items-center space-x-1.5 bg-slate-800/80 border border-slate-600 text-slate-200 text-[10px] font-semibold px-3 py-1 rounded-full mt-2">
             <Shield className="h-3 w-3 text-emerald-400" />
-            <span>Secure Supabase Production Authentication</span>
+            <span>Secure Enterprise Production Portal</span>
           </div>
         </div>
-
-        {/* Navigation Tabs (Sign In / Register) */}
-        {mode !== 'recovery' && (
-          <div className="grid grid-cols-2 bg-slate-100 border-b border-slate-200 text-xs font-bold text-center">
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setErrorMessage(''); setSuccessMessage(''); }}
-              className={`py-3 transition-colors ${mode === 'login' || mode === 'forgot' ? 'bg-white text-[#0B2545] border-b-2 border-[#0B2545]' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setErrorMessage(''); setSuccessMessage(''); }}
-              className={`py-3 transition-colors ${mode === 'register' ? 'bg-white text-[#0B2545] border-b-2 border-[#0B2545]' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              Register Account
-            </button>
-          </div>
-        )}
 
         {/* Form Body */}
         <div className="p-6">
@@ -216,7 +154,7 @@ export const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -249,106 +187,10 @@ export const LoginPage: React.FC = () => {
                   </>
                 )}
               </button>
-            </form>
-          )}
 
-          {/* MODE: REGISTER / SIGN UP */}
-          {mode === 'register' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Employee Name</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Alex Turner"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2545] text-slate-900"
-                />
+              <div className="pt-2 text-center text-[11px] text-slate-500">
+                Authorized Staff Only. User accounts are created &amp; provisioned by the IT Systems Administrator.
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Corporate Work Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@msgoilfield.ae"
-                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2545] text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Role</label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full px-2 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2545] text-slate-900 bg-white"
-                  >
-                    <option value="super_admin">Super Admin</option>
-                    <option value="it_engineer">IT Systems Engineer</option>
-                    <option value="admin_inventory">Inventory Manager</option>
-                    <option value="sales_team">Sales Team</option>
-                    <option value="storekeeper">Storekeeper (Yard)</option>
-                    <option value="mtc_controller">MTC QA/QC Controller</option>
-                    <option value="dispatch_team">Dispatch & Logistics</option>
-                    <option value="management_viewer">Management Viewer</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
-                  <input
-                    type="text"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="Operations"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2545] text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Create Password (Min 6 chars)</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-9 pr-10 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2545] text-slate-900"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center space-x-2 shadow-md cursor-pointer disabled:opacity-70"
-              >
-                {isLoading ? (
-                  <span>Registering in Supabase...</span>
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4" />
-                    <span>Create Account in Supabase</span>
-                  </>
-                )}
-              </button>
             </form>
           )}
 
@@ -442,7 +284,7 @@ export const LoginPage: React.FC = () => {
         {/* Footer */}
         <div className="bg-slate-50 p-3 text-center border-t border-slate-200 text-[10px] text-slate-400 flex items-center justify-center space-x-1.5">
           <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-          <span>Connected to Supabase PostgreSQL &amp; Auth (No Simulated Operations)</span>
+          <span>Connected to Supabase PostgreSQL &amp; Auth (Authorized Accounts Only)</span>
         </div>
       </div>
     </div>
