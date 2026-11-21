@@ -106,8 +106,8 @@ const initialMovements: StockMovement[] = []
 
 // Initial Users with IT Administrator as USR-001 (Root Initial Administrator & System Provisioner)
 export const initialUsers: UserProfile[] = [
-  { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00', password: 'Admin@123' },
-  { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00', password: 'Pass@123' },
+  { id: 'USR-001', employee_name: 'Alex Turner (IT Engineer)', email: 'it.engineer@msgoilfield.ae', department: 'IT Systems & Architecture', role: 'it_engineer', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-11-19 10:00' },
+  { id: 'USR-002', employee_name: 'Zaid Al-Mansoor', email: 'admin@msgoilfield.ae', department: 'Executive Management', role: 'super_admin', account_status: 'Active', created_at: '2026-01-01', last_login: '2026-10-29 08:00' },
 ]
 
 export interface SystemCustomConfig {
@@ -2371,7 +2371,6 @@ class DBService {
       account_status: user.account_status || 'Active',
       created_at: new Date().toISOString().slice(0, 10),
       last_login: undefined,
-      password: user.password || 'Pass@123',
       allowed_modules: user.allowed_modules || []
     }
     this.users.push(newUser)

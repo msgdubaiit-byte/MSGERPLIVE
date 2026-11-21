@@ -1,7 +1,7 @@
-// Authentication Context & Role-Based Access Control for MSG Oilfield ERP
+// Authentication Context & Real Supabase Authentication for MSG Oilfield ERP
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { UserProfile, UserRole } from '../types'
-import { initialUsers, db } from '../services/db'
+import { db } from '../services/db'
 import { getSupabase, isSupabaseConfigured } from '../services/supabase'
 
 export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
@@ -118,18 +118,24 @@ interface AuthContextType {
   currentUser: UserProfile | null
   currentRole: UserRole
   isAuthenticated: boolean
-  login: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>
-  logout: () => void
-  switchDemoRole: (role: UserRole) => void
-  switchDemoUser: (userId: string) => void
-  resetToAdmin: () => void
-  isSimulatingRoleOrUser: boolean
+  isLoadingSession: boolean
+  isRecoveryMode: boolean
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
+  signUp: (email: string, password: string, metadata: { employee_name: string; department: string; role: UserRole }) => Promise<{ success: boolean; message: string; requiresEmailConfirmation?: boolean }>
+  resetPasswordForEmail: (email: string) => Promise<{ success: boolean; message: string }>
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>
+  logout: () => Promise<void>
   hasPermission: (requiredRoles: UserRole[]) => boolean
   canAccessModule: (moduleName: string) => boolean
   customPermissions: Record<string, string[]>
   updateCustomPermissions: (targetKey: string, allowedModules: string[]) => void
   resetCustomPermissions: (targetKey?: string) => void
   getAllowedModulesForTarget: (targetKey: string) => string[]
+  // Legacy stubs kept for clean compatibility
+  switchDemoRole: (role: UserRole) => void
+  switchDemoUser: (userId: string) => void
+  resetToAdmin: () => void
+  isSimulatingRoleOrUser: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -160,13 +166,13 @@ const MODULE_PERMISSIONS: Record<string, UserRole[]> = {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('msg_current_user')
-    return saved ? JSON.parse(saved) : null
-  })
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  const [isLoadingSession, setIsLoadingSession] = useState(true)
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false)
 
   // Stored custom permissions map: { [userIdOrRole]: string[] }
   const [customPermissions, setCustomPermissions] = useState<Record<string, string[]>>(() => {
+    if (typeof localStorage === 'undefined') return {}
     const saved = localStorage.getItem('msg_custom_module_permissions')
     if (saved) {
       try {
@@ -178,159 +184,325 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {}
   })
 
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('msg_current_user', JSON.stringify(currentUser))
-    } else {
-      localStorage.removeItem('msg_current_user')
+  // Helper to fetch user profile from Supabase PostgreSQL by email
+  const fetchUserProfile = async (email: string): Promise<UserProfile | null> => {
+    if (!isSupabaseConfigured()) {
+      return db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null
     }
-  }, [currentUser])
 
-  const login = async (email: string, password?: string) => {
-    let user: UserProfile | undefined
+    try {
+      const { data, error } = await getSupabase()
+        .from('user_profiles')
+        .select('*')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle()
 
-    // 1. Authenticate against live Supabase PostgreSQL user_profiles
-    if (isSupabaseConfigured()) {
+      if (data && !error) {
+        return data as UserProfile
+      }
+    } catch (err) {
+      console.warn('Supabase profile query warning:', err)
+    }
+
+    return db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null
+  }
+
+  // Real Supabase Auth Startup Flow:
+  // Application opens -> Check existing Supabase session -> If valid, load authenticated user profile
+  useEffect(() => {
+    let isMounted = true
+
+    async function initSession() {
       try {
-        const { data, error } = await getSupabase()
-          .from('user_profiles')
-          .select('*')
-          .eq('email', email.trim().toLowerCase())
-          .maybeSingle()
+        setIsLoadingSession(true)
 
-        if (data && !error) {
-          user = data as UserProfile
+        // Check if landing from password recovery link
+        if (typeof window !== 'undefined' && window.location.hash.includes('type=recovery')) {
+          setIsRecoveryMode(true)
+        }
+
+        if (isSupabaseConfigured()) {
+          const { data: { session }, error } = await getSupabase().auth.getSession()
+          if (!error && session?.user?.email && isMounted) {
+            const profile = await fetchUserProfile(session.user.email)
+            if (profile) {
+              if (profile.account_status !== 'Active') {
+                await getSupabase().auth.signOut()
+                setCurrentUser(null)
+              } else {
+                setCurrentUser(profile)
+              }
+            } else {
+              // Provision initial profile for authenticated Supabase user
+              const newProfile: UserProfile = {
+                id: `USR-${Date.now().toString().slice(-4)}`,
+                employee_name: session.user.user_metadata?.employee_name || session.user.email.split('@')[0],
+                email: session.user.email,
+                department: session.user.user_metadata?.department || 'Operations',
+                role: session.user.user_metadata?.role || (session.user.email.includes('it.') ? 'it_engineer' : session.user.email.includes('admin') ? 'super_admin' : 'sales_team'),
+                account_status: 'Active',
+                created_at: new Date().toISOString()
+              }
+              await getSupabase().from('user_profiles').upsert(newProfile)
+              setCurrentUser(newProfile)
+            }
+          }
         }
       } catch (err) {
-        console.warn('Supabase direct auth query warning:', err)
+        console.warn('Error restoring Supabase session:', err)
+      } finally {
+        if (isMounted) setIsLoadingSession(false)
       }
     }
 
-    // 2. Fallback to synced db users if offline or network glitch
-    if (!user) {
-      const allUsers = db.getUsers()
-      user = allUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase())
-    }
+    initSession()
 
-    if (!user) {
-      return { success: false, message: 'Invalid credentials. User account not found.' }
-    }
-    if (user.account_status !== 'Active') {
-      return { success: false, message: 'Account is deactivated or suspended. Please contact administrator.' }
-    }
-
-    // Strict Password Validation
-    if (password !== undefined) {
-      const enteredPass = password.trim()
-      const expectedPass = user.password || (user.role === 'it_engineer' ? 'Admin@123' : 'Pass@123')
-      const isMasterAdminPass = enteredPass === 'Admin@123' || enteredPass === 'MSG#2026!SecP@ss982'
-      if (enteredPass !== expectedPass && !isMasterAdminPass) {
-        return { success: false, message: 'Invalid password. Please check your credentials.' }
-      }
-    }
-
-    const lastLogin = new Date().toISOString().replace('T', ' ').substring(0, 16)
-    user.last_login = lastLogin
-
-    // Update in Supabase in background
+    // Real-Time Token Refresh and Auth State Synchronization
+    let unsubscribe = () => {}
     if (isSupabaseConfigured()) {
+      const { data: { subscription } } = getSupabase().auth.onAuthStateChange(async (event, session) => {
+        if (!isMounted) return
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsRecoveryMode(true)
+        }
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user?.email) {
+            const profile = await fetchUserProfile(session.user.email)
+            if (profile && profile.account_status === 'Active') {
+              setCurrentUser(profile)
+            }
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null)
+        }
+      })
+      unsubscribe = () => subscription.unsubscribe()
+    }
+
+    return () => {
+      isMounted = false
+      unsubscribe()
+    }
+  }, [])
+
+  // Real Supabase Login with Password
+  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    if (!email || !password) {
+      return { success: false, message: 'Please enter both email and password.' }
+    }
+
+    if (!isSupabaseConfigured()) {
+      return { success: false, message: 'Supabase backend is not configured.' }
+    }
+
+    try {
+      // 1. Authenticate directly against Supabase Auth
+      const { data, error } = await getSupabase().auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: password.trim()
+      })
+
+      if (error) {
+        return { success: false, message: error.message }
+      }
+
+      if (!data.user || !data.user.email) {
+        return { success: false, message: 'Authentication returned no user record.' }
+      }
+
+      // 2. Load authenticated profile from Supabase user_profiles table
+      let profile = await fetchUserProfile(data.user.email)
+
+      // Auto-provision profile if this is an authentic Supabase user logging in for the first time
+      if (!profile) {
+        const newProfile: UserProfile = {
+          id: `USR-${Date.now().toString().slice(-4)}`,
+          employee_name: data.user.user_metadata?.employee_name || data.user.email.split('@')[0],
+          email: data.user.email,
+          department: data.user.user_metadata?.department || 'Operations',
+          role: data.user.user_metadata?.role || (data.user.email.includes('it.') ? 'it_engineer' : data.user.email.includes('admin') ? 'super_admin' : 'sales_team'),
+          account_status: 'Active',
+          created_at: new Date().toISOString()
+        }
+        await getSupabase().from('user_profiles').upsert(newProfile)
+        profile = newProfile
+      }
+
+      if (profile.account_status !== 'Active') {
+        await getSupabase().auth.signOut()
+        return { success: false, message: 'Account is deactivated or suspended. Please contact administrator.' }
+      }
+
+      const lastLogin = new Date().toISOString().replace('T', ' ').substring(0, 16)
+      profile.last_login = lastLogin
+
+      // Update last_login in Supabase
       try {
         await getSupabase()
           .from('user_profiles')
           .update({ last_login: lastLogin })
-          .eq('id', user.id)
+          .eq('email', profile.email)
       } catch {}
-    }
 
-    // Update in db service
-    db.updateUser(user.id, { last_login: lastLogin })
-
-    setCurrentUser(user)
-    return { success: true }
-  }
-
-  const [isSimulated, setIsSimulated] = useState(false)
-
-  const logout = () => {
-    setIsSimulated(false)
-    setCurrentUser(null)
-  }
-
-  const switchDemoRole = (role: UserRole) => {
-    const allUsers = db.getUsers()
-    const user = allUsers.find(u => u.role === role) || allUsers[0]
-    setIsSimulated(true)
-    setCurrentUser(user)
-  }
-
-  const switchDemoUser = (userId: string) => {
-    const allUsers = db.getUsers()
-    const user = allUsers.find(u => u.id === userId)
-    if (user) {
-      setIsSimulated(true)
-      setCurrentUser(user)
+      setCurrentUser(profile)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Supabase authentication service unavailable.' }
     }
   }
 
-  const resetToAdmin = () => {
-    const allUsers = db.getUsers()
-    const admin = allUsers.find(u => u.role === 'super_admin') || allUsers[0]
-    setIsSimulated(false)
-    setCurrentUser(admin)
+  // Real Supabase User Registration (Sign Up)
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata: { employee_name: string; department: string; role: UserRole }
+  ): Promise<{ success: boolean; message: string; requiresEmailConfirmation?: boolean }> => {
+    if (!email || !password) {
+      return { success: false, message: 'Email and password are required.' }
+    }
+
+    if (!isSupabaseConfigured()) {
+      return { success: false, message: 'Supabase backend is not configured.' }
+    }
+
+    try {
+      const cleanEmail = email.trim().toLowerCase()
+      const { data, error } = await getSupabase().auth.signUp({
+        email: cleanEmail,
+        password: password.trim(),
+        options: {
+          data: {
+            employee_name: metadata.employee_name,
+            department: metadata.department,
+            role: metadata.role
+          }
+        }
+      })
+
+      if (error) {
+        return { success: false, message: error.message }
+      }
+
+      // Upsert into Supabase user_profiles table
+      const profile: UserProfile = {
+        id: `USR-${Date.now().toString().slice(-4)}`,
+        employee_name: metadata.employee_name,
+        email: cleanEmail,
+        department: metadata.department,
+        role: metadata.role,
+        account_status: 'Active',
+        created_at: new Date().toISOString()
+      }
+
+      try {
+        await getSupabase().from('user_profiles').upsert(profile)
+      } catch (err) {
+        console.warn('Profile sync warning during registration:', err)
+      }
+
+      if (data.session) {
+        // Immediate login if email confirmation is disabled on Supabase project
+        setCurrentUser(profile)
+        return { success: true, message: 'Account registered and authenticated successfully!' }
+      } else {
+        return {
+          success: true,
+          requiresEmailConfirmation: true,
+          message: 'Account created in Supabase Auth. If email confirmation is enabled in your Supabase project, check your inbox or confirm in Supabase Dashboard before signing in.'
+        }
+      }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to complete registration.' }
+    }
   }
 
-  const isSimulatingRoleOrUser = isSimulated
+  // Real Supabase Password Reset Request
+  const resetPasswordForEmail = async (email: string): Promise<{ success: boolean; message: string }> => {
+    if (!email) return { success: false, message: 'Please enter your email.' }
+    try {
+      const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: window.location.origin
+      })
+      if (error) {
+        return { success: false, message: error.message }
+      }
+      return { success: true, message: 'Password reset link sent! Please check your email inbox.' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to send password reset.' }
+    }
+  }
 
+  // Real Supabase Password Update (When in recovery mode or authenticated)
+  const updatePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, message: 'Password must be at least 6 characters.' }
+    }
+    try {
+      const { error } = await getSupabase().auth.updateUser({
+        password: newPassword.trim()
+      })
+      if (error) {
+        return { success: false, message: error.message }
+      }
+      setIsRecoveryMode(false)
+      return { success: true, message: 'Password updated successfully in Supabase Auth!' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to update password.' }
+    }
+  }
+
+  // Real Supabase Logout
+  const logout = async () => {
+    try {
+      if (isSupabaseConfigured()) {
+        await getSupabase().auth.signOut()
+      }
+    } catch (err) {
+      console.warn('Logout error:', err)
+    } finally {
+      setCurrentUser(null)
+    }
+  }
+
+  // Role Permissions Checking
   const hasPermission = (requiredRoles: UserRole[]): boolean => {
     if (!currentUser) return false
     return requiredRoles.includes(currentUser.role)
   }
 
   const getAllowedModulesForTarget = (targetKey: string): string[] => {
-    // 1. Direct custom permissions override
     if (customPermissions[targetKey]) {
       return customPermissions[targetKey]
     }
-
-    // 2. If targetKey is a user id, check if their role has custom permissions
     const allUsers = db.getUsers()
-    const user = allUsers.find(u => u.id === targetKey)
+    const user = allUsers.find(u => u.id === targetKey || u.email === targetKey)
     if (user && customPermissions[user.role]) {
       return customPermissions[user.role]
     }
-
-    // 3. Check role default modules
     if (user && DEFAULT_ROLE_MODULES[user.role]) {
       return DEFAULT_ROLE_MODULES[user.role]
     }
-
-    // 4. Target is role directly
     if (DEFAULT_ROLE_MODULES[targetKey as UserRole]) {
       return DEFAULT_ROLE_MODULES[targetKey as UserRole]
     }
-
     return DEFAULT_ROLE_MODULES.sales_team
   }
 
   const canAccessModule = (moduleName: string): boolean => {
     if (!currentUser) return false
 
-    // Super Admin retains administrative access so they can never lock themselves out
     if (currentUser.role === 'super_admin' && (moduleName === 'users' || moduleName === 'settings' || moduleName === 'audit')) {
       return true
     }
 
-    // Check specific user custom configuration first
     if (customPermissions[currentUser.id]) {
       return customPermissions[currentUser.id].includes(moduleName)
     }
 
-    // Check role custom configuration
     if (customPermissions[currentUser.role]) {
       return customPermissions[currentUser.role].includes(moduleName)
     }
 
-    // Fall back to default role module map
     const defaultModules = DEFAULT_ROLE_MODULES[currentUser.role]
     if (defaultModules) {
       return defaultModules.includes(moduleName)
@@ -343,7 +515,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateCustomPermissions = (targetKey: string, allowedModules: string[]) => {
     setCustomPermissions(prev => {
       const next = { ...prev, [targetKey]: allowedModules }
-      localStorage.setItem('msg_custom_module_permissions', JSON.stringify(next))
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('msg_custom_module_permissions', JSON.stringify(next))
+      }
       return next
     })
   }
@@ -356,10 +530,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         return {}
       }
-      localStorage.setItem('msg_custom_module_permissions', JSON.stringify(next))
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('msg_custom_module_permissions', JSON.stringify(next))
+      }
       return next
     })
   }
+
+  // Compatibility stubs (No simulated user switching allowed in production)
+  const switchDemoRole = (_role: UserRole) => {}
+  const switchDemoUser = (_userId: string) => {}
+  const resetToAdmin = () => {}
+  const isSimulatingRoleOrUser = false
 
   return (
     <AuthContext.Provider
@@ -367,18 +549,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         currentRole: currentUser?.role || 'management_viewer',
         isAuthenticated: !!currentUser,
+        isLoadingSession,
+        isRecoveryMode,
         login,
+        signUp,
+        resetPasswordForEmail,
+        updatePassword,
         logout,
-        switchDemoRole,
-        switchDemoUser,
-        resetToAdmin,
-        isSimulatingRoleOrUser,
         hasPermission,
         canAccessModule,
         customPermissions,
         updateCustomPermissions,
         resetCustomPermissions,
         getAllowedModulesForTarget,
+        switchDemoRole,
+        switchDemoUser,
+        resetToAdmin,
+        isSimulatingRoleOrUser,
       }}
     >
       {children}

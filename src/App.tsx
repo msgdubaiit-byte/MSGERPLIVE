@@ -31,7 +31,7 @@ import { OnboardingGuideModal } from './components/common/OnboardingGuideModal'
 import { db } from './services/db'
 
 const MainApp: React.FC = () => {
-  const { isAuthenticated, currentUser, canAccessModule } = useAuth()
+  const { isAuthenticated, currentUser, canAccessModule, isLoadingSession } = useAuth()
   const [activeTab, setActiveTab] = useState<NavTabId>('solo_hub')
   const [dbVersion, setDbVersion] = useState(0)
 
@@ -73,6 +73,17 @@ const MainApp: React.FC = () => {
 
   // Interactive Onboarding Demo Guide Modal state
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false)
+
+  if (isLoadingSession) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="text-xs font-bold tracking-wide uppercase text-slate-300">
+          Connecting to Supabase PostgreSQL &amp; Auth...
+        </div>
+      </div>
+    )
+  }
 
   if (!isAuthenticated) {
     return <LoginPage />

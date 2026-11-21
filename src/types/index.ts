@@ -19,7 +19,6 @@ export interface UserProfile {
   account_status: 'Active' | 'Inactive' | 'Suspended'
   created_at: string
   last_login?: string
-  password?: string
   allowed_modules?: string[]
 }
 

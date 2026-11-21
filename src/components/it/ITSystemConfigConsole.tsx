@@ -194,7 +194,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
     department: 'Commercial Sales',
     role: 'sales_team',
     account_status: 'Active',
-    password: 'Pass@123'
+    password: ''
   })
 
   // Target selection for RBAC Matrix (Role vs Individual Employee)
@@ -267,7 +267,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
       department: 'Commercial Sales',
       role: 'sales_team',
       account_status: 'Active',
-      password: 'Pass@123'
+      password: ''
     })
     setIsUserModalOpen(true)
   }
@@ -280,7 +280,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
       department: u.department,
       role: u.role,
       account_status: u.account_status,
-      password: u.password || 'Pass@123'
+      password: ''
     })
     setIsUserModalOpen(true)
   }
@@ -299,7 +299,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         department: userFormData.department.trim(),
         role: userFormData.role,
         account_status: userFormData.account_status,
-        password: userFormData.password
       }, 'it.engineer@msgoilfield.ae')
       setStatusNotice(`Account for "${userFormData.employee_name}" updated successfully!`)
     } else {
@@ -309,7 +308,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
         department: userFormData.department.trim(),
         role: userFormData.role,
         account_status: userFormData.account_status,
-        password: userFormData.password
       }, 'it.engineer@msgoilfield.ae')
       setStatusNotice(`New account ${newUser.id} (${newUser.employee_name}) provisioned successfully!`)
       setSelectedUserId(newUser.id)
@@ -2470,7 +2468,7 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
                   type="text"
                   value={userFormData.password || ''}
                   onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                  placeholder="Pass@123"
+                  placeholder="Min 6 characters"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
                 />
                 <p className="text-[10px] text-slate-500 mt-1">

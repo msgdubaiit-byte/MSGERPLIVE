@@ -248,8 +248,6 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
     getAllowedModulesForTarget,
     updateCustomPermissions,
     resetCustomPermissions,
-    switchDemoUser,
-    switchDemoRole,
   } = useAuth()
 
   const allUsers = db.getUsers()
@@ -342,22 +340,6 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
       setBannerMsg('Reset to standard defaults.')
       setTimeout(() => setBannerMsg(null), 3000)
     }
-  }
-
-  // Instant Test View As this Person / Role
-  const handleTestView = () => {
-    // If not saved, save first
-    if (hasChanges) {
-      updateCustomPermissions(activeTargetKey, selectedModules)
-    }
-
-    if (activeTabMode === 'person' && selectedUserId) {
-      switchDemoUser(selectedUserId)
-    } else {
-      switchDemoRole(selectedRole)
-    }
-
-    onClose()
   }
 
   const categories = [
@@ -718,19 +700,6 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
                   No modules selected! Please pick at least 1 module.
                 </div>
               )}
-            </div>
-
-            {/* Test View Button */}
-            <div className="pt-3 border-t border-slate-700/80 space-y-2">
-              <button
-                type="button"
-                onClick={handleTestView}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 font-semibold text-xs py-2 rounded-lg flex items-center justify-center space-x-1.5 transition-colors"
-                title="Switch active user to test their clean view immediately"
-              >
-                <Eye className="h-3.5 w-3.5 text-amber-400" />
-                <span>Test View as {activeTabMode === 'person' ? activeUser?.employee_name.split(' ')[0] : 'Role'}</span>
-              </button>
             </div>
           </div>
         </div>

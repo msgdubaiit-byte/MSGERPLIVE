@@ -6,38 +6,54 @@ import { Users, UserPlus, Shield, CheckCircle2, XCircle, KeyRound, Edit, Crown }
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
 
 export const UserManagement: React.FC = () => {
-  const { hasPermission, getAllowedModulesForTarget } = useAuth()
+  const { hasPermission, signUp, resetPasswordForEmail, getAllowedModulesForTarget } = useAuth()
   const users = db.getUsers()
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isVipModalOpen, setIsVipModalOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [department, setDepartment] = useState('Commercial Sales')
   const [role, setRole] = useState<UserRole>('sales_team')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const canManage = hasPermission(['super_admin', 'it_engineer'])
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name || !email) {
-      alert('Please fill employee name and email.')
+    if (!name || !email || !password) {
+      alert('Please fill employee name, email, and password.')
       return
     }
 
-    db.addUser({
-      employee_name: name,
-      email: email.trim().toLowerCase(),
-      department,
-      role,
-      account_status: 'Active',
-      password: 'Pass@123'
-    })
+    if (password.length < 6) {
+      alert('Password must be at least 6 characters.')
+      return
+    }
 
-    alert(`Account for ${name} (${role}) created and synchronized to Supabase Cloud! Default password: Pass@123`)
-    setIsAddUserModalOpen(false)
-    setName('')
-    setEmail('')
+    setIsSubmitting(true)
+    try {
+      const res = await signUp(email, password, {
+        employee_name: name,
+        department,
+        role
+      })
+
+      if (res.success) {
+        alert(`Account for ${name} (${role}) provisioned in Supabase Auth & PostgreSQL!\n${res.message}`)
+        setIsAddUserModalOpen(false)
+        setName('')
+        setEmail('')
+        setPassword('')
+      } else {
+        alert(`Supabase Auth Notice: ${res.message}`)
+      }
+    } catch (err: any) {
+      alert(`Error creating user: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleToggleStatus = (u: UserProfile) => {
@@ -46,11 +62,10 @@ export const UserManagement: React.FC = () => {
     alert(`Account status for ${u.employee_name} updated to ${nextStatus}.`)
   }
 
-  const handleResetPassword = (u: UserProfile) => {
-    const newPass = window.prompt(`Enter new password for ${u.employee_name} (${u.email}):`, 'Pass@123')
-    if (newPass && newPass.trim()) {
-      db.updateUser(u.id, { password: newPass.trim() })
-      alert(`Password updated successfully for ${u.employee_name} and synced to Supabase!`)
+  const handleResetPassword = async (u: UserProfile) => {
+    if (window.confirm(`Send a secure password reset link to ${u.employee_name} (${u.email}) via Supabase Auth?`)) {
+      const res = await resetPasswordForEmail(u.email)
+      alert(res.message)
     }
   }
 
@@ -220,7 +235,20 @@ export const UserManagement: React.FC = () => {
                   placeholder="name@msgoilfield.ae"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 font-mono"
+                  className="w-full border border-slate-300 rounded-lg p-2 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Initial Password (Min 6 chars) *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-xs"
                 />
               </div>
 
@@ -230,7 +258,7 @@ export const UserManagement: React.FC = () => {
                   type="text"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-xs"
                 />
               </div>
 
@@ -239,7 +267,7 @@ export const UserManagement: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as any)}
-                  className="w-full border border-slate-300 rounded-lg p-2 bg-white font-medium"
+                  className="w-full border border-slate-300 rounded-lg p-2 bg-white font-medium text-xs"
                 >
                   <option value="super_admin">ROLE 1: Super Admin (Full Privileges)</option>
                   <option value="admin_inventory">ROLE 2: Admin / Inventory Manager</option>
@@ -256,15 +284,16 @@ export const UserManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow text-xs cursor-pointer disabled:opacity-60"
                 >
-                  Create & Issue Invite
+                  {isSubmitting ? 'Registering in Supabase...' : 'Create in Supabase Auth'}
                 </button>
               </div>
             </form>
