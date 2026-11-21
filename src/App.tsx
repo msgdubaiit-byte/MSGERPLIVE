@@ -33,7 +33,7 @@ import { db } from './services/db'
 const MainApp: React.FC = () => {
   const { isAuthenticated, currentUser, canAccessModule } = useAuth()
   const [activeTab, setActiveTab] = useState<NavTabId>('solo_hub')
-  const [, setDbVersion] = useState(0)
+  const [dbVersion, setDbVersion] = useState(0)
 
   // Reactive listener to DB changes across the app
   useEffect(() => {
@@ -105,7 +105,7 @@ const MainApp: React.FC = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+          <div key={`db-view-${dbVersion}`} className="max-w-7xl mx-auto">
             {activeTab === 'solo_hub' && (
               <CentralizedSoloHub
                 onNavigateTab={(tab) => setActiveTab(tab)}

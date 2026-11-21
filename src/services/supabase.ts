@@ -3,9 +3,21 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://snmafjucycnzikmtkrsr.supabase.co'
 const DEFAULT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNubWFmanVjeWNuemlrbXRrcnNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTgxOTcsImV4cCI6MjExMDczNDE5N30.-ZpWWjEZZ-m7DqIwaKyp0yC8zTMOXjc5O-4LXtWH9Ss'
 
-export function getStoredSupabaseConfig() {
-  const url = localStorage.getItem('msg_supabase_url') || DEFAULT_SUPABASE_URL
-  const key = localStorage.getItem('msg_supabase_anon_key') || DEFAULT_SUPABASE_ANON_KEY
+export function getStoredSupabaseConfig(): { url: string; key: string } {
+  let url: string = (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_supabase_url') : null) || ''
+  let key: string = (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_supabase_anon_key') : null) || ''
+
+  // Auto-purge any stale placeholder or demo key from previous test runs
+  if (!url || url.includes('msg-oilfield') || !key || key.includes('demo')) {
+    url = DEFAULT_SUPABASE_URL
+    key = DEFAULT_SUPABASE_ANON_KEY
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('msg_supabase_url', url)
+        localStorage.setItem('msg_supabase_anon_key', key)
+      }
+    } catch {}
+  }
   return { url, key }
 }
 
