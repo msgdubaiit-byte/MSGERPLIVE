@@ -380,10 +380,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
       const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
       const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
-      const make = item.make || autoDetectMake(item.item_description) || (idx === 0 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
+      const make = item.make || autoDetectMake(item.item_description) || ''
       const hs = item.hs_code ? autoDetectHSCode(item.item_description, item.item_code, item.hs_code) : autoDetectHSCode(item.item_description, item.item_code)
-      const origin = autoDetectCountryOfOrigin(make, item.item_description)
-      const unitPrice = 125
+      const origin = item.country_of_origin || ''
+      const unitPrice = Number((item as any).unit_price ?? (item as any).rate ?? 0)
       const qty = alloc?.allocated_qty || item.required_qty || 1
       const unitWeight = estimateUnitWeight(item.item_description, item.uom)
 
@@ -403,8 +403,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         certificate_number: cert,
         make,
         remarks: cleanRemarks,
-        supplier_name: item.supplier_name || lot?.supplier_name || autoDetectSupplier(make, item.item_description || ''),
-        supplier_po_number: (item as any).supplier_po_number || `MSG-PO-${(order.so_number || '2026').replace(/[^0-9]/g, '').slice(-4) || '1844'}`,
+        supplier_name: item.supplier_name || '',
+        supplier_po_number: (item as any).supplier_po_number || '',
         hs_code: hs,
         country_of_origin: origin,
         unit_price: unitPrice,
@@ -427,10 +427,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       order_date: order.order_date,
       delivery_date: order.required_delivery_date,
       currency: 'USD',
-      port_of_loading: 'Jebel Ali, UAE',
-      port_of_discharge: 'Khalifa Bin Salman Port, Bahrain',
-      vessel_flight: 'MAERSK LINE / SEA FREIGHT',
-      payment_terms: '30 Days Net from Delivery',
+      port_of_loading: (order as any).port_of_loading || '',
+      port_of_discharge: (order as any).port_of_discharge || '',
+      vessel_flight: (order as any).vessel_flight || '',
+      payment_terms: (order as any).payment_terms || '',
       invoice_number: `INV-MSG-${order.so_number.replace(/[^0-9]/g, '').slice(-4) || '2026'}`,
       items,
     }

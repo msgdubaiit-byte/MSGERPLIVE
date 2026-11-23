@@ -1170,9 +1170,9 @@ class DBService {
       const resolvedDesc = item.item_description?.trim() || itm?.item_description || `Oilfield Fitting ${itemCode}`
       const explicitHS = (item as any).hs_code || (item as any).hsCode || ''
       const resolvedHS = autoDetectHSCode(resolvedDesc, itemCode, explicitHS)
-      const resolvedMake = (item as any).make || autoDetectMake(resolvedDesc) || 'BENKAN THAILAND'
-      const resolvedCOO = (item as any).country_of_origin || (item as any).countryOfOrigin || autoDetectCountryOfOrigin(resolvedMake, resolvedDesc, '')
-      const resolvedUnitPrice = (item as any).unit_price ?? (item as any).rate ?? (item as any).unitPrice ?? itm?.unit_price_aed ?? 50
+      const resolvedMake = (item as any).make || autoDetectMake(resolvedDesc) || ''
+      const resolvedCOO = (item as any).country_of_origin || (item as any).countryOfOrigin || ''
+      const resolvedUnitPrice = (item as any).unit_price ?? (item as any).rate ?? (item as any).unitPrice ?? itm?.unit_price_aed ?? 0
       const resolvedUom = (item as any).uom || itm?.uom || 'PCS'
 
       return {
@@ -1187,8 +1187,8 @@ class DBService {
         client_po_item_no: (item as any).client_po_item_no || String((item as any).position || idx + 1),
         position: (item as any).position || idx + 1,
         make: resolvedMake,
-        supplier_name: (item as any).supplier_name || (item as any).supplierName || resolvedMake,
-        supplier_po_number: (item as any).supplier_po_number || `PO-${idx + 1}`,
+        supplier_name: (item as any).supplier_name || (item as any).supplierName || '',
+        supplier_po_number: (item as any).supplier_po_number || '',
         package_type: (item as any).package_type || (item as any).packageType || 'Pallet',
         package_no: (item as any).package_no || (item as any).packageNo || `${Math.floor(idx / 3) + 1}`,
         hs_code: resolvedHS,
@@ -1344,8 +1344,8 @@ class DBService {
           total_qty: upItem.total_qty !== undefined ? upItem.total_qty : (existing?.total_qty || undefined),
           group_id: upItem.group_id !== undefined ? upItem.group_id : (existing?.group_id || undefined),
           hs_code: upItem.hs_code !== undefined ? upItem.hs_code : (existing?.hs_code || autoDetectHSCode(upItem.item_description || existing?.item_description || '', resolvedCode)),
-          country_of_origin: upItem.country_of_origin !== undefined ? upItem.country_of_origin : (existing?.country_of_origin || autoDetectCountryOfOrigin(upItem.make || existing?.make || '', upItem.item_description || existing?.item_description || '', '')),
-          unit_price: upItem.unit_price !== undefined ? upItem.unit_price : (existing?.unit_price ?? 50),
+          country_of_origin: upItem.country_of_origin !== undefined ? upItem.country_of_origin : (existing?.country_of_origin || ''),
+          unit_price: upItem.unit_price !== undefined ? upItem.unit_price : (existing?.unit_price ?? 0),
           line_status: upItem.heat_number ? 'Allocated' : (existing?.line_status || 'Pending'),
         }
 

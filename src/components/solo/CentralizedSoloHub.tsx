@@ -103,27 +103,27 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
     const items: SourcingLineItem[] = selectedOrder.items.map((it, idx) => {
       const desc = it.item_description || `Item ${it.item_code}`
-      const detectedMake = it.make || autoDetectMake(desc) || 'BENKAN THAILAND'
-      const detectedCOO = it.country_of_origin || autoDetectCountryOfOrigin(detectedMake, desc, '')
+      const detectedMake = it.make || autoDetectMake(desc) || ''
+      const detectedCOO = it.country_of_origin || ''
       const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
-      const unitPrice = it.unit_price || 50
+      const unitPrice = Number(it.unit_price ?? (it as any).rate ?? 0)
       const unitWt = estimateUnitWeight(desc, it.uom)
       const lineNet = Math.round(it.required_qty * unitWt * 100) / 100
       const lineGross = Math.round(lineNet * 1.15 * 100) / 100
 
       return {
         id: `SOLO-ITM-${idx + 1}`,
-        sl_no: idx + 1,
+        sl_no: it.position || idx + 1,
         client_po_item_no: it.client_po_item_no || `${idx + 1}`,
         description: desc,
         qty: it.required_qty,
         uom: it.uom || 'PCS',
         heat_number: it.heat_number || '',
-        certificate_number: it.heat_number ? `MTC-${it.heat_number}.pdf` : '',
+        certificate_number: it.certificate_number || (it.heat_number ? `MTC-${it.heat_number}.pdf` : ''),
         make: detectedMake,
-        remarks: it.location ? `Yard: ${it.location}` : 'Allocated',
-        supplier_name: it.supplier_name || detectedMake,
-        supplier_po_number: `PO-${idx + 1}`,
+        remarks: it.remarks || (it.location ? `Yard: ${it.location}` : ''),
+        supplier_name: it.supplier_name || '',
+        supplier_po_number: (it as any).supplier_po_number || '',
         hs_code: detectedHS,
         country_of_origin: detectedCOO,
         unit_price: unitPrice,
@@ -131,7 +131,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         unit_weight_kg: unitWt,
         total_net_weight_kg: lineNet,
         total_gross_weight_kg: lineGross,
-        package_no: `PKG # ${Math.floor(idx / 3) + 1}`,
+        package_no: (it as any).package_no || `PKG # ${Math.floor(idx / 3) + 1}`,
         is_machined: false
       }
     })

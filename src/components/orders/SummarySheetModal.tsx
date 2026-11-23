@@ -87,13 +87,14 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
     const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
     const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
     const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
-    const make = item.make || autoDetectMake(item.item_description) || (idx === 0 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
-    const supp = item.supplier_name || lot?.supplier_name || autoDetectSupplier(make, item.item_description || '')
+    const make = item.make || autoDetectMake(item.item_description) || ''
+    const supp = item.supplier_name || lot?.supplier_name || ''
     const pkgType = item.package_type || 'Pallet'
     const pkgNo = item.package_no || '1'
     const hs = autoDetectHSCode(item.item_description)
-    const origin = autoDetectCountryOfOrigin(make, item.item_description)
+    const origin = item.country_of_origin || ''
     const qty = alloc?.allocated_qty || item.required_qty || 1
+    const unitPrice = Number((item as any).unit_price ?? (item as any).rate ?? 0)
     const unitWeight = estimateUnitWeight(item.item_description, item.uom)
 
     // Clean remarks - strictly NO location numbers like AC9 / BB9
@@ -120,11 +121,11 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
       make,
       remarks: cleanRemarks,
       supplier_name: supp,
-      supplier_po_number: (item as any).supplier_po_number || `MSG-PO-${(order.so_number || '2026').replace(/[^0-9]/g, '').slice(-4) || '1844'}`,
+      supplier_po_number: (item as any).supplier_po_number || '',
       hs_code: hs,
       country_of_origin: origin,
-      unit_price: 125,
-      total_price: 125 * extractQtyNumber(initialQty),
+      unit_price: unitPrice,
+      total_price: unitPrice * extractQtyNumber(initialQty),
       unit_weight_kg: unitWeight,
       total_net_weight_kg: unitWeight * extractQtyNumber(initialQty),
       total_gross_weight_kg: unitWeight * extractQtyNumber(initialQty) * 1.05,
@@ -194,10 +195,10 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
     order_date: orderDate,
     delivery_date: order.required_delivery_date,
     currency,
-    port_of_loading: 'Jebel Ali, UAE',
-    port_of_discharge: 'Khalifa Bin Salman Port, Bahrain',
-    vessel_flight: 'MAERSK LINE / SEA FREIGHT',
-    payment_terms: '30 Days Net from Delivery',
+    port_of_loading: (order as any).port_of_loading || '',
+    port_of_discharge: (order as any).port_of_discharge || '',
+    vessel_flight: (order as any).vessel_flight || '',
+    payment_terms: (order as any).payment_terms || '',
     invoice_number: `INV-MSG-${order.so_number.replace(/[^0-9]/g, '').slice(-4) || '2026'}`,
     items,
   })

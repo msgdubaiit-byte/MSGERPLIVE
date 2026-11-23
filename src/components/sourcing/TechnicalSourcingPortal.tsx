@@ -57,110 +57,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const existingOrders = db.getOrders()
 
   // Worksheet State
-  const [clientName, setClientName] = useState('Valoris Energy Services Company')
-  const [poNumber, setPoNumber] = useState('10025 // 10044')
-  const [msgRef, setMsgRef] = useState('MSG-0826-2117 / MSG-0926-2135')
+  const [clientName, setClientName] = useState('')
+  const [poNumber, setPoNumber] = useState('')
+  const [msgRef, setMsgRef] = useState('')
   const [currency, setCurrency] = useState<'AED' | 'USD'>('AED')
-  const [portOfLoading, setPortOfLoading] = useState('Jebel Ali / Dubai, UAE')
-  const [portOfDischarge, setPortOfDischarge] = useState('Dammam Port, KSA')
-  const [paymentTerms, setPaymentTerms] = useState('30 Days from B/L Date')
+  const [portOfLoading, setPortOfLoading] = useState('')
+  const [portOfDischarge, setPortOfDischarge] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('')
   const [filterMachinedOnly, setFilterMachinedOnly] = useState(false)
 
   // Items State
-  const [items, setItems] = useState<SourcingLineItem[]>([
-    {
-      id: 'ITM-1',
-      sl_no: 1,
-      client_po_item_no: '1',
-      description: 'CONC. RED. 2" X 1.1/2", SCH.80, BW, SMLS, ASTM A/ SA 234 WPB, ASME B16.9 (Machined from 2" Sch.160)',
-      qty: 2,
-      uom: 'PCS',
-      heat_number: '68C20M091',
-      certificate_number: 'MTC-68C20M091.pdf',
-      make: 'BENKAN THAILAND',
-      remarks: 'Machined from S.160 to Sch.80 locally',
-      supplier_name: 'BENKAN THAILAND',
-      supplier_po_number: 'PO-BENKAN-01',
-      hs_code: '7307.93.00',
-      country_of_origin: 'Thailand',
-      unit_price: 35,
-      total_price: 70,
-      unit_weight_kg: 0.85,
-      total_net_weight_kg: 1.7,
-      total_gross_weight_kg: 2.0,
-      package_no: 'PKG # 01',
-      is_machined: true,
-    },
-    {
-      id: 'ITM-2',
-      sl_no: 2,
-      client_po_item_no: '2',
-      description: 'CONC. RED. 2" X 1", SCH.80, BW, SMLS, ASTM A/ SA 234 WPB, ASME B16.9 BENKAN THAILAND',
-      qty: 3,
-      uom: 'PCS',
-      heat_number: '67C20M376',
-      certificate_number: 'MTC-67C20M376.pdf',
-      make: 'BENKAN THAILAND',
-      remarks: 'Stock Available',
-      supplier_name: 'BENKAN THAILAND',
-      supplier_po_number: 'PO-BENKAN-01',
-      hs_code: '7307.93.00',
-      country_of_origin: 'Thailand',
-      unit_price: 35,
-      total_price: 105,
-      unit_weight_kg: 0.75,
-      total_net_weight_kg: 2.25,
-      total_gross_weight_kg: 2.6,
-      package_no: 'PKG # 01',
-      is_machined: false,
-    },
-    {
-      id: 'ITM-3',
-      sl_no: 3,
-      client_po_item_no: '3',
-      description: 'RED. TEE 2" X 3/4", SCH.160, BW, SMLS, ASTM A/ SA 234 WPB, ASME B16.9',
-      qty: 3,
-      uom: 'PCS',
-      heat_number: '68C10M073',
-      certificate_number: 'MTC-68C10M073.pdf',
-      make: 'BENKAN THAILAND',
-      remarks: 'Standard Mill Fitting',
-      supplier_name: 'BENKAN THAILAND',
-      supplier_po_number: 'PO-BENKAN-01',
-      hs_code: '7307.93.00',
-      country_of_origin: 'Thailand',
-      unit_price: 110,
-      total_price: 330,
-      unit_weight_kg: 1.2,
-      total_net_weight_kg: 3.6,
-      total_gross_weight_kg: 4.1,
-      package_no: 'PKG # 02',
-      is_machined: false,
-    },
-    {
-      id: 'ITM-4',
-      sl_no: 4,
-      client_po_item_no: '4',
-      description: 'WNRF FLANGE 4" 300# SCH 40 ASTM A105N ASME B16.5 (Modified Face to RTJ Locally)',
-      qty: 4,
-      uom: 'PCS',
-      heat_number: 'H-99214',
-      certificate_number: 'MTC-H-99214.pdf',
-      make: 'Metalfar Italy',
-      remarks: 'Modified RF to RTJ locally by machine shop',
-      supplier_name: 'Local UAE Machine Shop',
-      supplier_po_number: 'PO-LOCAL-FAB-02',
-      hs_code: '7307.91.00',
-      country_of_origin: 'Italy',
-      unit_price: 185,
-      total_price: 740,
-      unit_weight_kg: 6.5,
-      total_net_weight_kg: 26.0,
-      total_gross_weight_kg: 29.5,
-      package_no: 'PKG # 02',
-      is_machined: true,
-    },
-  ])
+  const [items, setItems] = useState<SourcingLineItem[]>([])
 
   // UI State
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
@@ -221,13 +128,13 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
       const newItems: SourcingLineItem[] = parsed.items.map((it, idx) => {
         const desc = it.itemDescription || `${it.itemCode} Oilfield Material`
-        const detectedMake = autoDetectMake(desc) || autoDetectMake(it.itemCode) || 'BENKAN THAILAND'
-        const detectedCOO = autoDetectCountryOfOrigin(detectedMake, desc, '')
+        const detectedMake = autoDetectMake(desc) || autoDetectMake(it.itemCode) || ''
+        const detectedCOO = (it as any).countryOfOrigin || (it as any).country_of_origin || ''
         const detectedHS = autoDetectHSCode(desc)
         const unitWt = estimateUnitWeight(desc, 'PCS')
         const lineNet = Math.round(it.requiredQty * unitWt * 100) / 100
         const lineGross = Math.round(lineNet * 1.15 * 100) / 100
-        const unitP = it.rate || 50
+        const unitP = Number(it.rate || 0)
         const isMachined = isMeaningfulItem({ description: desc })
 
         const pos = it.position || idx + 1
@@ -241,9 +148,9 @@ export const TechnicalSourcingPortal: React.FC = () => {
           heat_number: it.heatNumber || '',
           certificate_number: it.heatNumber ? `MTC-${it.heatNumber}.pdf` : '',
           make: detectedMake,
-          remarks: isMachined ? 'Machined/Fabricated item' : (it.location ? `Loc: ${it.location}` : 'Stock Allocated'),
-          supplier_name: it.purchaseType === 'local_purchase' ? 'Local UAE Supplier' : detectedMake,
-          supplier_po_number: `PO-${idx + 1}`,
+          remarks: isMachined ? 'Machined/Fabricated item' : (it.location ? `Loc: ${it.location}` : ''),
+          supplier_name: (it as any).supplierName || (it as any).supplier_name || '',
+          supplier_po_number: (it as any).supplierPoNumber || (it as any).supplier_po_number || '',
           hs_code: detectedHS,
           country_of_origin: detectedCOO,
           unit_price: unitP,
@@ -271,41 +178,45 @@ export const TechnicalSourcingPortal: React.FC = () => {
     if (!order) return
 
     setSelectedOrderId(orderId)
-    setClientName(order.customer_name)
-    setPoNumber(order.po_number)
-    setMsgRef(order.so_number)
+    setClientName(order.customer_name || '')
+    setPoNumber(order.po_number || '')
+    setMsgRef(order.so_number || order.msg_ref || '')
+    setPortOfLoading((order as any).port_of_loading || '')
+    setPortOfDischarge((order as any).port_of_discharge || '')
+    setPaymentTerms((order as any).payment_terms || '')
 
-    const newItems: SourcingLineItem[] = order.items.map((it, idx) => {
+    const newItems: SourcingLineItem[] = (order.items || []).map((it, idx) => {
       const desc = it.item_description || `Item ${it.item_code}`
-      const detectedMake = autoDetectMake(desc) || 'BENKAN THAILAND'
-      const detectedCOO = autoDetectCountryOfOrigin(detectedMake, desc, '')
-      const detectedHS = autoDetectHSCode(desc)
+      const detectedMake = it.make || autoDetectMake(desc) || ''
+      const detectedCOO = (it as any).country_of_origin || (it as any).countryOfOrigin || ''
+      const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
       const unitWt = estimateUnitWeight(desc, it.uom)
       const lineNet = Math.round(it.required_qty * unitWt * 100) / 100
       const lineGross = Math.round(lineNet * 1.15 * 100) / 100
       const isMachined = isMeaningfulItem({ description: desc })
+      const orderUnitPrice = Number((it as any).unit_price ?? (it as any).rate ?? (it as any).price ?? 0)
 
       return {
         id: `ITM-ORD-${idx + 1}`,
-        sl_no: idx + 1,
-        client_po_item_no: `${idx + 1}`,
+        sl_no: (it as any).position || idx + 1,
+        client_po_item_no: (it as any).client_po_item_no || `${idx + 1}`,
         description: desc,
         qty: it.required_qty,
         uom: it.uom || 'PCS',
         heat_number: it.heat_number || '',
-        certificate_number: it.heat_number ? `MTC-${it.heat_number}.pdf` : '',
+        certificate_number: it.certificate_number || (it.heat_number ? `MTC-${it.heat_number}.pdf` : ''),
         make: detectedMake,
-        remarks: it.location ? `Yard: ${it.location}` : 'Allocated',
-        supplier_name: detectedMake,
-        supplier_po_number: `PO-${idx + 1}`,
+        remarks: it.remarks || (it.location ? `Yard: ${it.location}` : ''),
+        supplier_name: (it as any).supplier_name || '',
+        supplier_po_number: (it as any).supplier_po_number || '',
         hs_code: detectedHS,
         country_of_origin: detectedCOO,
-        unit_price: 50,
-        total_price: it.required_qty * 50,
+        unit_price: orderUnitPrice,
+        total_price: it.required_qty * orderUnitPrice,
         unit_weight_kg: unitWt,
         total_net_weight_kg: lineNet,
         total_gross_weight_kg: lineGross,
-        package_no: `PKG # ${Math.floor(idx / 3) + 1}`,
+        package_no: (it as any).package_no || `PKG # ${Math.floor(idx / 3) + 1}`,
         is_machined: isMachined,
       }
     })
@@ -359,13 +270,6 @@ export const TechnicalSourcingPortal: React.FC = () => {
             if (!updated.make || updated.make.toUpperCase() === 'MAKE') {
               const detectedMake = autoDetectMake(combined)
               if (detectedMake) updated.make = detectedMake
-            }
-            // Auto-fill Supplier Name to STOCK
-            if (!updated.supplier_name || updated.supplier_name.toUpperCase() === 'SUPPLIER') {
-              updated.supplier_name = 'STOCK'
-            }
-            if (!updated.supplier_po_number || updated.supplier_po_number.toUpperCase() === 'PO #') {
-              updated.supplier_po_number = 'STOCK'
             }
           }
         }
@@ -462,22 +366,22 @@ export const TechnicalSourcingPortal: React.FC = () => {
       id: `ITM-NEW-${Date.now()}`,
       sl_no: nextSl,
       client_po_item_no: `${nextSl}`,
-      description: 'FLANGE WNRF 2" 150# SCH 40 ASTM A105N ASME B16.5',
+      description: '',
       qty: 1,
       uom: 'PCS',
       heat_number: '',
       certificate_number: '',
-      make: 'Metalfar Italy',
+      make: '',
       remarks: '',
-      supplier_name: 'Metalfar Italy',
-      supplier_po_number: `PO-${nextSl}`,
-      hs_code: '7307.91.00',
-      country_of_origin: 'Italy',
-      unit_price: 65,
-      total_price: 65,
-      unit_weight_kg: 2.5,
-      total_net_weight_kg: 2.5,
-      total_gross_weight_kg: 2.9,
+      supplier_name: '',
+      supplier_po_number: '',
+      hs_code: '',
+      country_of_origin: '',
+      unit_price: 0,
+      total_price: 0,
+      unit_weight_kg: 0,
+      total_net_weight_kg: 0,
+      total_gross_weight_kg: 0,
       package_no: `PKG # 01`,
       is_machined: false,
     }
@@ -554,8 +458,8 @@ export const TechnicalSourcingPortal: React.FC = () => {
   // Auto-Detect All Missing
   const handleAutoDetectAll = () => {
     const updated = items.map(it => {
-      const make = it.make || autoDetectMake(it.description) || 'BENKAN THAILAND'
-      const coo = it.country_of_origin || autoDetectCountryOfOrigin(make, it.description, it.remarks)
+      const make = it.make || autoDetectMake(it.description) || ''
+      const coo = it.country_of_origin || (make ? autoDetectCountryOfOrigin(make, it.description, it.remarks) : '')
       const hs = it.hs_code || autoDetectHSCode(it.description)
       const unitWt = it.unit_weight_kg || estimateUnitWeight(it.description, it.uom)
       const isMach = isMeaningfulItem({ description: it.description, remarks: it.remarks })
