@@ -2125,9 +2125,9 @@ export async function parseCustomerSOPDF(file: File): Promise<{
       itemDesc.toUpperCase().includes('LOCAL')
     )
 
-    const detectedMake = autoDetectMake(code + ' ' + itemDesc) || (pos === 1 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
-    const detectedSupplier = isStock ? 'STOCK' : (isLocal ? 'LOCAL UAE SUPPLIER' : autoDetectSupplier(detectedMake, itemDesc))
-    const detectedCOO = autoDetectCountryOfOrigin(detectedMake, itemDesc, '')
+    const detectedMake = ''
+    const detectedSupplier = isStock ? 'STOCK' : (isLocal ? 'LOCAL UAE SUPPLIER' : '')
+    const detectedCOO = ''
 
     // Check for explicit HSN in description lines
     let explicitHS = ''
@@ -2172,8 +2172,8 @@ export async function parseCustomerSOPDF(file: File): Promise<{
         seen.add(c)
         const pos = items.length + 1
         const desc = `Oilfield Material ${c} ASME B16.9 / B16.5`
-        const mMake = autoDetectMake(desc) || 'BENKAN, THAILAND'
-        const mCOO = autoDetectCountryOfOrigin(mMake, desc, '')
+        const mMake = ''
+        const mCOO = ''
         const mHS = autoDetectHSCode(desc, c)
         const isLoc = /^L/i.test(c)
         items.push({

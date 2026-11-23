@@ -1265,7 +1265,7 @@ class DBService {
       const resolvedDesc = item.item_description?.trim() || itm?.item_description || `Oilfield Fitting ${itemCode}`
       const explicitHS = (item as any).hs_code || (item as any).hsCode || ''
       const resolvedHS = autoDetectHSCode(resolvedDesc, itemCode, explicitHS)
-      const resolvedMake = (item as any).make || autoDetectMake(resolvedDesc) || ''
+      const resolvedMake = (item as any).make || ''
       const resolvedCOO = (item as any).country_of_origin || (item as any).countryOfOrigin || ''
       const resolvedUnitPrice = (item as any).unit_price ?? (item as any).rate ?? (item as any).unitPrice ?? itm?.unit_price_aed ?? 0
       const resolvedUom = (item as any).uom || itm?.uom || 'PCS'

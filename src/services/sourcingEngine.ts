@@ -1738,7 +1738,7 @@ export async function generateStickerSummaryExcel(data: SourcingWorksheetData): 
       valQty || 0,
       it.uom || 'Ea',
       it.heat_number || '-',
-      it.make || autoDetectMake(it.description) || 'BENKAN, THAILAND',
+      it.make || '-',
       it.certificate_number || '-',
       it.remarks || ''
     ]

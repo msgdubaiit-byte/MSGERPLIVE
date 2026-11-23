@@ -194,7 +194,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
       const newItems: SourcingLineItem[] = parsed.items.map((it, idx) => {
         const desc = it.itemDescription || `${it.itemCode} Oilfield Material`
-        const detectedMake = autoDetectMake(desc) || autoDetectMake(it.itemCode) || ''
+        const detectedMake = (it as any).make || ''
         const detectedCOO = (it as any).countryOfOrigin || (it as any).country_of_origin || ''
         const detectedHS = autoDetectHSCode(desc)
         const unitWt = estimateUnitWeight(desc, 'PCS')
@@ -302,7 +302,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
     const newItems: SourcingLineItem[] = (order.items || []).map((it, idx) => {
       const desc = it.item_description || `Item ${it.item_code}`
-      const detectedMake = it.make || autoDetectMake(desc) || ''
+      const detectedMake = it.make || ''
       const detectedCOO = (it as any).country_of_origin || (it as any).countryOfOrigin || ''
       const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
       const unitWt = estimateUnitWeight(desc, it.uom)
@@ -380,11 +380,6 @@ export const TechnicalSourcingPortal: React.FC = () => {
               if (!currRem.toUpperCase().includes(locCode)) {
                 updated.remarks = currRem ? `${currRem}; LN: ${locCode}` : `LN: ${locCode}`
               }
-            }
-            // Auto-detect Make if empty or 'MAKE'
-            if (!updated.make || updated.make.toUpperCase() === 'MAKE') {
-              const detectedMake = autoDetectMake(combined)
-              if (detectedMake) updated.make = detectedMake
             }
           }
         }
@@ -711,11 +706,8 @@ export const TechnicalSourcingPortal: React.FC = () => {
   // Auto-Detect All Missing
   const handleAutoDetectAll = () => {
     const updated = items.map(it => {
-      // Preserve existing make and country of origin if already set
-      const existingMake = (it.make || '').trim()
-      const make = existingMake && existingMake.toUpperCase() !== 'MAKE'
-        ? existingMake
-        : (autoDetectMake(it.description) || '')
+      // Preserve make strictly as-is
+      const make = it.make || ''
 
       const existingCoo = (it.country_of_origin || '').trim()
       const coo = existingCoo
@@ -1674,14 +1666,6 @@ export const TechnicalSourcingPortal: React.FC = () => {
                         handleUpdateItem(it.id, 'heat_number', heat)
                         if (meta?.fileName) {
                           handleUpdateItem(it.id, 'certificate_number', meta.fileName)
-                        }
-                        if (meta?.isBenkan) {
-                          if (!it.make || it.make.toUpperCase().includes('BENKAN') || it.make === 'MSG STOCK') {
-                            handleUpdateItem(it.id, 'make', 'BENKAN THAILAND CORP')
-                          }
-                          if (!it.country_of_origin || it.country_of_origin === 'UAE') {
-                            handleUpdateItem(it.id, 'country_of_origin', 'Thailand')
-                          }
                         }
                       }}
                     />

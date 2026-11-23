@@ -103,7 +103,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
     const items: SourcingLineItem[] = selectedOrder.items.map((it, idx) => {
       const desc = it.item_description || `Item ${it.item_code}`
-      const detectedMake = it.make || autoDetectMake(desc) || ''
+      const detectedMake = it.make || ''
       const detectedCOO = it.country_of_origin || ''
       const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
       const unitPrice = Number(it.unit_price ?? (it as any).rate ?? 0)

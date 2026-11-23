@@ -511,7 +511,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
       const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
       const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
-      const make = item.make || autoDetectMake(item.item_description) || ''
+      const make = item.make || ''
       const hs = item.hs_code ? autoDetectHSCode(item.item_description, item.item_code, item.hs_code) : autoDetectHSCode(item.item_description, item.item_code)
       const origin = item.country_of_origin || ''
       const unitPrice = Number((item as any).unit_price ?? (item as any).rate ?? 0)
@@ -576,7 +576,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
         const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || (idx === 0 ? 'EY7' : '67M01M085')
         const cert = item.certificate_number || (lot as any)?.certificate_reference || (idx === 0 ? '232442/3' : 'T202511670073')
-        const make = item.make || autoDetectMake(item.item_description) || (idx === 0 ? 'DELCORTE, FRANCE' : 'BENKAN, THAILAND')
+        const make = item.make || ''
 
         return {
           sl_no: item.position || idx + 1,

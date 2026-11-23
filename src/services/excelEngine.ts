@@ -374,9 +374,9 @@ export function parseMultiHeatAOA(rows: any[][], sheetName: string = 'Stock'): a
       })
     }
 
-    const detectedMake = autoDetectMake(itemCode + ' ' + desc) || 'International Mill'
+    const detectedMake = ''
     const isLocal = itemCode.endsWith('-LOC') || String(desc || '').toUpperCase().includes('LOCAL') || String(desc || '').toUpperCase().includes('LOCALLY')
-    const supplier = isLocal ? 'Local UAE Supplier' : autoDetectSupplier(detectedMake, desc)
+    const supplier = isLocal ? 'Local UAE Supplier' : ''
 
     if (rowHeats.length === 0) {
       resultRows.push({
@@ -978,8 +978,8 @@ export function parseSalesOrderExcel(file: File): Promise<ParsedSalesOrderExcelR
 
               // Intelligent HS Code resolution: Check explicit column -> check embedded in desc -> auto-detect from component
               const detectedHS = autoDetectHSCode(cleanDesc, cleanItemCode, String(rawHS || ''))
-              const detectedMake = rawMake ? String(rawMake).trim() : (autoDetectMake(`${cleanDesc} ${cleanItemCode}`) || 'BENKAN THAILAND')
-              const detectedCOO = rawCOO ? String(rawCOO).trim() : autoDetectCountryOfOrigin(detectedMake, cleanDesc, '')
+              const detectedMake = rawMake ? String(rawMake).trim() : ''
+              const detectedCOO = rawCOO ? String(rawCOO).trim() : ''
 
               rows.push({
                 customerName: String(cust).trim(),

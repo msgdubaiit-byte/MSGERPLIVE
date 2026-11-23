@@ -87,7 +87,7 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
     const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
     const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
     const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
-    const make = item.make || autoDetectMake(item.item_description) || ''
+    const make = item.make || ''
     const supp = item.supplier_name || lot?.supplier_name || ''
     const pkgType = item.package_type || 'Pallet'
     const pkgNo = item.package_no || '1'
