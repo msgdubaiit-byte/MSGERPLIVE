@@ -265,6 +265,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     })
 
     if (res.success && res.order) {
+      db.setActiveOrderId(res.order.id)
+      localStorage.setItem('msg_sourcing_active_so_id', res.order.id)
       setOrders([...db.getOrders()])
       setIsCreateModalOpen(false)
       setOrderLines([{ itemId: '', requiredQty: 5 }])
@@ -477,6 +479,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     })
 
     if (res.success && res.order) {
+      db.setActiveOrderId(res.order.id)
+      localStorage.setItem('msg_sourcing_active_so_id', res.order.id)
       setOrders([...db.getOrders()])
       alert(`Sales Order ${res.order.so_number} created successfully from customer PDF!`)
       setIsPdfModalOpen(false)

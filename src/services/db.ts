@@ -194,16 +194,38 @@ export const initialSuppliers: Supplier[] = [
 ]
 
 // Helper for conflict-free intelligent entity merging between local memory and cloud
-function mergeEntities<T extends { id: string }>(localList: T[], remoteList: T[]): T[] {
+function mergeEntities<T extends { id: string; updated_at?: string }>(localList: T[], remoteList: T[]): T[] {
   if (!remoteList || !Array.isArray(remoteList)) return localList || []
   if (!localList || localList.length === 0) return remoteList
+
+  const localMap = new Map(localList.map(item => [item.id, item]))
   const remoteMap = new Map(remoteList.map(item => [item.id, item]))
-  const result: T[] = [...remoteList]
+  const result: T[] = []
+
+  // Check all remote entities; if local version exists and has >= updated_at, preserve local
+  for (const rem of remoteList) {
+    if (!rem || !rem.id) continue
+    const loc = localMap.get(rem.id)
+    if (!loc) {
+      result.push(rem)
+    } else {
+      const locTime = (loc as any).updated_at ? new Date((loc as any).updated_at).getTime() : 0
+      const remTime = (rem as any).updated_at ? new Date((rem as any).updated_at).getTime() : 0
+      if (locTime >= remTime) {
+        result.push(loc)
+      } else {
+        result.push(rem)
+      }
+    }
+  }
+
+  // Any local items that don't exist remotely yet, preserve them
   for (const loc of localList) {
     if (loc && loc.id && !remoteMap.has(loc.id)) {
       result.unshift(loc)
     }
   }
+
   return result
 }
 
@@ -455,7 +477,22 @@ class DBService {
       order.status = 'Stock Allocated'
     }
 
+    order.updated_at = new Date().toISOString()
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('sales_orders').upsert(order)).catch(() => {})
+      const sanitizedBalances = this.balances.map(b => ({
+        ...b,
+        physical_qty: Number(b.physical_qty ?? 0),
+        reserved_qty: Number(b.reserved_qty ?? 0),
+        available_qty: Number(b.available_qty ?? 0),
+        dispatched_qty: Number(b.dispatched_qty ?? 0)
+      }))
+      Promise.resolve(getSupabase().from('stock_balances').upsert(sanitizedBalances)).catch(() => {})
+    }
+
     this.logAudit(userEmail, 'FIFO Stock Allocation', 'Sales Orders', order.so_number, null, { allocatedLots })
     this.notify()
 
@@ -533,7 +570,22 @@ class DBService {
       order.status = 'Stock Allocated'
     }
 
+    order.updated_at = new Date().toISOString()
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('sales_orders').upsert(order)).catch(() => {})
+      const sanitizedBalances = this.balances.map(b => ({
+        ...b,
+        physical_qty: Number(b.physical_qty ?? 0),
+        reserved_qty: Number(b.reserved_qty ?? 0),
+        available_qty: Number(b.available_qty ?? 0),
+        dispatched_qty: Number(b.dispatched_qty ?? 0)
+      }))
+      Promise.resolve(getSupabase().from('stock_balances').upsert(sanitizedBalances)).catch(() => {})
+    }
+
     this.logAudit(userEmail, 'Manual Heat Allocation', 'Sales Orders', order.so_number, null, { heat: lot.heat_number, qty: requiredQty })
     this.notify()
 
@@ -574,8 +626,22 @@ class DBService {
     }
 
     order.status = 'Draft'
-
+    order.updated_at = new Date().toISOString()
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('sales_orders').upsert(order)).catch(() => {})
+      const sanitizedBalances = this.balances.map(b => ({
+        ...b,
+        physical_qty: Number(b.physical_qty ?? 0),
+        reserved_qty: Number(b.reserved_qty ?? 0),
+        available_qty: Number(b.available_qty ?? 0),
+        dispatched_qty: Number(b.dispatched_qty ?? 0)
+      }))
+      Promise.resolve(getSupabase().from('stock_balances').upsert(sanitizedBalances)).catch(() => {})
+    }
+
     this.logAudit(userEmail, 'Release Line Allocation', 'Sales Orders', order.so_number, null, { lineId })
     this.notify()
 
@@ -1397,7 +1463,16 @@ class DBService {
     }
 
     order.updated_at = new Date().toISOString()
+    this.lastLocalWriteTime = Date.now()
     this.saveAll()
+
+    // Immediate direct cloud upsert to Supabase PostgreSQL
+    if (isSupabaseConfigured()) {
+      Promise.resolve(getSupabase().from('sales_orders').upsert(order)).catch(err => {
+        console.warn('Supabase direct order update error:', err)
+      })
+    }
+
     this.notify()
     return { success: true, order, message: `Sales Order ${order.so_number} successfully updated across the ERP system!` }
   }

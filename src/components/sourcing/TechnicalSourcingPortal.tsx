@@ -24,6 +24,7 @@ import {
   Wrench,
   ShoppingCart,
   LayoutGrid,
+  UploadCloud,
 } from 'lucide-react'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDeliverablesPreviewModal'
 import { LocalPurchaseAllocationModal } from './LocalPurchaseAllocationModal'
@@ -229,7 +230,53 @@ export const TechnicalSourcingPortal: React.FC = () => {
       })
 
       setItems(newItems)
-      setStatusNotice(`Extracted ${newItems.length} line items from ${file.name} successfully!`)
+
+      // Automatically register the uploaded PDF as a real-time Sales Order in db & Supabase Cloud
+      const generatedSoNum = parsed.soNumber || `SO-2026-${db.getOrders().length + 116}`
+      const createdRes = db.createSalesOrder({
+        customer_name: parsed.customerName || 'Valued Client',
+        po_number: parsed.poNumber || `PO-${Date.now().toString().slice(-4)}`,
+        so_number: generatedSoNum,
+        required_delivery_date: new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
+        items: newItems.map(it => ({
+          item_code: (it as any).item_code || `ITEM-${it.sl_no}`,
+          item_description: it.description,
+          heat_number: it.heat_number,
+          required_qty: extractQtyNumber(it.qty),
+          client_po_item_no: it.client_po_item_no,
+          position: it.sl_no,
+          unit_price: it.unit_price,
+          uom: it.uom,
+          make: it.make,
+          country_of_origin: it.country_of_origin,
+          hs_code: it.hs_code,
+          package_no: it.package_no,
+          remarks: it.remarks,
+          supplier_name: it.supplier_name,
+          supplier_po_number: it.supplier_po_number,
+        })),
+        po_document_name: file.name,
+        userEmail: 'sales@msgoilfield.ae'
+      })
+
+      if (createdRes.success && createdRes.order) {
+        setSelectedOrderId(createdRes.order.id)
+        db.setActiveOrderId(createdRes.order.id)
+        localStorage.setItem('msg_sourcing_active_so_id', createdRes.order.id)
+        
+        // Map order's actual line IDs onto items so future updates target exact items
+        const mappedItems: SourcingLineItem[] = newItems.map((it, idx) => {
+          const matchedOrderItem = createdRes.order!.items[idx]
+          return {
+            ...it,
+            id: matchedOrderItem?.id || it.id
+          }
+        })
+        setItems(mappedItems)
+        setStatusNotice(`Extracted ${newItems.length} lines & created real-time Sales Order ${createdRes.order.so_number} saved to local DB & Supabase Cloud!`)
+      } else {
+        setStatusNotice(`Extracted ${newItems.length} line items from ${file.name} successfully!`)
+      }
     } catch (err: any) {
       alert('Error parsing PDF: ' + err.message)
     } finally {
@@ -265,7 +312,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
       const orderUnitPrice = Number((it as any).unit_price ?? (it as any).rate ?? (it as any).price ?? 0)
 
       return {
-        id: `ITM-ORD-${idx + 1}`,
+        id: it.id || `ITM-ORD-${idx + 1}`,
         sl_no: (it as any).position || idx + 1,
         client_po_item_no: (it as any).client_po_item_no || `${idx + 1}`,
         description: desc,
@@ -349,8 +396,13 @@ export const TechnicalSourcingPortal: React.FC = () => {
         try {
           db.updateSalesOrder({
             id: selectedOrderId,
+            customer_name: clientName,
+            po_number: poNumber,
+            so_number: msgRef,
             items: updatedList.map(it => ({
               id: it.id,
+              position: it.sl_no,
+              client_po_item_no: it.client_po_item_no,
               item_description: it.description,
               heat_number: it.heat_number,
               certificate_number: it.certificate_number,
@@ -358,12 +410,16 @@ export const TechnicalSourcingPortal: React.FC = () => {
               country_of_origin: it.country_of_origin,
               required_qty: extractQtyNumber(it.qty),
               unit_price: it.unit_price,
+              uom: it.uom,
               remarks: it.remarks,
               supplier_name: it.supplier_name,
               supplier_po_number: it.supplier_po_number,
               package_type: it.package_type,
               package_no: it.package_no,
               hs_code: it.hs_code,
+              split_qty: (it as any).split_qty,
+              total_qty: (it as any).total_qty,
+              group_id: (it as any).group_id,
             }))
           })
         } catch (e) {
@@ -538,6 +594,106 @@ export const TechnicalSourcingPortal: React.FC = () => {
     setStatusNotice(`Worksheet draft saved successfully (${saved.id})!`)
   }
 
+  // Save or Synchronize entire Sourcing Worksheet to real-time Sales Order in DB & Supabase Cloud
+  const handleSaveToSalesOrder = () => {
+    if (items.length === 0) {
+      alert('Please add or upload at least one line item before saving to Sales Order.')
+      return
+    }
+
+    try {
+      const activeSo = selectedOrderId ? db.getOrders().find(o => o.id === selectedOrderId) : null
+
+      if (activeSo) {
+        // Update existing Sales Order
+        const res = db.updateSalesOrder({
+          id: activeSo.id,
+          customer_name: clientName || activeSo.customer_name,
+          po_number: poNumber || activeSo.po_number,
+          so_number: msgRef || activeSo.so_number,
+          items: items.map(it => ({
+            id: it.id,
+            position: it.sl_no,
+            client_po_item_no: it.client_po_item_no,
+            item_description: it.description,
+            heat_number: it.heat_number,
+            certificate_number: it.certificate_number,
+            make: it.make,
+            country_of_origin: it.country_of_origin,
+            required_qty: extractQtyNumber(it.qty),
+            unit_price: it.unit_price,
+            uom: it.uom,
+            remarks: it.remarks,
+            supplier_name: it.supplier_name,
+            supplier_po_number: it.supplier_po_number,
+            package_type: it.package_type,
+            package_no: it.package_no,
+            hs_code: it.hs_code,
+            split_qty: (it as any).split_qty,
+            total_qty: (it as any).total_qty,
+            group_id: (it as any).group_id,
+          }))
+        })
+
+        if (res.success) {
+          db.setActiveOrderId(activeSo.id)
+          localStorage.setItem('msg_sourcing_active_so_id', activeSo.id)
+          setStatusNotice(`Sales Order ${res.order?.so_number || activeSo.so_number} successfully saved to local DB & synced to Supabase Cloud!`)
+        } else {
+          alert('Failed to save Sales Order: ' + res.message)
+        }
+      } else {
+        // Create new real-time Sales Order
+        const newSoNum = msgRef.trim() || `SO-2026-${db.getOrders().length + 116}`
+        const res = db.createSalesOrder({
+          customer_name: clientName.trim() || 'Valued Client',
+          po_number: poNumber.trim() || 'PO-NEW',
+          so_number: newSoNum,
+          required_delivery_date: new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
+          items: items.map(it => ({
+            item_code: (it as any).item_code || `ITEM-${it.sl_no}`,
+            item_description: it.description,
+            heat_number: it.heat_number,
+            required_qty: extractQtyNumber(it.qty),
+            client_po_item_no: it.client_po_item_no,
+            position: it.sl_no,
+            unit_price: it.unit_price,
+            uom: it.uom,
+            make: it.make,
+            country_of_origin: it.country_of_origin,
+            hs_code: it.hs_code,
+            package_no: it.package_no,
+            remarks: it.remarks,
+            supplier_name: it.supplier_name,
+            supplier_po_number: it.supplier_po_number,
+          })),
+          userEmail: 'sales@msgoilfield.ae'
+        })
+
+        if (res.success && res.order) {
+          setSelectedOrderId(res.order.id)
+          db.setActiveOrderId(res.order.id)
+          localStorage.setItem('msg_sourcing_active_so_id', res.order.id)
+
+          // Remap item ids to order's item ids
+          const mappedItems: SourcingLineItem[] = items.map((it, idx) => {
+            const matchedOrderItem = res.order!.items[idx]
+            return {
+              ...it,
+              id: matchedOrderItem?.id || it.id
+            }
+          })
+          setItems(mappedItems)
+          setStatusNotice(`New Sales Order ${res.order.so_number} created and synchronized to Supabase Cloud!`)
+        } else {
+          alert('Failed to create Sales Order: ' + res.message)
+        }
+      }
+    } catch (err: any) {
+      alert('Error saving Sales Order: ' + err.message)
+    }
+  }
+
   // Restore draft
   const handleRestoreDraft = (draft: SourcingWorksheetData) => {
     setClientName(draft.client)
@@ -635,6 +791,15 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            <button
+              onClick={handleSaveToSalesOrder}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-md transition-all active:scale-95"
+              title="Save worksheet directly as a Sales Order in local database & Supabase Cloud"
+            >
+              <UploadCloud className="h-4 w-4" />
+              <span>Save to Sales Order</span>
+            </button>
 
             <button
               onClick={handleSaveDraft}
