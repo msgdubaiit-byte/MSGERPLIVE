@@ -62,7 +62,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           )
         )
 
-        if (!rawBytes && isValidPath(foundMtc?.original_file_path)) {
+        if (!rawBytes && isValidPath(foundMtc?.original_file_path) && foundMtc!.original_file_path !== '/sample-mtc.pdf') {
           try {
             const resp = await fetch(foundMtc!.original_file_path)
             if (resp.ok) {

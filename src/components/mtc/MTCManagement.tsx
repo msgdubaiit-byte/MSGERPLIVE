@@ -335,6 +335,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             const lot = masterStock.find(s => s.id === alloc.stock_lot_id)
             const orderItem = order.items?.find(i => i.id === (alloc.sales_order_item_id || alloc.so_item_id) || i.item_code === (lot?.item_code || alloc.item_code))
             const itemNo = orderItem?.client_po_item_no || (orderItem?.position ? String(orderItem.position) : undefined)
+            const certRef = alloc.mtc_certificate_id || orderItem?.certificate_number || (lot as any)?.certificate_number || lot?.mtc_ref || ''
             return {
               itemCode: lot?.item_code || alloc.item_code || orderItem?.item_code || '',
               heatNumber: alloc.heat_number,
@@ -344,6 +345,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
               isLocal: lot?.purchase_type === 'local_purchase',
               pages: 2,
               itemNo: itemNo || '',
+              certRef,
             }
           })
         : order.items.map((item, idx) => ({
@@ -351,9 +353,10 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             heatNumber: item.heat_number || (idx === 0 ? 'EY7' : '67M01M085'),
             yom: 2026,
             qty: item.allocated_qty || item.required_qty || 1,
-            isLocal: false,
+            isLocal: Boolean(item.is_local),
             pages: 2,
             itemNo: item.client_po_item_no || (item.position ? String(item.position) : `${idx + 1}`),
+            certRef: item.certificate_number || '',
           }))
 
       const pdfBytes = await mergeSalesOrderMTCPackage(
