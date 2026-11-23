@@ -4,19 +4,24 @@ import {
   uploadedCertificatesCache,
   registerUploadedCertificate,
   getUploadedCertificateBytes,
+  getAuthenticCertificateBytes,
+  getVaultManifest,
   getAllCachedCertificates,
   extractTextAndHeatsFromPDFBytes,
-  StoredCertificateEntry
+  StoredCertificateEntry,
+  ManifestCertificate
 } from './certificateVault'
 
 export {
   uploadedCertificatesCache,
   registerUploadedCertificate,
   getUploadedCertificateBytes,
+  getAuthenticCertificateBytes,
+  getVaultManifest,
   getAllCachedCertificates,
   extractTextAndHeatsFromPDFBytes
 }
-export type { StoredCertificateEntry }
+export type { StoredCertificateEntry, ManifestCertificate }
 
 export interface ExtractedCertificate {
   id: string

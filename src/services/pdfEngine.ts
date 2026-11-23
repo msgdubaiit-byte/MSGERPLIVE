@@ -3,7 +3,7 @@
 
 import { PDFDocument, rgb, StandardFonts, degrees, decodePDFRawStream, PDFRawStream } from 'pdf-lib'
 import JSZip from 'jszip'
-import { getUploadedCertificateBytes } from './zipExtractor'
+import { getUploadedCertificateBytes, getAuthenticCertificateBytes } from './zipExtractor'
 import { SalesOrder } from '../types'
 import { autoDetectMake, autoDetectSupplier, autoDetectHSCode, autoDetectCountryOfOrigin } from './sourcingEngine'
 import { db } from './db'
@@ -1153,15 +1153,12 @@ export async function mergeSalesOrderMTCPackage(
       }
     }
 
-    // Fallback: Generate full authentic 2-page EN 10204 3.1 Mill Test Certificate
-    // with item code, exact heat number, specifications, chemistry, and mechanical tests
+    // Lookup in authentic 338-certificate bulk ZIP vault
     if (!realBytes) {
-      realBytes = await createSampleMillCertificate(
-        certItem.itemCode || 'OILFIELD-FITTING',
-        certItem.heatNumber || 'HEAT-ORIGINAL',
-        certItem.yom || 2025,
-        2
-      )
+      const auth = await getAuthenticCertificateBytes(certRef, certItem.heatNumber, certItem.itemCode)
+      if (auth) {
+        realBytes = auth.bytes
+      }
     }
 
     if (realBytes) {

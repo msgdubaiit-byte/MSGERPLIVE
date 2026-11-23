@@ -16,20 +16,23 @@ import {
   Trash2,
   ShieldCheck,
   Package,
+  Sparkles,
 } from 'lucide-react'
 import { PDFDocument } from 'pdf-lib'
 import { SourcingWorksheetData, SourcingLineItem } from '../../services/sourcingEngine'
 import {
   stampMTCDocument,
   downloadPDFBlob,
-  createSampleMillCertificate,
   downloadCertificatesAsZip,
 } from '../../services/pdfEngine'
 import {
   registerUploadedCertificate,
   getUploadedCertificateBytes,
+  getAuthenticCertificateBytes,
+  getVaultManifest,
   detectHeatNumberFromFilename,
   extractCertificatesFromZip,
+  ManifestCertificate
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
 
@@ -100,17 +103,19 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
     const certRef = it.certificate_number
     const heat = it.heat_number
 
-    // 1. Vault check by certRef
-    if (certRef) {
-      const vBytes = getUploadedCertificateBytes(certRef)
-      if (vBytes) return vBytes
+    // 1. Authentic Certificate from Cache or Bulk Zip Vault (338 authentic certificates)
+    const authCert = await getAuthenticCertificateBytes(certRef, heat, it.description)
+    if (authCert) {
+      if ((!it.certificate_number || it.certificate_number === 'MTC-REF') && authCert.fileName) {
+        onApply(it.id, {
+          heat_number: authCert.heatNumber || it.heat_number,
+          certificate_number: authCert.fileName,
+        })
+      }
+      return authCert.bytes
     }
-    // 2. Vault check by heat
-    if (heat) {
-      const vBytes = getUploadedCertificateBytes(heat)
-      if (vBytes) return vBytes
-    }
-    // 3. Database MTC check
+
+    // 2. Database MTC check
     const dbMtc = db.getMTCs().find(m =>
       (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
       (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
@@ -124,14 +129,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
         console.warn('Could not fetch dbMtc file_data_url:', e)
       }
     }
-    // 4. Authentic Mill Certificate fallback if no upload exists yet
-    return await createSampleMillCertificate(
-      it.client_po_item_no || 'ITM',
-      it.heat_number || 'ORIGINAL-HEAT',
-      2026,
-      2
-    )
-  }, [])
+
+    // Never generate fake certificates: return null if authentic document is not yet attached
+    return null
+  }, [onApply])
 
   // Render Live Preview for the currently selected item
   const handleRenderPreview = useCallback(async () => {
@@ -468,6 +469,38 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
         {/* Bulk Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Auto-Link from 338 authentic certificates Bulk ZIP Vault */}
+          <button
+            onClick={async () => {
+              setIsProcessingUpload(true)
+              try {
+                let count = 0
+                for (const it of items) {
+                  const auth = await getAuthenticCertificateBytes(it.certificate_number, it.heat_number, it.description)
+                  if (auth && (!it.certificate_number || it.certificate_number === 'MTC-REF')) {
+                    onApply(it.id, {
+                      heat_number: auth.heatNumber || it.heat_number,
+                      certificate_number: auth.fileName,
+                    })
+                    count++
+                  }
+                }
+                showToast(`Auto-linked ${count} item(s) to authentic certificates from bulk ZIP vault!`)
+                handleRenderPreview()
+              } catch (err: any) {
+                alert('Error linking vault certificates: ' + err.message)
+              } finally {
+                setIsProcessingUpload(false)
+              }
+            }}
+            disabled={isProcessingUpload}
+            className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            title="Auto-match and link authentic Mill Test Certificates from the 338-certificate bulk ZIP vault"
+          >
+            <Sparkles className="h-4 w-4 text-amber-200" />
+            <span>Auto-Link from Bulk ZIP</span>
+          </button>
+
           <button
             onClick={() => bulkFileInputRef.current?.click()}
             disabled={isProcessingUpload}
@@ -795,16 +828,35 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
             {/* Embedded Iframe */}
             <div className="flex-1 bg-slate-200 relative flex items-center justify-center overflow-hidden">
-              {previewPdfUrl ? (
+              {isGenerating ? (
+                <div className="text-center p-6 text-slate-500 text-xs">
+                  <RefreshCw className="h-6 w-6 mx-auto mb-2 animate-spin text-slate-400" />
+                  Loading authentic certificate...
+                </div>
+              ) : previewPdfUrl ? (
                 <iframe
                   src={`${previewPdfUrl}#toolbar=0&view=FitH`}
                   title="MTC Certificate Preview"
                   className="w-full h-full border-none"
                 />
               ) : (
-                <div className="text-center p-6 text-slate-400 text-xs">
-                  <RefreshCw className="h-6 w-6 mx-auto mb-2 animate-spin text-slate-400" />
-                  Loading certificate preview...
+                <div className="text-center p-6 text-slate-500 text-xs flex flex-col items-center">
+                  <FileCheck2 className="h-10 w-10 text-slate-400 mb-2" />
+                  <p className="font-bold text-slate-700">No Authentic Certificate Attached</p>
+                  <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
+                    No certificate found for this item in the bulk ZIP vault. Upload the authentic supplier PDF or click &quot;Auto-Link from Bulk ZIP&quot;.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetUploadItemId(currentItem?.id || null)
+                      itemFileInputRef.current?.click()
+                    }}
+                    className="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Upload className="h-3 w-3" />
+                    <span>Upload Authentic PDF</span>
+                  </button>
                 </div>
               )}
             </div>

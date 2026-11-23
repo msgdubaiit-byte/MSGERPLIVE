@@ -22,6 +22,7 @@ import {
   RefreshCw,
   FileText,
   Package,
+  Sparkles,
 } from 'lucide-react'
 import { PDFDocument } from 'pdf-lib'
 import {
@@ -34,14 +35,16 @@ import {
 import {
   stampMTCDocument,
   downloadPDFBlob,
-  createSampleMillCertificate,
   downloadCertificatesAsZip,
 } from '../../services/pdfEngine'
 import {
   registerUploadedCertificate,
   getUploadedCertificateBytes,
+  getAuthenticCertificateBytes,
+  getVaultManifest,
   detectHeatNumberFromFilename,
   extractCertificatesFromZip,
+  ManifestCertificate
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
 
@@ -193,14 +196,17 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
     const certRef = r.certificate_number
     const heat = r.heat_number
 
-    if (certRef) {
-      const vBytes = getUploadedCertificateBytes(certRef)
-      if (vBytes) return vBytes
+    // 1. Authentic Certificate from Cache or Bulk Zip Vault (338 authentic certificates)
+    const authCert = await getAuthenticCertificateBytes(certRef, heat, r.description)
+    if (authCert) {
+      if (!r.certificate_number && authCert.fileName) {
+        handleUpdateItem(r.id, 'certificate_number', authCert.fileName)
+        handleUpdateItem(r.id, 'heat_number', authCert.heatNumber || r.heat_number)
+      }
+      return authCert.bytes
     }
-    if (heat) {
-      const vBytes = getUploadedCertificateBytes(heat)
-      if (vBytes) return vBytes
-    }
+
+    // 2. Database MTC check
     const dbMtc = db.getMTCs().find(m =>
       (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
       (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
@@ -214,12 +220,9 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
         console.warn('Could not fetch dbMtc file_data_url:', e)
       }
     }
-    return await createSampleMillCertificate(
-      r.client_po_item_no || 'ITM',
-      r.heat_number || 'ORIGINAL-HEAT',
-      2026,
-      2
-    )
+
+    // Never generate fake certificates: return null if authentic document is not yet attached
+    return null
   }
 
   // Toggle item inclusion

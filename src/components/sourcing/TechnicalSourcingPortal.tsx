@@ -1122,15 +1122,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 try {
                   const { PDFDocument } = await import('pdf-lib')
                   const { stampMTCDocument, createSampleMillCertificate, downloadPDFBlob } = await import('../../services/pdfEngine')
-                  const { getUploadedCertificateBytes } = await import('../../services/zipExtractor')
+                  const { getAuthenticCertificateBytes } = await import('../../services/zipExtractor')
                   const mergedPdf = await PDFDocument.create()
                   let count = 0
                   for (const it of currentWorksheetData.items) {
-                    let bytes = it.certificate_number ? getUploadedCertificateBytes(it.certificate_number) : null
-                    if (!bytes && it.heat_number) bytes = getUploadedCertificateBytes(it.heat_number)
-                    if (!bytes) {
-                      bytes = await createSampleMillCertificate(it.client_po_item_no || 'ITM', it.heat_number || 'ORIGINAL', 2026, 2)
-                    }
+                    const auth = await getAuthenticCertificateBytes(it.certificate_number, it.heat_number, it.description)
+                    if (!auth) continue
+                    const bytes = auth.bytes
+
                     const stamped = await stampMTCDocument(bytes, {
                       poNo: currentWorksheetData.po_number || 'PO-MSG',
                       itemNo: it.client_po_item_no || String(it.sl_no),
@@ -1143,10 +1142,16 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     pages.forEach(p => mergedPdf.addPage(p))
                     count++
                   }
+
+                  if (count === 0) {
+                    alert('No authentic certificates attached to items. Please upload or link authentic MTCs from the bulk ZIP vault.')
+                    return
+                  }
+
                   const mergedBytes = await mergedPdf.save()
                   const pkgName = `${(currentWorksheetData.po_number || 'PO').replace(/[^a-zA-Z0-9_-]/g, '_')}_Complete_MTC_Package.pdf`
                   downloadPDFBlob(mergedBytes, pkgName)
-                  setStatusNotice(`Downloaded complete MTC Certificates Package (${count} items) into ${pkgName}!`)
+                  setStatusNotice(`Downloaded complete authentic MTC Certificates Package (${count} items) into ${pkgName}!`)
                 } catch (err: any) {
                   alert('Error downloading MTC package: ' + err.message)
                 } finally {

@@ -10,7 +10,29 @@ export interface StoredCertificateEntry {
   extractedText?: string
 }
 
+export interface ManifestCertificate {
+  fileName: string
+  url: string
+  heatNumber: string
+  fileSize: number
+}
+
 export const uploadedCertificatesCache = new Map<string, StoredCertificateEntry>()
+let manifestCache: ManifestCertificate[] | null = null
+
+export async function getVaultManifest(): Promise<ManifestCertificate[]> {
+  if (manifestCache && manifestCache.length > 0) return manifestCache
+  try {
+    const res = await fetch('/certificates/manifest.json')
+    if (res.ok) {
+      manifestCache = await res.json()
+      return manifestCache || []
+    }
+  } catch (e) {
+    console.warn('Could not load /certificates/manifest.json:', e)
+  }
+  return []
+}
 
 export function registerUploadedCertificate(
   nameOrHeat: string,
@@ -29,6 +51,8 @@ export function registerUploadedCertificate(
   uploadedCertificatesCache.set(cleanKey, entry)
   if (detectedHeat) {
     uploadedCertificatesCache.set(detectedHeat.toLowerCase().trim(), entry)
+    const pureAlphaNum = detectedHeat.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+    if (pureAlphaNum) uploadedCertificatesCache.set(pureAlphaNum, entry)
   }
   return url
 }
@@ -42,6 +66,106 @@ export function getUploadedCertificateBytes(refOrHeatOrDocName?: string): Uint8A
   const cleanKey = key.replace(/\.[^/.]+$/, '').trim()
   const cleanEntry = uploadedCertificatesCache.get(cleanKey)
   if (cleanEntry) return cleanEntry.bytes
+
+  const pureKey = key.replace(/[^a-zA-Z0-9]/g, '')
+  if (pureKey) {
+    const pureEntry = uploadedCertificatesCache.get(pureKey)
+    if (pureEntry) return pureEntry.bytes
+  }
+
+  return null
+}
+
+// Retrieves authentic certificate bytes asynchronously from memory or bulk zip vault
+export async function getAuthenticCertificateBytes(
+  refOrDocName?: string,
+  heatNumber?: string,
+  description?: string
+): Promise<{ bytes: Uint8Array; fileName: string; heatNumber?: string } | null> {
+  // 1. Check in-memory uploaded cache
+  if (refOrDocName) {
+    const b = getUploadedCertificateBytes(refOrDocName)
+    if (b) {
+      const entry = uploadedCertificatesCache.get(refOrDocName.toLowerCase().trim())
+      return { bytes: b, fileName: entry?.fileName || refOrDocName, heatNumber: entry?.detectedHeat || heatNumber }
+    }
+  }
+
+  if (heatNumber) {
+    const b = getUploadedCertificateBytes(heatNumber)
+    if (b) {
+      const entry = uploadedCertificatesCache.get(heatNumber.toLowerCase().trim())
+      return { bytes: b, fileName: entry?.fileName || heatNumber, heatNumber: entry?.detectedHeat || heatNumber }
+    }
+  }
+
+  // 2. Search extracted bulk zip vault manifest (338 authentic supplier certificates)
+  const manifest = await getVaultManifest()
+  if (manifest && manifest.length > 0) {
+    const cleanHeat = (heatNumber || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    const cleanRef = (refOrDocName || '').trim().toLowerCase()
+
+    let matchedEntry: ManifestCertificate | undefined
+
+    // A. Match by exact or partial heat number
+    if (cleanHeat && cleanHeat.length >= 3) {
+      matchedEntry = manifest.find(m => {
+        const mHeat = (m.heatNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+        if (mHeat && (mHeat === cleanHeat || mHeat.startsWith(cleanHeat) || cleanHeat.startsWith(mHeat))) {
+          return true
+        }
+        const fnUpper = m.fileName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+        return fnUpper.includes(cleanHeat)
+      })
+    }
+
+    // B. Match by certificate reference or filename
+    if (!matchedEntry && cleanRef && cleanRef !== 'mtc-ref' && cleanRef !== 'null') {
+      matchedEntry = manifest.find(m => {
+        const fn = m.fileName.toLowerCase()
+        return fn.includes(cleanRef) || cleanRef.includes(fn.replace(/\.pdf$/i, ''))
+      })
+    }
+
+    // C. Match by item description keywords (e.g. "ELBOW 90 DEG 6 SCH.80")
+    if (!matchedEntry && description) {
+      const descUpper = description.toUpperCase()
+      matchedEntry = manifest.find(m => {
+        const fn = m.fileName.toUpperCase()
+        if (descUpper.includes('ELBOW 90') && fn.includes('ELBOW 90') && descUpper.includes('SCH.80') && fn.includes('SCH.80')) {
+          return true
+        }
+        if (descUpper.includes('FLANGE') && fn.includes('FLANGE') && descUpper.includes('10') && fn.includes('10')) {
+          return true
+        }
+        return false
+      })
+    }
+
+    if (matchedEntry) {
+      try {
+        const resp = await fetch(encodeURI(matchedEntry.url))
+        if (resp.ok) {
+          const buf = await resp.arrayBuffer()
+          const bytes = new Uint8Array(buf)
+          registerUploadedCertificate(matchedEntry.fileName, bytes, matchedEntry.fileName, matchedEntry.heatNumber)
+          if (matchedEntry.heatNumber) {
+            registerUploadedCertificate(matchedEntry.heatNumber, bytes, matchedEntry.fileName, matchedEntry.heatNumber)
+          }
+          if (heatNumber) {
+            registerUploadedCertificate(heatNumber, bytes, matchedEntry.fileName, matchedEntry.heatNumber)
+          }
+          return {
+            bytes,
+            fileName: matchedEntry.fileName,
+            heatNumber: matchedEntry.heatNumber || heatNumber,
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch authentic certificate from vault:', matchedEntry.url, err)
+      }
+    }
+  }
 
   return null
 }
