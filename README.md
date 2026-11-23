@@ -10,7 +10,7 @@ Production-r eady web-based Stock Management, Material    Traceability, Sales Or
    - Item Codes, Descriptions, Heat Numbers, Year of Manufacturing (YOM).
    - Real-time stock status (Physical, Reserved, Available, Dispatched).
    - Automated FIFO Heat Allocation and Manual Customer-Requested Heat Number Allocation.
-   - Immutable Stock Movement Audit Ledger.
+   - Immutable Stock Movement Audit Ledger.  
 
 2. **Excel Import & Export Studio (Zoho Books Compatible)**:
    - Natively ingests the exact 6-column Zoho Books format: `Item Name`, `Description`, `Rate`, `Account`, `Purchase Rate`, `Stock On Hand`.
