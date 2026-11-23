@@ -6,7 +6,7 @@ Production-r eady web-based Stock Management, Material    Traceability, Sales Or
     
 ## 🚀 Key Modules & Capabilities    
 
-1. **Master Stock Inventory & Traceability**:
+1. **Master Stock Inventory & Traceability**:  
    - Item Codes, Descriptions, Heat Numbers, Year of Manufacturing (YOM).
    - Real-time stock status (Physical, Reserved, Available, Dispatched).
    - Automated FIFO Heat Allocation and Manual Customer-Requested Heat Number Allocation.
