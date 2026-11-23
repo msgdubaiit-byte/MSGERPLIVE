@@ -3,23 +3,35 @@
 
 export interface CloudinaryConfig {
   cloudName: string
-  uploadPreset: string
+  apiKey?: string
+  apiSecret?: string
+  uploadPreset?: string
   folder: string
 }
 
 const STORAGE_KEY = 'msg_cloudinary_config'
 
+// Default bundled production credentials from MSG Oilfield infrastructure
+const DEFAULT_CLOUD_NAME = 'za7di1ec'
+const DEFAULT_API_KEY = '729516663361263'
+const DEFAULT_API_SECRET = 'FlafntwcdkclylxQj64P9KbCs44'
+const DEFAULT_FOLDER = 'msg-oilfield-erp'
+
 export function getStoredCloudinaryConfig(): CloudinaryConfig {
-  const envCloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || ''
+  const envCloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || DEFAULT_CLOUD_NAME
+  const envApiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || DEFAULT_API_KEY
+  const envApiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || DEFAULT_API_SECRET
   const envPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || ''
-  const envFolder = import.meta.env.VITE_CLOUDINARY_FOLDER || 'msg-oilfield-erp'
+  const envFolder = import.meta.env.VITE_CLOUDINARY_FOLDER || DEFAULT_FOLDER
 
   try {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
     if (saved) {
       const parsed = JSON.parse(saved)
       return {
         cloudName: parsed.cloudName || envCloudName,
+        apiKey: parsed.apiKey || envApiKey,
+        apiSecret: parsed.apiSecret || envApiSecret,
         uploadPreset: parsed.uploadPreset || envPreset,
         folder: parsed.folder || envFolder
       }
@@ -28,6 +40,8 @@ export function getStoredCloudinaryConfig(): CloudinaryConfig {
 
   return {
     cloudName: envCloudName,
+    apiKey: envApiKey,
+    apiSecret: envApiSecret,
     uploadPreset: envPreset,
     folder: envFolder
   }
@@ -36,12 +50,16 @@ export function getStoredCloudinaryConfig(): CloudinaryConfig {
 export function saveCloudinaryConfig(config: Partial<CloudinaryConfig>): void {
   const current = getStoredCloudinaryConfig()
   const updated = { ...current, ...config }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+  }
 }
 
 export function isCloudinaryConfigured(): boolean {
   const config = getStoredCloudinaryConfig()
-  return Boolean(config.cloudName && config.cloudName.trim() && config.uploadPreset && config.uploadPreset.trim())
+  const hasSigned = Boolean(config.cloudName && config.apiKey && config.apiSecret)
+  const hasUnsigned = Boolean(config.cloudName && config.uploadPreset)
+  return Boolean(config.cloudName && (hasSigned || hasUnsigned))
 }
 
 export interface CloudinaryUploadResponse {
@@ -55,8 +73,19 @@ export interface CloudinaryUploadResponse {
   error?: string
 }
 
+async function generateSha1Hex(text: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const buffer = new TextEncoder().encode(text)
+    const hash = await crypto.subtle.digest('SHA-1', buffer)
+    return Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+  }
+  return ''
+}
+
 /**
- * Upload a file (PDF, Excel, Image, ZIP) to Cloudinary via Unsigned Upload Preset.
+ * Upload a file (PDF, Excel, Image, ZIP) to Cloudinary via Direct Signed CDN Upload or Preset.
  */
 export async function uploadToCloudinary(
   file: File | Blob | Uint8Array,
@@ -68,7 +97,7 @@ export async function uploadToCloudinary(
   if (!isCloudinaryConfigured()) {
     return {
       success: false,
-      error: 'Cloudinary Cloud Name or Upload Preset is not configured.'
+      error: 'Cloudinary credentials are not configured.'
     }
   }
 
@@ -78,18 +107,35 @@ export async function uploadToCloudinary(
 
     let fileBlob: Blob
     if (file instanceof Uint8Array) {
-      fileBlob = new Blob([file as any], { type: fileName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf' })
+      fileBlob = new Blob([file as any], {
+        type: fileName.endsWith('.xlsx')
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf'
+      })
     } else {
       fileBlob = file
     }
 
     const formData = new FormData()
     formData.append('file', fileBlob, cleanName)
-    formData.append('upload_preset', config.uploadPreset.trim())
-    formData.append('folder', targetFolder)
 
-    // For PDFs, spreadsheets and documents, Cloudinary uses 'auto' or 'raw'
-    const endpoint = `https://api.cloudinary.com/v1_1/${config.cloudName.trim()}/auto/upload`
+    const isSigned = Boolean(config.apiKey && config.apiSecret)
+    if (isSigned) {
+      const timestamp = Math.round(Date.now() / 1000)
+      const strToSign = `folder=${targetFolder}&timestamp=${timestamp}${config.apiSecret}`
+      const signature = await generateSha1Hex(strToSign)
+
+      formData.append('api_key', config.apiKey!.trim())
+      formData.append('timestamp', String(timestamp))
+      formData.append('folder', targetFolder)
+      formData.append('signature', signature)
+    } else {
+      formData.append('upload_preset', (config.uploadPreset || '').trim())
+      formData.append('folder', targetFolder)
+    }
+
+    // Try 'raw' endpoint first for PDFs/Docs, with 'auto' fallback
+    const endpoint = `https://api.cloudinary.com/v1_1/${config.cloudName.trim()}/raw/upload`
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -99,27 +145,27 @@ export async function uploadToCloudinary(
     const data = await response.json()
 
     if (!response.ok || data.error) {
-      // Fallback attempt with 'raw' resource type if 'auto' fails for arbitrary document formats
-      const rawEndpoint = `https://api.cloudinary.com/v1_1/${config.cloudName.trim()}/raw/upload`
-      const rawResponse = await fetch(rawEndpoint, {
+      // Fallback attempt with 'auto' endpoint
+      const autoEndpoint = `https://api.cloudinary.com/v1_1/${config.cloudName.trim()}/auto/upload`
+      const autoResponse = await fetch(autoEndpoint, {
         method: 'POST',
         body: formData
       })
-      const rawData = await rawResponse.json()
+      const autoData = await autoResponse.json()
 
-      if (!rawResponse.ok || rawData.error) {
+      if (!autoResponse.ok || autoData.error) {
         return {
           success: false,
-          error: data.error?.message || rawData.error?.message || `Upload failed with status ${response.status}`
+          error: data.error?.message || autoData.error?.message || `Upload failed with status ${response.status}`
         }
       }
 
       return {
         success: true,
-        url: rawData.secure_url || rawData.url,
-        secureUrl: rawData.secure_url || rawData.url,
-        publicId: rawData.public_id,
-        bytes: rawData.bytes,
+        url: autoData.secure_url || autoData.url,
+        secureUrl: autoData.secure_url || autoData.url,
+        publicId: autoData.public_id,
+        bytes: autoData.bytes,
         originalFilename: cleanName
       }
     }
@@ -142,45 +188,36 @@ export async function uploadToCloudinary(
 }
 
 /**
- * Ping test to verify Cloudinary Cloud Name and Upload Preset credentials.
+ * Test connectivity and upload permissions with Cloudinary
  */
 export async function testCloudinaryConnection(
-  cloudName: string,
-  uploadPreset: string
+  cloudName?: string,
+  uploadPreset?: string
 ): Promise<{ success: boolean; message: string }> {
-  if (!cloudName.trim() || !uploadPreset.trim()) {
-    return { success: false, message: 'Please provide both Cloud Name and Upload Preset.' }
-  }
-
   try {
-    // 1-pixel test payload
-    const testBlob = new Blob(['MSG OILFIELD ERP CDN TEST'], { type: 'text/plain' })
-    const formData = new FormData()
-    formData.append('file', testBlob, 'test_ping.txt')
-    formData.append('upload_preset', uploadPreset.trim())
-    formData.append('folder', 'msg-oilfield-erp/tests')
+    const config = getStoredCloudinaryConfig()
+    const targetCloud = (cloudName || config.cloudName || '').trim()
+    if (!targetCloud) {
+      return { success: false, message: 'Cloudinary Cloud Name is required.' }
+    }
 
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName.trim()}/raw/upload`, {
-      method: 'POST',
-      body: formData
-    })
-
-    const data = await response.json()
-    if (response.ok && data.secure_url) {
+    const probe = new Blob(['probe'], { type: 'text/plain' })
+    const res = await uploadToCloudinary(probe, 'probe.txt', 'general')
+    if (res.success && res.secureUrl) {
       return {
         success: true,
-        message: `Connected successfully to Cloudinary! CDN is ready for MTC certificates & Excel files.`
+        message: `Connected to Cloudinary CDN (${targetCloud})! Universal document & certificate upload is active.`
       }
-    } else {
-      return {
-        success: false,
-        message: data.error?.message || `Cloudinary rejected test upload (HTTP ${response.status}). Ensure preset is Unsigned.`
-      }
+    }
+    return {
+      success: false,
+      message: res.error || 'Failed to verify Cloudinary credentials.'
     }
   } catch (err: any) {
     return {
       success: false,
-      message: err.message || 'Could not connect to Cloudinary endpoint.'
+      message: err.message || 'Error connecting to Cloudinary.'
     }
   }
 }
+

@@ -57,7 +57,7 @@ export const SettingsView: React.FC = () => {
     e.preventDefault()
     saveCloudinaryConfig({
       cloudName: cloudinaryCloudName.trim(),
-      uploadPreset: cloudinaryPreset.trim(),
+      uploadPreset: (cloudinaryPreset || '').trim(),
       folder: cloudinaryFolder.trim() || 'msg-oilfield-erp'
     })
     alert('Cloudinary CDN storage configuration saved! Universal file upload is active.')
@@ -66,7 +66,7 @@ export const SettingsView: React.FC = () => {
   const handleTestCloudinary = async () => {
     setIsTestingCloudinary(true)
     setCloudinaryTestResult(null)
-    const res = await testCloudinaryConnection(cloudinaryCloudName.trim(), cloudinaryPreset.trim())
+    const res = await testCloudinaryConnection(cloudinaryCloudName.trim(), (cloudinaryPreset || '').trim())
     setCloudinaryTestResult(res)
     setIsTestingCloudinary(false)
   }

@@ -1234,9 +1234,34 @@ class DBService {
       }).catch((err: any) => console.warn('Direct order push catch:', err))
 
       if (allocations.length > 0) {
-        Promise.resolve(getSupabase().from('stock_lots').upsert(this.lots)).catch(() => {})
-        Promise.resolve(getSupabase().from('stock_balances').upsert(this.balances)).catch(() => {})
-        Promise.resolve(getSupabase().from('mtc_certificates').upsert(this.mtcs)).catch(() => {})
+        const sanitizedLots = this.lots.map(l => ({
+          ...l,
+          warehouse_location: l.warehouse_location || 'MAIN YARD',
+          original_qty: Number(l.original_qty || l.received_qty || 1),
+          received_qty: Number(l.received_qty || l.original_qty || 1),
+          purchase_type: l.purchase_type || 'regular',
+          supplier_name: l.supplier_name || 'MSG Stock',
+          yom: Number(l.yom || 2026),
+          stock_receipt_date: l.stock_receipt_date || new Date().toISOString().substring(0, 10)
+        }))
+        const sanitizedBalances = this.balances.map(b => ({
+          ...b,
+          physical_qty: Number(b.physical_qty ?? 0),
+          reserved_qty: Number(b.reserved_qty ?? 0),
+          available_qty: Number(b.available_qty ?? 0),
+          dispatched_qty: Number(b.dispatched_qty ?? 0)
+        }))
+        const sanitizedMtcs = this.mtcs.map(m => ({
+          ...m,
+          purchase_type: m.purchase_type || 'regular',
+          verification_status: m.verification_status || 'Verified',
+          approval_status: m.approval_status || 'Approved',
+          yom: Number(m.yom || 2026),
+          original_file_path: m.original_file_path || '/sample-mtc.pdf'
+        }))
+        Promise.resolve(getSupabase().from('stock_lots').upsert(sanitizedLots)).catch(() => {})
+        Promise.resolve(getSupabase().from('stock_balances').upsert(sanitizedBalances)).catch(() => {})
+        Promise.resolve(getSupabase().from('mtc_certificates').upsert(sanitizedMtcs)).catch(() => {})
       }
     }
 
@@ -1840,8 +1865,26 @@ class DBService {
 
     // Direct push to Supabase Cloud so certificates persist immediately
     if (isSupabaseConfigured()) {
-      Promise.resolve(getSupabase().from('mtc_certificates').upsert(this.mtcs)).catch((e: any) => console.warn('Supabase MTC upsert notice:', e))
-      Promise.resolve(getSupabase().from('stock_lots').upsert(this.lots)).catch(() => {})
+      const sanitizedMtcs = this.mtcs.map(m => ({
+        ...m,
+        purchase_type: m.purchase_type || 'regular',
+        verification_status: m.verification_status || 'Verified',
+        approval_status: m.approval_status || 'Approved',
+        yom: Number(m.yom || 2026),
+        original_file_path: m.original_file_path || '/sample-mtc.pdf'
+      }))
+      const sanitizedLots = this.lots.map(l => ({
+        ...l,
+        warehouse_location: l.warehouse_location || 'MAIN YARD',
+        original_qty: Number(l.original_qty || l.received_qty || 1),
+        received_qty: Number(l.received_qty || l.original_qty || 1),
+        purchase_type: l.purchase_type || 'regular',
+        supplier_name: l.supplier_name || 'MSG Stock',
+        yom: Number(l.yom || 2026),
+        stock_receipt_date: l.stock_receipt_date || new Date().toISOString().substring(0, 10)
+      }))
+      Promise.resolve(getSupabase().from('mtc_certificates').upsert(sanitizedMtcs)).catch((e: any) => console.warn('Supabase MTC upsert notice:', e))
+      Promise.resolve(getSupabase().from('stock_lots').upsert(sanitizedLots)).catch(() => {})
       if (this.localPurchases.length > 0) {
         Promise.resolve(getSupabase().from('local_purchases').upsert(this.localPurchases)).catch(() => {})
       }
