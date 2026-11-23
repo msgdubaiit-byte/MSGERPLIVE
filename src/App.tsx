@@ -181,6 +181,7 @@ const MainApp: React.FC = () => {
 
             {activeTab === 'allocation' && (
               <StockAllocationStudio
+                key={preselectedAllocationOrderId || 'default'}
                 preselectedOrderId={preselectedAllocationOrderId}
                 onComplete={() => setActiveTab('orders')}
               />

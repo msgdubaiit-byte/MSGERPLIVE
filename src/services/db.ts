@@ -32,6 +32,8 @@ import {
   subscribeToRealtimeChanges
 } from './supabase'
 import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin } from './sourcingEngine'
+import { uploadToCloudinary, isCloudinaryConfigured } from './cloudinary'
+import { registerUploadedCertificate } from './certificateVault'
 
 const STORAGE_KEY_PREFIX = 'msg_oilfield_v1_'
 
@@ -929,8 +931,25 @@ class DBService {
     customer_name?: string
     po_number: string
     so_number?: string
+    order_type?: 'regular' | 'local_purchase'
+    purchase_type?: 'regular' | 'local_purchase'
     required_delivery_date: string
-    items: { item_id?: string; item_code?: string; item_description?: string; heat_number?: string; location?: string; required_qty: number; client_po_item_no?: string; position?: number }[]
+    items: {
+      item_id?: string
+      item_code?: string
+      item_description?: string
+      heat_number?: string
+      location?: string
+      required_qty: number
+      client_po_item_no?: string
+      position?: number
+      purchase_type?: 'regular' | 'local_purchase'
+      is_local?: boolean
+      l_code?: string
+      supplier_name?: string
+      unit_price?: number
+      uom?: string
+    }[]
     po_document_name?: string
     po_document_url?: string
     userEmail: string
@@ -984,8 +1003,8 @@ class DBService {
             material_grade: 'ASTM A234 WPB / SS316',
             specification: 'ASME B16.9 / B16.5',
             size: 'Standard',
-            uom: 'PCS',
-            unit_price_aed: 50,
+            uom: item.uom || 'PCS',
+            unit_price_aed: item.unit_price || 0,
             is_active: true,
             created_at: new Date().toISOString()
           }
@@ -998,6 +1017,18 @@ class DBService {
       const itemId = itm?.id || `ITEM-${idx + 1}`
       const itemCode = itm?.item_code || item.item_code || 'GENERIC-ITEM'
       const soItemId = `SOI-${count}-${idx + 1}`
+
+      const isLocal = Boolean(
+        item.purchase_type === 'local_purchase' ||
+        item.is_local === true ||
+        orderData.order_type === 'local_purchase' ||
+        orderData.purchase_type === 'local_purchase' ||
+        /^L[-_0-9]/i.test(itemCode) ||
+        /LOCAL/i.test(itemCode) ||
+        itemCode.startsWith('L-')
+      )
+      const purchaseType: PurchaseType = isLocal ? 'local_purchase' : 'regular'
+      const lCode = item.l_code || (isLocal ? (itemCode.startsWith('L-') ? itemCode : `L-${itemCode.slice(0, 8)}-${idx + 1}`) : undefined)
 
       let allocatedQty = 0
       let lineStatus: 'Pending' | 'Allocated' = 'Pending'
@@ -1018,8 +1049,6 @@ class DBService {
 
         if (!lot) {
           const newLotId = 'LOT-' + Date.now().toString().slice(-4) + '-' + (idx + 1)
-          const isLocal = /^L[-_0-9]/i.test(itemCode) || /LOCAL/i.test(itemCode) || (!itemCode.toUpperCase().includes('STOCK') && /^L/i.test(itemCode))
-          const purchaseType: PurchaseType = isLocal ? 'local_purchase' : 'regular'
 
           const newLot: StockLot = {
             id: newLotId,
@@ -1031,8 +1060,8 @@ class DBService {
             original_qty: item.required_qty + 20,
             received_qty: item.required_qty + 20,
             purchase_type: purchaseType,
-            l_code: isLocal ? itemCode : undefined,
-            supplier_name: isLocal ? 'Local UAE Supplier' : 'BENKAN THAILAND',
+            l_code: lCode,
+            supplier_name: item.supplier_name || (isLocal ? 'Local UAE Supplier' : ''),
             warehouse_location: item.location || 'LN: BB10',
             stock_receipt_date: new Date().toISOString().substring(0, 10),
             mtc_ref: `MTC-${specifiedHeat}.pdf`,
@@ -1045,11 +1074,11 @@ class DBService {
           if (isLocal) {
             this.localPurchases.unshift({
               id: 'LP-' + Date.now().toString().slice(-4) + '-' + (idx + 1),
-              l_code: itemCode,
+              l_code: lCode || itemCode,
               item_id: itemId,
               item_code: itemCode,
               stock_lot_id: newLotId,
-              supplier_name: 'Local UAE Supplier',
+              supplier_name: item.supplier_name || 'Local UAE Supplier',
               purchase_reference: orderData.po_number || 'LPO-LOCAL',
               purchase_date: new Date().toISOString().substring(0, 10),
               received_qty: item.required_qty + 20,
@@ -1198,7 +1227,10 @@ class DBService {
         allocated_qty: allocatedQty,
         dispatched_qty: 0,
         uom: resolvedUom,
-        line_status: lineStatus
+        line_status: lineStatus,
+        purchase_type: purchaseType,
+        is_local: isLocal,
+        l_code: lCode,
       }
     })
 
@@ -1213,6 +1245,8 @@ class DBService {
       order_date: new Date().toISOString().substring(0, 10),
       required_delivery_date: orderData.required_delivery_date || new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
       status: allAllocated ? 'Stock Allocated' : 'Draft',
+      order_type: orderData.order_type || (soItems.some(i => i.is_local) ? 'local_purchase' : 'regular'),
+      purchase_type: orderData.purchase_type || (soItems.some(i => i.is_local) ? 'local_purchase' : 'regular'),
       created_by: orderData.userEmail,
       mtc_package_generated: false,
       po_document_name: orderData.po_document_name,
@@ -2226,19 +2260,46 @@ class DBService {
       if (orderUpdated) affectedOrders++
     })
 
-    // Background cloud storage sync to Supabase if connected
-    if (fileData.fileDataUrl && isSupabaseConfigured()) {
-      fetch(fileData.fileDataUrl)
-        .then(r => r.blob())
-        .then(blob => uploadMTCFileToSupabase(cleanFileName, blob, 'mtcs'))
-        .then(res => {
-          if (res.success && res.url) {
-            cert!.original_file_path = res.url
-            this.saveAll()
-            this.notify()
-          }
-        })
-        .catch(err => console.warn('Supabase MTC upload background notice:', err))
+    // In-memory cache registration for immediate zero-lag PDF preview
+    if (fileData.fileDataUrl) {
+      if (fileData.fileDataUrl.startsWith('data:')) {
+        try {
+          fetch(fileData.fileDataUrl)
+            .then(r => r.arrayBuffer())
+            .then(buf => {
+              registerUploadedCertificate(cleanHeat, new Uint8Array(buf), cleanFileName, cleanHeat)
+              registerUploadedCertificate(certRef, new Uint8Array(buf), cleanFileName, cleanHeat)
+            })
+            .catch(() => {})
+        } catch {}
+      }
+
+      // High-speed CDN Cloud Storage sync (Cloudinary first, then Supabase Storage fallback)
+      if (isCloudinaryConfigured()) {
+        fetch(fileData.fileDataUrl)
+          .then(r => r.blob())
+          .then(blob => uploadToCloudinary(blob, cleanFileName, 'mtcs'))
+          .then(res => {
+            if (res.success && (res.secureUrl || res.url)) {
+              cert!.original_file_path = res.secureUrl || res.url || ''
+              this.saveAll()
+              this.notify()
+            }
+          })
+          .catch(err => console.warn('Cloudinary MTC upload notice:', err))
+      } else if (isSupabaseConfigured()) {
+        fetch(fileData.fileDataUrl)
+          .then(r => r.blob())
+          .then(blob => uploadMTCFileToSupabase(cleanFileName, blob, 'mtcs'))
+          .then(res => {
+            if (res.success && res.url) {
+              cert!.original_file_path = res.url
+              this.saveAll()
+              this.notify()
+            }
+          })
+          .catch(err => console.warn('Supabase MTC upload background notice:', err))
+      }
     }
 
     this.saveAll()

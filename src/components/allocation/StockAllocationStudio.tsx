@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { db } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { SalesOrder } from '../../types'
 import {
   Layers,
   Zap,
@@ -26,12 +27,31 @@ interface BatchLineChoice {
 
 export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ preselectedOrderId, onComplete }) => {
   const { currentUser } = useAuth()
-  const orders = db.getOrders()
-  const masterStock = db.getMasterStockView()
+  const [orders, setOrders] = useState<SalesOrder[]>(() => db.getOrders())
+  const [masterStock, setMasterStock] = useState(() => db.getMasterStockView())
+
+  useEffect(() => {
+    const unsub = db.subscribe(() => {
+      setOrders([...db.getOrders()])
+      setMasterStock([...db.getMasterStockView()])
+    })
+    return () => unsub()
+  }, [])
 
   // Eligible orders (Draft, Partially Allocated, Stock Allocated, or Pending Storekeeper Approval)
   const allocatableOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Dispatched')
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(preselectedOrderId || allocatableOrders[0]?.id || '')
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => preselectedOrderId || allocatableOrders[0]?.id || '')
+
+  // Critical fix: Keep selectedOrderId strictly in sync whenever preselectedOrderId prop changes
+  useEffect(() => {
+    if (preselectedOrderId && preselectedOrderId !== selectedOrderId) {
+      setSelectedOrderId(preselectedOrderId)
+      const targetOrd = orders.find(o => o.id === preselectedOrderId)
+      if (targetOrd && targetOrd.items[0]) {
+        setSelectedLineId(targetOrd.items[0].id)
+      }
+    }
+  }, [preselectedOrderId, orders])
 
   const currentOrder = orders.find(o => o.id === selectedOrderId)
 
@@ -64,7 +84,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
       })
       setBatchChoices(initialChoices)
     }
-  }, [selectedOrderId, currentOrder?.id, currentOrder?.items.length])
+  }, [selectedOrderId, currentOrder?.id, currentOrder?.items?.length])
 
   // Find unallocated quantity for the selected item line
   const currentLine = currentOrder?.items.find(i => i.id === selectedLineId) || currentOrder?.items[0]

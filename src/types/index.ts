@@ -131,6 +131,9 @@ export interface SalesOrderItem {
   hs_code?: string
   country_of_origin?: string
   unit_price?: number
+  purchase_type?: PurchaseType
+  is_local?: boolean
+  l_code?: string
 }
 
 export interface StockAllocation {
@@ -161,6 +164,8 @@ export interface SalesOrder {
   order_date: string
   required_delivery_date: string
   status: SalesOrderStatus
+  order_type?: 'regular' | 'local_purchase'
+  purchase_type?: PurchaseType
   created_by: string
   approved_by?: string
   cancellation_date?: string

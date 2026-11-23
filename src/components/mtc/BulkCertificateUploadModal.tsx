@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import JSZip from 'jszip'
 import { pushAllTablesToSupabase, isSupabaseConfigured } from '../../services/supabase'
+import { uploadToCloudinary, isCloudinaryConfigured } from '../../services/cloudinary'
 
 interface BulkCertificateUploadModalProps {
   isOpen: boolean
@@ -126,6 +127,24 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
     setIsCommitting(true)
 
     try {
+      // Upload raw certificate bytes to Cloudinary CDN for persistent storage
+      if (isCloudinaryConfigured()) {
+        await Promise.all(
+          extractedList.map(async (item) => {
+            if (item.rawBytes) {
+              try {
+                const up = await uploadToCloudinary(item.rawBytes, item.fileName, 'mtcs')
+                if (up.success && (up.secureUrl || up.url)) {
+                  item.pdfBlobUrl = up.secureUrl || up.url || item.pdfBlobUrl
+                }
+              } catch (e) {
+                console.warn('Cloudinary upload notice:', e)
+              }
+            }
+          })
+        )
+      }
+
       const certFiles = extractedList.map(item => ({
         fileName: item.fileName,
         heatNumber: item.heatNumber,

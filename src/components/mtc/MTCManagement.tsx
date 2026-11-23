@@ -19,6 +19,8 @@ import {
   Square,
   FileDown,
   X,
+  Plus,
+  Paperclip,
 } from 'lucide-react'
 import {
   mergeSalesOrderMTCPackage,
@@ -29,6 +31,7 @@ import {
   stampMTCDocument,
 } from '../../services/pdfEngine'
 import { getUploadedCertificateBytes } from '../../services/zipExtractor'
+import { registerUploadedCertificate } from '../../services/certificateVault'
 import { BulkCertificateUploadModal } from './BulkCertificateUploadModal'
 import { MTCCertificate } from '../../types'
 
@@ -42,6 +45,12 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
   const [isGenerating, setIsGenerating] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState('')
   const [showBulkUpload, setShowBulkUpload] = useState(false)
+  const [showSingleUploadModal, setShowSingleUploadModal] = useState(false)
+  const [singleMtcFile, setSingleMtcFile] = useState<File | null>(null)
+  const [singleHeat, setSingleHeat] = useState('')
+  const [singleItemCode, setSingleItemCode] = useState('')
+  const [singleSupplier, setSingleSupplier] = useState('')
+  const [isUploadingSingle, setIsUploadingSingle] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
   // Multi-Selection State for Bulk Download ("Tick and Download All Together")
@@ -444,6 +453,55 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     }
   }
 
+  const handleSingleMtcFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSingleMtcFile(file)
+    const detectedHeat = file.name.replace(/\.[^/.]+$/, '').replace(/^(?:MTC|CERT|HEAT)[\s_\-]+/i, '')
+    setSingleHeat(detectedHeat)
+  }
+
+  const handleCommitSingleMtc = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!singleMtcFile) {
+      alert('Please select a PDF certificate.')
+      return
+    }
+    const cleanHeat = singleHeat.trim() || singleMtcFile.name.replace(/\.[^/.]+$/, '')
+    setIsUploadingSingle(true)
+    try {
+      const arrayBuf = await singleMtcFile.arrayBuffer()
+      const fileData = new Uint8Array(arrayBuf)
+      const blobUrl = URL.createObjectURL(singleMtcFile)
+
+      registerUploadedCertificate(singleMtcFile.name, fileData, singleMtcFile.name, cleanHeat)
+      registerUploadedCertificate(cleanHeat, fileData, singleMtcFile.name, cleanHeat)
+
+      const res = db.uploadMTCForHeat(
+        cleanHeat,
+        {
+          fileName: singleMtcFile.name,
+          fileDataUrl: blobUrl,
+          itemCode: singleItemCode.trim() || undefined,
+          supplierName: singleSupplier.trim() || undefined,
+          pages: 2
+        },
+        currentUser?.email || 'qa@msgoilfield.ae'
+      )
+
+      setStatusMessage(`MTC Certificate "${singleMtcFile.name}" successfully saved to Vault and linked to Heat ${cleanHeat}! (${res.affectedLots} lots & ${res.affectedOrders} orders updated)`)
+      setShowSingleUploadModal(false)
+      setSingleMtcFile(null)
+      setSingleHeat('')
+      setSingleItemCode('')
+      setSingleSupplier('')
+    } catch (err: any) {
+      alert('Failed to upload MTC: ' + err.message)
+    } finally {
+      setIsUploadingSingle(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -463,13 +521,24 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
 
         <div className="flex flex-wrap items-center gap-2">
           {hasPermission(['super_admin', 'mtc_controller', 'admin_inventory']) && (
-            <button
-              onClick={() => setShowBulkUpload(true)}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-3.5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-            >
-              <FolderArchive className="h-4 w-4 text-purple-200" />
-              <span>Bulk Upload Certificates (.ZIP / PDFs)</span>
-            </button>
+            <>
+              <button
+                onClick={() => setShowSingleUploadModal(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                title="Upload an individual MTC PDF certificate"
+              >
+                <Plus className="h-4 w-4 text-emerald-200" />
+                <span>Upload Single MTC</span>
+              </button>
+
+              <button
+                onClick={() => setShowBulkUpload(true)}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-3.5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+              >
+                <FolderArchive className="h-4 w-4 text-purple-200" />
+                <span>Bulk Upload Certificates (.ZIP / PDFs)</span>
+              </button>
+            </>
           )}
 
           <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
@@ -486,6 +555,96 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
         onSuccess={(msg) => setStatusMessage(msg)}
         onPreviewPDF={onPreviewMTC}
       />
+
+      {/* Upload Single MTC Modal */}
+      {showSingleUploadModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <FileCheck2 className="h-4 w-4 text-emerald-400" />
+                <h3 className="font-bold text-sm uppercase">Upload Single MTC Certificate</h3>
+              </div>
+              <button onClick={() => setShowSingleUploadModal(false)} className="text-slate-300 hover:text-white">✕</button>
+            </div>
+
+            <form onSubmit={handleCommitSingleMtc} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Select MTC Document (.PDF) *</label>
+                <div className="relative border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-4 text-center bg-slate-50 cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    required
+                    onChange={handleSingleMtcFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <FileUp className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
+                  <span className="font-medium text-slate-700 block">
+                    {singleMtcFile ? singleMtcFile.name : 'Click to select MTC (.pdf)'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">EN 10204 3.1 Mill Test Certificate</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Heat Number *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 88910 or EY7"
+                  value={singleHeat}
+                  onChange={(e) => setSingleHeat(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 font-mono font-bold uppercase text-slate-900"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  This certificate will automatically link to all matching stock lots and sales order items with this Heat Number.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Item Code (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. FLG-WN-001"
+                    value={singleItemCode}
+                    onChange={(e) => setSingleItemCode(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Supplier / Mill (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BENKAN / HEBEI"
+                    value={singleSupplier}
+                    onChange={(e) => setSingleSupplier(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSingleUploadModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUploadingSingle || !singleMtcFile}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg font-bold shadow flex items-center space-x-1.5"
+                >
+                  <span>{isUploadingSingle ? 'Saving...' : 'Upload & Save to Vault'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {statusMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center justify-between">

@@ -51,10 +51,20 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           if (cached) rawBytes = cached
         }
 
-        // 3. Try fetching from stored original_file_path if it's an accessible URL / blob / asset
-        if (!rawBytes && foundMtc?.original_file_path && (foundMtc.original_file_path.startsWith('blob:') || foundMtc.original_file_path.startsWith('data:') || foundMtc.original_file_path.startsWith('/'))) {
+        // 3. Try fetching from stored original_file_path if it's an accessible URL / blob / asset / cloud storage
+        const isValidPath = (p?: string) => Boolean(
+          p && (
+            p.startsWith('http://') ||
+            p.startsWith('https://') ||
+            p.startsWith('blob:') ||
+            p.startsWith('data:') ||
+            p.startsWith('/')
+          )
+        )
+
+        if (!rawBytes && isValidPath(foundMtc?.original_file_path)) {
           try {
-            const resp = await fetch(foundMtc.original_file_path)
+            const resp = await fetch(foundMtc!.original_file_path)
             if (resp.ok) {
               const ab = await resp.arrayBuffer()
               rawBytes = new Uint8Array(ab)
@@ -64,7 +74,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           }
         }
 
-        if (!rawBytes && docName && (docName.startsWith('blob:') || docName.startsWith('data:') || docName.startsWith('/'))) {
+        if (!rawBytes && isValidPath(docName)) {
           try {
             const resp = await fetch(docName)
             if (resp.ok) {

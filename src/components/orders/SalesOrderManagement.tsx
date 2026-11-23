@@ -26,6 +26,8 @@ import {
   Sparkles,
   ExternalLink,
   ShoppingCart,
+  ShoppingBag,
+  Tag,
   FileText,
   Eye,
   Layers,
@@ -92,10 +94,20 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
   const [cancelReason, setCancelReason] = useState('')
 
   // New Order Form state
+  const [createOrderType, setCreateOrderType] = useState<'regular' | 'local_purchase'>('regular')
   const [customerId, setCustomerId] = useState('')
   const [poNumber, setPoNumber] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
-  const [orderLines, setOrderLines] = useState<{ itemId: string; requiredQty: number }[]>([
+  const [orderLines, setOrderLines] = useState<{
+    itemId: string
+    itemCode?: string
+    itemDescription?: string
+    lCode?: string
+    supplierName?: string
+    unitPrice?: number
+    heatNumber?: string
+    requiredQty: number
+  }[]>([
     { itemId: '', requiredQty: 5 }
   ])
   const [poFile, setPoFile] = useState<File | null>(null)
@@ -162,6 +174,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
   const customers = db.getCustomers()
   const items = db.getItems()
+  const suppliers = db.getSuppliers()
 
   const filteredOrders = orders.filter(o => {
     const matchesSearch =
@@ -176,7 +189,19 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
   const canCreateOrder = hasPermission(['super_admin', 'sales_team', 'admin_inventory'])
 
   const handleAddLine = () => {
-    setOrderLines([...orderLines, { itemId: '', requiredQty: 1 }])
+    setOrderLines([
+      ...orderLines,
+      {
+        itemId: '',
+        itemCode: createOrderType === 'local_purchase' ? `L-SO-${orderLines.length + 1}` : '',
+        itemDescription: '',
+        lCode: createOrderType === 'local_purchase' ? `L-SO-${orderLines.length + 1}` : '',
+        supplierName: '',
+        unitPrice: 0,
+        heatNumber: '',
+        requiredQty: 1
+      }
+    ])
   }
 
   const handleRemoveLine = (idx: number) => {
@@ -186,9 +211,22 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
   const handleCreateOrderSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!customerId || orderLines.some(l => !l.itemId || l.requiredQty <= 0)) {
-      alert('Please select customer and valid items with required quantities.')
+    if (!customerId) {
+      alert('Please select a customer.')
       return
+    }
+
+    if (createOrderType === 'regular') {
+      if (orderLines.some(l => !l.itemId || l.requiredQty <= 0)) {
+        alert('Please select valid catalog items with required quantities.')
+        return
+      }
+    } else {
+      // Local Purchase SO
+      if (orderLines.some(l => (!l.itemId && !l.itemCode && !l.itemDescription) || l.requiredQty <= 0)) {
+        alert('Please provide item code or description and valid quantities for all local purchase lines.')
+        return
+      }
     }
 
     let docUrl: string | undefined = undefined
@@ -198,9 +236,29 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
     const res = db.createSalesOrder({
       customer_id: customerId,
-      po_number: poNumber || 'PO-VALUED',
+      po_number: poNumber || (createOrderType === 'local_purchase' ? 'PO-LOCAL' : 'PO-VALUED'),
+      order_type: createOrderType,
+      purchase_type: createOrderType,
       required_delivery_date: deliveryDate || new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
-      items: orderLines.map(l => ({ item_id: l.itemId, required_qty: Number(l.requiredQty) })),
+      items: orderLines.map((l, idx) => {
+        const selectedCatalogItem = items.find(it => it.id === l.itemId)
+        const finalCode = (l.itemCode || selectedCatalogItem?.item_code || `L-ITEM-${idx + 1}`).trim().toUpperCase()
+        const finalDesc = l.itemDescription?.trim() || selectedCatalogItem?.item_description || `Local Purchase Material ${finalCode}`
+        const finalLCode = l.lCode?.trim() || (createOrderType === 'local_purchase' ? (finalCode.startsWith('L-') ? finalCode : `L-${finalCode}`) : undefined)
+
+        return {
+          item_id: l.itemId || undefined,
+          item_code: finalCode,
+          item_description: finalDesc,
+          required_qty: Number(l.requiredQty),
+          unit_price: Number(l.unitPrice) || selectedCatalogItem?.unit_price_aed || 0,
+          supplier_name: l.supplierName?.trim() || (createOrderType === 'local_purchase' ? 'Local UAE Supplier' : undefined),
+          l_code: finalLCode,
+          is_local: createOrderType === 'local_purchase',
+          purchase_type: createOrderType,
+          heat_number: l.heatNumber?.trim() || undefined,
+        }
+      }),
       po_document_name: poFile ? poFile.name : undefined,
       po_document_url: docUrl,
       userEmail: currentUser?.email || 'sales@msgoilfield.ae'
@@ -280,7 +338,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     }
   }
 
-  // Handle direct MTC upload for any line item (especially L-Codes or local purchase)
+  // Handle direct MTC upload for any line item in customer PO PDF preview
   const handleUploadLineItemMtc = async (itemIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !pdfParsedData) return
@@ -292,6 +350,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       if (!detectedHeat) {
         detectedHeat = file.name.replace(/\.[^/.]+$/, '').replace(/^(?:MTC|CERT|HEAT)[\s_\-]+/i, '')
       }
+      const blobUrl = URL.createObjectURL(file)
       registerUploadedCertificate(
         file.name,
         fileData,
@@ -299,13 +358,81 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         detectedHeat,
         it.itemDescription
       )
+      registerUploadedCertificate(
+        detectedHeat,
+        fileData,
+        file.name,
+        detectedHeat,
+        it.itemDescription
+      )
+
+      // Store in DB & sync to cloud storage
+      db.uploadMTCForHeat(
+        detectedHeat,
+        {
+          fileName: file.name,
+          fileDataUrl: blobUrl,
+          itemCode: it.itemCode,
+          supplierName: it.supplierName,
+          pages: 2
+        },
+        currentUser?.email || 'sales@msgoilfield.ae'
+      )
+
       const updated = [...pdfParsedData.items]
       ;(updated[itemIdx] as any).certificateNumber = file.name
       if (!updated[itemIdx].heatNumber && detectedHeat) {
         updated[itemIdx].heatNumber = detectedHeat
       }
       setPdfParsedData({ ...pdfParsedData, items: updated })
-      alert(`MTC Certificate "${file.name}" successfully attached to item #${it.position || itemIdx + 1}!`)
+      alert(`MTC Certificate "${file.name}" successfully attached and synced to item #${it.position || itemIdx + 1}!`)
+    } catch (err: any) {
+      alert('Error uploading MTC: ' + err.message)
+    }
+  }
+
+  // Handle direct MTC upload for any existing Sales Order line item
+  const handleDirectLineMtcUpload = async (
+    orderId: string,
+    itemId: string,
+    itemCode: string,
+    heatNumber: string | undefined,
+    file: File
+  ) => {
+    try {
+      const arrayBuf = await file.arrayBuffer()
+      const fileData = new Uint8Array(arrayBuf)
+      const resolvedHeat = (heatNumber || '').trim() || file.name.replace(/\.[^/.]+$/, '').replace(/^(?:MTC|CERT|HEAT)[\s_\-]+/i, '')
+      const blobUrl = URL.createObjectURL(file)
+      registerUploadedCertificate(file.name, fileData, file.name, resolvedHeat)
+      registerUploadedCertificate(resolvedHeat, fileData, file.name, resolvedHeat)
+
+      db.uploadMTCForHeat(
+        resolvedHeat,
+        {
+          fileName: file.name,
+          fileDataUrl: blobUrl,
+          itemCode,
+          pages: 2
+        },
+        currentUser?.email || 'sales@msgoilfield.ae'
+      )
+
+      // Update order item certificate_number and heat_number
+      const ord = db.getOrders().find(o => o.id === orderId)
+      if (ord) {
+        const itm = ord.items.find(i => i.id === itemId)
+        if (itm) {
+          itm.certificate_number = file.name
+          if (!itm.heat_number) itm.heat_number = resolvedHeat
+          db.updateSalesOrder({
+            id: orderId,
+            items: ord.items
+          })
+        }
+      }
+      setOrders([...db.getOrders()])
+      alert(`MTC Certificate "${file.name}" attached successfully to item ${itemCode} (Heat: ${resolvedHeat})!`)
     } catch (err: any) {
       alert('Error uploading MTC: ' + err.message)
     }
@@ -713,11 +840,26 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
           {canCreateOrder && (
             <>
               <button
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => {
+                  setCreateOrderType('regular')
+                  setIsCreateModalOpen(true)
+                }}
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
               >
                 <Plus className="h-4 w-4" />
                 <span>Create Sales Order</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setCreateOrderType('local_purchase')
+                  setIsCreateModalOpen(true)
+                }}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                title="Create Local Purchase Sales Order with custom L-Codes and Local UAE Suppliers"
+              >
+                <ShoppingBag className="h-4 w-4 text-purple-200" />
+                <span>Create Local SO (L-Code)</span>
               </button>
 
               <button
@@ -866,6 +1008,12 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     <span className="font-mono font-bold text-sm text-[#0B2545]">{order.so_number}</span>
                     <span className="text-xs font-semibold text-slate-700">&bull; {order.customer_name}</span>
                     <span className="text-xs text-slate-400">PO: {order.po_number}</span>
+                    {(order.order_type === 'local_purchase' || order.purchase_type === 'local_purchase' || order.items.some(i => i.is_local || i.purchase_type === 'local_purchase')) && (
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full border border-purple-200 flex items-center space-x-1">
+                        <Tag className="h-2.5 w-2.5 text-purple-600" />
+                        <span>Local SO (L-Code)</span>
+                      </span>
+                    )}
                     {order.po_document_name && (
                       <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full flex items-center space-x-1">
                         <Paperclip className="h-3 w-3" />
@@ -1100,8 +1248,21 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
                         return (
                           <tr key={item.id} className={!isLineAllocated && !isLineDispatched ? 'bg-slate-50/40' : ''}>
-                            <td className="py-2.5 font-mono font-bold text-slate-800">{item.item_code}</td>
-                            <td className="py-2.5 text-slate-600">{item.item_description}</td>
+                            <td className="py-2.5 font-mono font-bold text-slate-800">
+                              <div>{item.item_code}</div>
+                              {(item.is_local || item.purchase_type === 'local_purchase' || item.l_code) && (
+                                <div className="text-[10px] font-sans font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1 mt-0.5">
+                                  <Tag className="h-2.5 w-2.5" />
+                                  <span>{item.l_code || 'Local L-Code'}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-slate-600">
+                              <div>{item.item_description}</div>
+                              {item.supplier_name && (
+                                <div className="text-[10px] text-slate-400">Supplier: {item.supplier_name}</div>
+                              )}
+                            </td>
                             <td className="py-2.5 text-center font-bold text-slate-900">{item.required_qty} {item.uom}</td>
                             <td className={`py-2.5 text-center font-bold ${lineAllocQty > 0 ? 'text-blue-700' : 'text-slate-400'}`}>
                               {lineAllocQty} {item.uom}
@@ -1110,7 +1271,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             <td className="py-2.5">
                               {itemAllocations.length === 0 ? (
                                 <div className="space-y-1">
-                                  <div className="flex items-center space-x-2">
+                                  <div className="flex flex-wrap items-center gap-1.5">
                                     <span className="text-red-600 font-bold text-[10px] bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
                                       ⭕ Unallocated
                                     </span>
@@ -1122,6 +1283,22 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                     >
                                       Allocate Heat
                                     </button>
+                                    <label
+                                      className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded cursor-pointer flex items-center space-x-1 font-semibold transition-colors"
+                                      title="Upload MTC (.pdf) directly for this item"
+                                    >
+                                      <FileUp className="h-2.5 w-2.5 text-purple-600" />
+                                      <span>Attach MTC</span>
+                                      <input
+                                        type="file"
+                                        accept=".pdf"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0]
+                                          if (f) handleDirectLineMtcUpload(order.id, item.id, item.item_code, item.heat_number, f)
+                                        }}
+                                      />
+                                    </label>
                                   </div>
                                   {item.certificate_number && (
                                     <div className="flex items-center space-x-1">
@@ -1209,20 +1386,63 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
         )}
       </div>
 
-      {/* CREATE ORDER MODAL (WITH PO DOCUMENT ATTACHMENT) */}
+      {/* CREATE ORDER MODAL (WITH REGULAR & LOCAL PURCHASE L-CODE MODES) */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
+          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className={`${createOrderType === 'local_purchase' ? 'bg-purple-900' : 'bg-[#0B2545]'} p-4 text-white flex justify-between items-center shrink-0`}>
               <div className="flex items-center space-x-2">
-                <Plus className="h-4 w-4 text-red-400" />
-                <h3 className="font-bold text-sm uppercase">Create Customer Sales Order</h3>
+                {createOrderType === 'local_purchase' ? (
+                  <ShoppingBag className="h-5 w-5 text-purple-300" />
+                ) : (
+                  <Plus className="h-5 w-5 text-red-400" />
+                )}
+                <div>
+                  <h3 className="font-bold text-sm uppercase tracking-wide">
+                    {createOrderType === 'local_purchase' ? 'Create Local Purchase Sales Order (L-Code)' : 'Create Customer Sales Order'}
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    {createOrderType === 'local_purchase'
+                      ? 'Local stockist order: Assign custom L-Codes, specifications, and local UAE suppliers.'
+                      : 'Standard mill stock order: Select existing catalog items for standard heat allocation.'}
+                  </p>
+                </div>
               </div>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-300 hover:text-white">✕</button>
             </div>
 
-            <form onSubmit={handleCreateOrderSubmit} className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            {/* Order Type Toggle Tabs */}
+            <div className="bg-slate-100 p-2 border-b border-slate-200 shrink-0">
+              <div className="grid grid-cols-2 gap-2 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setCreateOrderType('regular')}
+                  className={`py-2 px-3 rounded-lg flex items-center justify-center space-x-2 transition-all ${
+                    createOrderType === 'regular'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Package className="h-4 w-4 text-blue-600" />
+                  <span>Regular Mill Stock SO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateOrderType('local_purchase')}
+                  className={`py-2 px-3 rounded-lg flex items-center justify-center space-x-2 transition-all ${
+                    createOrderType === 'local_purchase'
+                      ? 'bg-purple-700 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <ShoppingBag className="h-4 w-4 text-purple-200" />
+                  <span>🏷️ Local Purchase SO (L-Code)</span>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateOrderSubmit} className="p-5 space-y-4 text-xs overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Customer *</label>
                   <select
@@ -1242,7 +1462,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. PO-ADNOC-7701"
+                    placeholder={createOrderType === 'local_purchase' ? 'e.g. LPO-ADNOC-LOCAL-01' : 'e.g. PO-ADNOC-7701'}
                     value={poNumber}
                     onChange={(e) => setPoNumber(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase"
@@ -1250,7 +1470,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Required Delivery Date</label>
                   <input
@@ -1271,7 +1491,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                       onChange={(e) => setPoFile(e.target.files?.[0] || null)}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                     />
-                    <span className="text-[11px] text-slate-600 truncate max-w-[170px]">
+                    <span className="text-[11px] text-slate-600 truncate max-w-[200px]">
                       {poFile ? poFile.name : 'Select PO document...'}
                     </span>
                     <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
@@ -1282,7 +1502,16 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
               {/* Order Lines */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Requested Material Line Items</label>
+                  <div className="flex items-center space-x-2">
+                    <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                      {createOrderType === 'local_purchase' ? 'Local Purchase Line Items & L-Codes' : 'Requested Material Line Items'}
+                    </label>
+                    {createOrderType === 'local_purchase' && (
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded">
+                        Auto L-Code Tracking
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddLine}
@@ -1292,70 +1521,205 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                   {orderLines.map((line, idx) => (
-                    <div key={idx} className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                      <div className="flex-1">
-                        <select
-                          required
-                          value={line.itemId}
-                          onChange={(e) => {
-                            const updated = [...orderLines]
-                            updated[idx].itemId = e.target.value
-                            setOrderLines(updated)
-                          }}
-                          className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs"
-                        >
-                          <option value="">-- Select Product Item Code --</option>
-                          {items.map(it => (
-                            <option key={it.id} value={it.id}>{it.item_code} - {it.item_description}</option>
-                          ))}
-                        </select>
-                      </div>
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-xl border ${
+                        createOrderType === 'local_purchase'
+                          ? 'bg-purple-50/40 border-purple-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      {createOrderType === 'regular' ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1">
+                            <select
+                              required
+                              value={line.itemId}
+                              onChange={(e) => {
+                                const updated = [...orderLines]
+                                updated[idx].itemId = e.target.value
+                                setOrderLines(updated)
+                              }}
+                              className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs"
+                            >
+                              <option value="">-- Select Product Item Code --</option>
+                              {items.map(it => (
+                                <option key={it.id} value={it.id}>{it.item_code} - {it.item_description}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                      <div className="w-28">
-                        <input
-                          type="number"
-                          min="1"
-                          required
-                          value={line.requiredQty}
-                          onChange={(e) => {
-                            const updated = [...orderLines]
-                            updated[idx].requiredQty = Number(e.target.value)
-                            setOrderLines(updated)
-                          }}
-                          placeholder="Qty PCS"
-                          className="w-full border border-slate-300 rounded-lg p-1.5 text-xs text-center font-bold"
-                        />
-                      </div>
+                          <div className="w-28">
+                            <input
+                              type="number"
+                              min="1"
+                              required
+                              value={line.requiredQty}
+                              onChange={(e) => {
+                                const updated = [...orderLines]
+                                updated[idx].requiredQty = Number(e.target.value)
+                                setOrderLines(updated)
+                              }}
+                              placeholder="Qty PCS"
+                              className="w-full border border-slate-300 rounded-lg p-1.5 text-xs text-center font-bold"
+                            />
+                          </div>
 
-                      {orderLines.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(idx)}
-                          className="text-slate-400 hover:text-red-600 px-2 py-1 text-sm"
-                        >
-                          ✕
-                        </button>
+                          {orderLines.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(idx)}
+                              className="text-slate-400 hover:text-red-600 px-2 py-1 text-sm"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        /* Local Purchase SO Line Item: Custom Code, Description, L-Code, Supplier, Price, Qty */
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Item Code / Template</label>
+                              <input
+                                type="text"
+                                placeholder={`e.g. L-SO-${idx + 1}`}
+                                value={line.itemCode || ''}
+                                onChange={(e) => {
+                                  const updated = [...orderLines]
+                                  updated[idx].itemCode = e.target.value
+                                  if (!updated[idx].lCode) updated[idx].lCode = e.target.value
+                                  setOrderLines(updated)
+                                }}
+                                className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs font-mono font-bold text-purple-900"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-purple-700 mb-0.5">Tracked L-Code</label>
+                              <input
+                                type="text"
+                                placeholder={`L-SO-${idx + 1}`}
+                                value={line.lCode || line.itemCode || `L-SO-${idx + 1}`}
+                                onChange={(e) => {
+                                  const updated = [...orderLines]
+                                  updated[idx].lCode = e.target.value
+                                  setOrderLines(updated)
+                                }}
+                                className="w-full border border-purple-300 rounded-lg p-1.5 bg-white text-xs font-mono font-bold text-purple-700"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Local UAE Supplier</label>
+                              <input
+                                type="text"
+                                list={`suppliers-list-${idx}`}
+                                placeholder="e.g. Al Jazeera Steel / Petro Middle East"
+                                value={line.supplierName || ''}
+                                onChange={(e) => {
+                                  const updated = [...orderLines]
+                                  updated[idx].supplierName = e.target.value
+                                  setOrderLines(updated)
+                                }}
+                                className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs"
+                              />
+                              <datalist id={`suppliers-list-${idx}`}>
+                                {suppliers.map(s => (
+                                  <option key={s.id} value={s.supplier_name} />
+                                ))}
+                              </datalist>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                            <div className="sm:col-span-2">
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Item Description *</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. 2 inch SCH 40 ASTM A106 Gr B Seamless Pipe"
+                                value={line.itemDescription || ''}
+                                onChange={(e) => {
+                                  const updated = [...orderLines]
+                                  updated[idx].itemDescription = e.target.value
+                                  setOrderLines(updated)
+                                }}
+                                className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Unit Price (AED)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Price AED"
+                                value={line.unitPrice ?? ''}
+                                onChange={(e) => {
+                                  const updated = [...orderLines]
+                                  updated[idx].unitPrice = Number(e.target.value)
+                                  setOrderLines(updated)
+                                }}
+                                className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs font-semibold"
+                              />
+                            </div>
+
+                            <div className="flex items-center space-x-1.5">
+                              <div className="flex-1">
+                                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Qty (PCS) *</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  required
+                                  value={line.requiredQty}
+                                  onChange={(e) => {
+                                    const updated = [...orderLines]
+                                    updated[idx].requiredQty = Number(e.target.value)
+                                    setOrderLines(updated)
+                                  }}
+                                  placeholder="Qty"
+                                  className="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs text-center font-bold"
+                                />
+                              </div>
+
+                              {orderLines.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveLine(idx)}
+                                  className="text-slate-400 hover:text-red-600 p-1.5 rounded mb-0.5"
+                                  title="Remove line"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
+              <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow"
+                  className={`px-5 py-2 text-white rounded-lg font-bold text-xs shadow flex items-center space-x-1.5 ${
+                    createOrderType === 'local_purchase'
+                      ? 'bg-purple-700 hover:bg-purple-800'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
                 >
-                  Save & Proceed to Heat Allocation
+                  <span>Save & Proceed to Heat Allocation</span>
                 </button>
               </div>
             </form>
