@@ -105,7 +105,10 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [isLocalPurchaseModalOpen, setIsLocalPurchaseModalOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
   const [draftsList, setDraftsList] = useState<SourcingWorksheetData[]>([])
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => uniqueOrders[0]?.id || '')
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => {
+    const saved = localStorage.getItem('msg_sourcing_active_so_id') || db.getActiveOrderId()
+    return (saved && uniqueOrders.some(o => o.id === saved)) ? saved : (uniqueOrders[0]?.id || '')
+  })
 
   const handleOpenPreview = (tab: SourcingPreviewTab) => {
     setPreviewTab(tab)
@@ -116,7 +119,11 @@ export const TechnicalSourcingPortal: React.FC = () => {
     setDraftsList(getSourcingDrafts())
     const initialOrders = db.getOrders()
     if (initialOrders.length > 0) {
-      handleLoadFromOrder(initialOrders[0].id)
+      const saved = localStorage.getItem('msg_sourcing_active_so_id') || db.getActiveOrderId()
+      const target = (saved && initialOrders.find(o => o.id === saved)) || initialOrders[0]
+      if (target) {
+        handleLoadFromOrder(target.id)
+      }
     }
   }, [])
 
@@ -232,10 +239,13 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
   // Load from existing Sales Order
   const handleLoadFromOrder = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId) || uniqueOrders.find(o => o.id === orderId)
+    const allOrders = db.getOrders()
+    const order = allOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId) || uniqueOrders.find(o => o.id === orderId)
     if (!order) return
 
     setSelectedOrderId(orderId)
+    db.setActiveOrderId(orderId)
+    localStorage.setItem('msg_sourcing_active_so_id', orderId)
     setClientName(order.customer_name || '')
     setPoNumber(order.po_number || '')
     setMsgRef(order.so_number || order.msg_ref || '')
@@ -285,8 +295,8 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
   // Update item field
   const handleUpdateItem = (id: string, field: keyof SourcingLineItem, value: any) => {
-    setItems(prev =>
-      prev.map(it => {
+    setItems(prev => {
+      const updatedList = prev.map(it => {
         if (it.id !== id) return it
         const updated = { ...it, [field]: value }
 
@@ -333,7 +343,36 @@ export const TechnicalSourcingPortal: React.FC = () => {
         }
         return updated
       })
-    )
+
+      // Sync active item change back to DB Sales Order
+      if (selectedOrderId) {
+        try {
+          db.updateSalesOrder({
+            id: selectedOrderId,
+            items: updatedList.map(it => ({
+              id: it.id,
+              item_description: it.description,
+              heat_number: it.heat_number,
+              certificate_number: it.certificate_number,
+              make: it.make,
+              country_of_origin: it.country_of_origin,
+              required_qty: extractQtyNumber(it.qty),
+              unit_price: it.unit_price,
+              remarks: it.remarks,
+              supplier_name: it.supplier_name,
+              supplier_po_number: it.supplier_po_number,
+              package_type: it.package_type,
+              package_no: it.package_no,
+              hs_code: it.hs_code,
+            }))
+          })
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      return updatedList
+    })
   }
 
   // Split item (Multi-heat / Partial Split with X OF Y notation)
@@ -581,8 +620,11 @@ export const TechnicalSourcingPortal: React.FC = () => {
               <select
                 value={selectedOrderId}
                 onChange={e => {
-                  setSelectedOrderId(e.target.value)
-                  handleLoadFromOrder(e.target.value)
+                  const newId = e.target.value
+                  setSelectedOrderId(newId)
+                  db.setActiveOrderId(newId)
+                  localStorage.setItem('msg_sourcing_active_so_id', newId)
+                  handleLoadFromOrder(newId)
                 }}
                 className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[220px] truncate"
               >
@@ -831,6 +873,31 @@ export const TechnicalSourcingPortal: React.FC = () => {
           selectedItemIds={selectedItemIds}
           onApply={updatedItems => {
             setItems(updatedItems)
+            if (selectedOrderId) {
+              try {
+                db.updateSalesOrder({
+                  id: selectedOrderId,
+                  items: updatedItems.map(it => ({
+                    id: it.id,
+                    item_description: it.description,
+                    heat_number: it.heat_number,
+                    certificate_number: it.certificate_number,
+                    make: it.make,
+                    country_of_origin: it.country_of_origin,
+                    required_qty: extractQtyNumber(it.qty),
+                    unit_price: it.unit_price,
+                    remarks: it.remarks,
+                    supplier_name: it.supplier_name,
+                    supplier_po_number: it.supplier_po_number,
+                    package_type: it.package_type,
+                    package_no: it.package_no,
+                    hs_code: it.hs_code,
+                  }))
+                })
+              } catch (e) {
+                console.warn('Could not sync PO items to order:', e)
+              }
+            }
             setActivePortalTab('worksheet')
           }}
           onBack={() => setActivePortalTab('worksheet')}
@@ -844,8 +911,8 @@ export const TechnicalSourcingPortal: React.FC = () => {
           worksheetData={currentWorksheetData}
           activeItemId={activeCertItemId}
           onApply={(itemId, certDetails) => {
-            setItems(prev =>
-              prev.map(it => {
+            setItems(prev => {
+              const next = prev.map(it => {
                 if (it.id !== itemId) return it
                 return {
                   ...it,
@@ -855,7 +922,33 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   country_of_origin: certDetails.country_of_origin || it.country_of_origin,
                 }
               })
-            )
+              if (selectedOrderId) {
+                try {
+                  db.updateSalesOrder({
+                    id: selectedOrderId,
+                    items: next.map(it => ({
+                      id: it.id,
+                      item_description: it.description,
+                      heat_number: it.heat_number,
+                      certificate_number: it.certificate_number,
+                      make: it.make,
+                      country_of_origin: it.country_of_origin,
+                      required_qty: extractQtyNumber(it.qty),
+                      unit_price: it.unit_price,
+                      remarks: it.remarks,
+                      supplier_name: it.supplier_name,
+                      supplier_po_number: it.supplier_po_number,
+                      package_type: it.package_type,
+                      package_no: it.package_no,
+                      hs_code: it.hs_code,
+                    }))
+                  })
+                } catch (e) {
+                  console.warn('Could not sync cert details to order:', e)
+                }
+              }
+              return next
+            })
             setActivePortalTab('worksheet')
           }}
           onBack={() => setActivePortalTab('worksheet')}

@@ -40,7 +40,10 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
   // Eligible orders (Draft, Partially Allocated, Stock Allocated, or Pending Storekeeper Approval)
   const allocatableOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Dispatched')
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => preselectedOrderId || allocatableOrders[0]?.id || '')
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => {
+    const active = preselectedOrderId || db.getActiveOrderId()
+    return (active && allocatableOrders.some(o => o.id === active)) ? active : (allocatableOrders[0]?.id || '')
+  })
 
   // Keep selectedOrderId strictly in sync only when preselectedOrderId prop itself changes
   const lastPreselectedPropRef = React.useRef(preselectedOrderId)
@@ -48,6 +51,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
     if (preselectedOrderId && preselectedOrderId !== lastPreselectedPropRef.current) {
       lastPreselectedPropRef.current = preselectedOrderId
       setSelectedOrderId(preselectedOrderId)
+      db.setActiveOrderId(preselectedOrderId)
       const targetOrd = orders.find(o => o.id === preselectedOrderId)
       if (targetOrd && targetOrd.items[0]) {
         setSelectedLineId(targetOrd.items[0].id)
@@ -270,8 +274,10 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
           <select
             value={selectedOrderId}
             onChange={(e) => {
-              setSelectedOrderId(e.target.value)
-              const ord = orders.find(o => o.id === e.target.value)
+              const newId = e.target.value
+              setSelectedOrderId(newId)
+              db.setActiveOrderId(newId)
+              const ord = orders.find(o => o.id === newId)
               if (ord && ord.items[0]) setSelectedLineId(ord.items[0].id)
             }}
             className="border border-slate-300 rounded-lg px-3 py-2 text-xs bg-white font-bold text-[#0B2545] shadow-sm"

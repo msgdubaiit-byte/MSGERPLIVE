@@ -2593,6 +2593,16 @@ class DBService {
     this.notify()
     return true
   }
+
+  // Active Sales Order Persistence: keeps the active SO constant across navigation & reloads
+  public getActiveOrderId(): string {
+    return loadFromStorage<string>('active_so_id', '')
+  }
+
+  public setActiveOrderId(id: string): void {
+    if (!id) return
+    saveToStorage('active_so_id', id)
+  }
 }
 
 export const db = new DBService()

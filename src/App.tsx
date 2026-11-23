@@ -116,7 +116,7 @@ const MainApp: React.FC = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div key={`db-view-${dbVersion}`} className="max-w-7xl mx-auto">
+          <div className="max-w-7xl mx-auto">
             {activeTab === 'solo_hub' && (
               <CentralizedSoloHub
                 onNavigateTab={(tab) => setActiveTab(tab)}
@@ -167,10 +167,12 @@ const MainApp: React.FC = () => {
                 initialStatusFilter={orderInitialFilter}
                 onSelectOrder={(ord) => {
                   setPreselectedAllocationOrderId(ord.id)
+                  db.setActiveOrderId(ord.id)
                   setActiveTab('allocation')
                 }}
                 onNavigateToAllocation={(orderId) => {
                   setPreselectedAllocationOrderId(orderId)
+                  db.setActiveOrderId(orderId)
                   setActiveTab('allocation')
                 }}
                 onPreviewMTC={(docName, itemCode, heat) =>
@@ -181,7 +183,6 @@ const MainApp: React.FC = () => {
 
             {activeTab === 'allocation' && (
               <StockAllocationStudio
-                key={preselectedAllocationOrderId || 'default'}
                 preselectedOrderId={preselectedAllocationOrderId}
                 onComplete={() => setActiveTab('orders')}
               />
