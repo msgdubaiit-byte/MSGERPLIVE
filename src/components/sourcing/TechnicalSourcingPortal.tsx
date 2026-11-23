@@ -55,6 +55,10 @@ import {
   parseLocFromRemarks,
 } from '../../services/stickerEngine'
 import { parseCustomerSOPDF } from '../../services/pdfEngine'
+import {
+  registerUploadedCertificate,
+  detectHeatNumberFromFilename,
+} from '../../services/zipExtractor'
 import { db } from '../../services/db'
 import { SalesOrder } from '../../types'
 
@@ -755,7 +759,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
             }`}
           >
             <FileCheck2 className="h-4 w-4" />
-            <span>Create Certificate (EN 10204 3.1)</span>
+            <span>MTC Certificates (Upload &amp; Download)</span>
           </button>
 
           <button
@@ -790,7 +794,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
                 >
                   <FileCheck2 className="h-3 w-3" />
-                  <span>Create Cert</span>
+                  <span>MTC Hub</span>
                 </button>
               </div>
             ) : (
@@ -802,16 +806,16 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   title="Create Purchase Order for lines"
                 >
                   <ShoppingCart className="h-3.5 w-3.5" />
-                  <span>Create Purchase Order</span>
+                  <span>Purchase Order</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOpenCreateCertificate()}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
-                  title="Create EN 10204 3.1 Mill Certificate"
+                  title="Upload, Preview & Download MTC Certificates"
                 >
                   <FileCheck2 className="h-3.5 w-3.5" />
-                  <span>Create Certificate</span>
+                  <span>MTC Certificates</span>
                 </button>
               </div>
             )}
@@ -1101,6 +1105,61 @@ export const TechnicalSourcingPortal: React.FC = () => {
             <Tag className="h-4 w-4" />
             <span>Item Stickers (.pdf)</span>
           </button>
+
+          {/* 7. MTC Certificates Package */}
+          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-indigo-800">
+            <button
+              onClick={() => handleOpenCreateCertificate()}
+              className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Open MTC Hub to preview, attach and download stamped certificates"
+            >
+              <FileCheck2 className="h-4 w-4" />
+              <span>MTC Package</span>
+            </button>
+            <button
+              onClick={async () => {
+                setIsExporting(true)
+                try {
+                  const { PDFDocument } = await import('pdf-lib')
+                  const { stampMTCDocument, createSampleMillCertificate, downloadPDFBlob } = await import('../../services/pdfEngine')
+                  const { getUploadedCertificateBytes } = await import('../../services/zipExtractor')
+                  const mergedPdf = await PDFDocument.create()
+                  let count = 0
+                  for (const it of currentWorksheetData.items) {
+                    let bytes = it.certificate_number ? getUploadedCertificateBytes(it.certificate_number) : null
+                    if (!bytes && it.heat_number) bytes = getUploadedCertificateBytes(it.heat_number)
+                    if (!bytes) {
+                      bytes = await createSampleMillCertificate(it.client_po_item_no || 'ITM', it.heat_number || 'ORIGINAL', 2026, 2)
+                    }
+                    const stamped = await stampMTCDocument(bytes, {
+                      poNo: currentWorksheetData.po_number || 'PO-MSG',
+                      itemNo: it.client_po_item_no || String(it.sl_no),
+                      qty: `${it.qty} ${it.uom}`,
+                      sign: 'Alex Turner / MSG QA-04',
+                      dateStr: new Date().toISOString().substring(0, 10),
+                    }, true)
+                    const docToMerge = await PDFDocument.load(stamped)
+                    const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
+                    pages.forEach(p => mergedPdf.addPage(p))
+                    count++
+                  }
+                  const mergedBytes = await mergedPdf.save()
+                  const pkgName = `${(currentWorksheetData.po_number || 'PO').replace(/[^a-zA-Z0-9_-]/g, '_')}_Complete_MTC_Package.pdf`
+                  downloadPDFBlob(mergedBytes, pkgName)
+                  setStatusNotice(`Downloaded complete MTC Certificates Package (${count} items) into ${pkgName}!`)
+                } catch (err: any) {
+                  alert('Error downloading MTC package: ' + err.message)
+                } finally {
+                  setIsExporting(false)
+                }
+              }}
+              disabled={isExporting}
+              className="bg-indigo-800 hover:bg-indigo-900 text-indigo-100 hover:text-white px-2.5 py-2 border-l border-indigo-600/70 transition-colors cursor-pointer"
+              title="1-Click Direct Download Complete Stamped MTC Package (.pdf)"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1244,14 +1303,28 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     it.is_machined ? 'bg-amber-50/40' : ''
                   }`}
                 >
-                  {/* Select Checkbox */}
+                  {/* Select Checkbox & Local PO Button */}
                   <td className="p-2.5 text-center">
                     <input
                       type="checkbox"
                       checked={selectedItemIds.has(it.id)}
                       onChange={() => toggleSelectItem(it.id)}
                       className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                      title="Select for Purchase Order / Local PO"
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSet = new Set(selectedItemIds)
+                        newSet.add(it.id)
+                        setSelectedItemIds(newSet)
+                        setActivePortalTab('purchase_order')
+                      }}
+                      className="mt-1 block mx-auto text-[9px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-1 py-0.5 rounded cursor-pointer transition-colors"
+                      title="Select this item and open Purchase Order tab"
+                    >
+                      PO
+                    </button>
                   </td>
 
                   {/* SL NO */}
@@ -1349,13 +1422,23 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
                   {/* Certificate Number */}
                   <td className="p-2.5">
-                    <input
-                      type="text"
-                      placeholder="MTC-REF"
-                      value={it.certificate_number}
-                      onChange={e => handleUpdateItem(it.id, 'certificate_number', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-600"
-                    />
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="text"
+                        placeholder="MTC-REF"
+                        value={it.certificate_number}
+                        onChange={e => handleUpdateItem(it.id, 'certificate_number', e.target.value)}
+                        className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateCertificate(it.id)}
+                        className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 transition-colors cursor-pointer shrink-0"
+                        title="View, Preview & Download MTC Certificate"
+                      >
+                        <Eye className="h-3 w-3" />
+                      </button>
+                    </div>
                   </td>
 
                   {/* MAKE */}

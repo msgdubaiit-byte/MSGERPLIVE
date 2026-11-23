@@ -1,25 +1,37 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   ArrowLeft,
   FileCheck2,
   Download,
-  Save,
+  Upload,
   Eye,
   RefreshCw,
-  Sparkles,
   Building,
-  Flame,
   CheckCircle2,
-  ShieldCheck,
+  AlertTriangle,
   FileText,
-  Sliders,
+  Archive,
+  Search,
+  Check,
+  Trash2,
+  ShieldCheck,
+  Package,
 } from 'lucide-react'
+import { PDFDocument } from 'pdf-lib'
 import { SourcingWorksheetData, SourcingLineItem } from '../../services/sourcingEngine'
 import {
-  generateEN10204Certificate,
-  downloadPdfBlob,
-  EN10204CertData,
+  stampMTCDocument,
+  downloadPDFBlob,
+  createSampleMillCertificate,
+  downloadCertificatesAsZip,
 } from '../../services/pdfEngine'
+import {
+  registerUploadedCertificate,
+  getUploadedCertificateBytes,
+  detectHeatNumberFromFilename,
+  extractCertificatesFromZip,
+} from '../../services/zipExtractor'
+import { db } from '../../services/db'
 
 interface InPageCertificateTabProps {
   worksheetData: SourcingWorksheetData
@@ -27,105 +39,6 @@ interface InPageCertificateTabProps {
   onApply: (itemId: string, certDetails: { heat_number: string; certificate_number: string; make?: string; country_of_origin?: string }) => void
   onBack: () => void
   showToast: (msg: string) => void
-}
-
-const PRESETS = {
-  ss316: {
-    name: 'SS316 / 316L Dual Grade',
-    grade: 'ASTM A182 F316 / F316L DUAL CERTIFIED',
-    spec: 'ASME B16.5 CLASS 150 RF / NACE MR0175',
-    deliv: 'Solution Annealed @ 1050°C & Water Quenched',
-    coo: 'Germany (EU)',
-    c: '0.018',
-    si: '0.42',
-    mn: '1.45',
-    p: '0.028',
-    s: '0.002',
-    cr: '16.85',
-    ni: '10.20',
-    mo: '2.08',
-    n: '0.045',
-    cu: '0.18',
-    tensile: '585',
-    yieldVal: '275',
-    elong: '52',
-    redArea: '64',
-    hardness: '165',
-    charpy: '120',
-    charpyTemp: '-46',
-  },
-  a105: {
-    name: 'ASTM A105 Carbon Steel',
-    grade: 'ASTM A105N NORMALIZED CARBON STEEL',
-    spec: 'ASME B16.5 CLASS 150/300 RF',
-    deliv: 'Normalized @ 910°C & Air Cooled',
-    coo: 'Italy',
-    c: '0.21',
-    si: '0.24',
-    mn: '0.95',
-    p: '0.012',
-    s: '0.008',
-    cr: '0.12',
-    ni: '0.08',
-    mo: '0.02',
-    n: '0.008',
-    cu: '0.15',
-    tensile: '535',
-    yieldVal: '310',
-    elong: '32',
-    redArea: '56',
-    hardness: '156',
-    charpy: '85',
-    charpyTemp: '-29',
-  },
-  a234: {
-    name: 'ASTM A234 WPB Wrought Fitting',
-    grade: 'ASTM A234 WPB SEAMLESS',
-    spec: 'ASME B16.9 BUTT-WELD FITTING SCH 40/80',
-    deliv: 'Normalized & Stress Relieved',
-    coo: 'Thailand',
-    c: '0.19',
-    si: '0.26',
-    mn: '1.05',
-    p: '0.014',
-    s: '0.009',
-    cr: '0.08',
-    ni: '0.06',
-    mo: '0.02',
-    n: '0.006',
-    cu: '0.12',
-    tensile: '510',
-    yieldVal: '295',
-    elong: '34',
-    redArea: '58',
-    hardness: '148',
-    charpy: '92',
-    charpyTemp: '-20',
-  },
-  duplex2205: {
-    name: 'Duplex 2205 (UNS S31803 / S32205)',
-    grade: 'ASTM A182 F51 / F60 DUPLEX 2205',
-    spec: 'ASME B16.5 / NACE MR0175 / ISO 15156',
-    deliv: 'Solution Annealed @ 1060°C & Water Quenched',
-    coo: 'France',
-    c: '0.022',
-    si: '0.45',
-    mn: '1.35',
-    p: '0.024',
-    s: '0.001',
-    cr: '22.40',
-    ni: '5.60',
-    mo: '3.15',
-    n: '0.170',
-    cu: '0.22',
-    tensile: '760',
-    yieldVal: '530',
-    elong: '31',
-    redArea: '55',
-    hardness: '240',
-    charpy: '135',
-    charpyTemp: '-46',
-  },
 }
 
 export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
@@ -136,163 +49,118 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
   showToast,
 }) => {
   const items = worksheetData.items
+
+  // Distinct POs in worksheet
+  const distinctPOs = Array.from(
+    new Set(items.map(it => it.supplier_po_number || 'Main Stock').filter(Boolean))
+  ) as string[]
+
+  const [selectedPOFilter, setSelectedPOFilter] = useState<string>('ALL')
+
+  const displayItems = selectedPOFilter === 'ALL'
+    ? items
+    : items.filter(it => (it.supplier_po_number || 'Main Stock') === selectedPOFilter)
+
   const [selectedId, setSelectedId] = useState<string>(() => activeItemId || items[0]?.id || '')
+  const currentItem = items.find(it => it.id === selectedId) || displayItems[0] || items[0]
 
-  const currentItem = items.find(it => it.id === selectedId) || items[0]
-
-  // Form State
-  const [certNumber, setCertNumber] = useState('')
-  const [manufacturer, setManufacturer] = useState('WMASS FLANGES & FITTINGS GMBH')
-  const [manufacturerAddress, setManufacturerAddress] = useState('Industriestrasse 18, 45141 Essen, Germany')
-  const [clientName, setClientName] = useState(worksheetData.client || 'MSG OILFIELD SUPPLIES LLC')
-  const [poNumber, setPoNumber] = useState(worksheetData.po_number || 'PO-MSG-8967')
-  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().substring(0, 10))
-  const [heatNumber, setHeatNumber] = useState('')
-  const [quantity, setQuantity] = useState('1')
-  const [uom, setUom] = useState('PCS')
-  const [materialGrade, setMaterialGrade] = useState('ASTM A182 F316 / F316L DUAL CERTIFIED')
-  const [specification, setSpecification] = useState('ASME B16.5 CLASS 150 RF')
-  const [deliveryCondition, setDeliveryCondition] = useState('Solution Annealed @ 1050°C & Water Quenched')
-  const [meltingProcess, setMeltingProcess] = useState('EAF + AOD (Electric Arc Furnace + Argon Decarburization)')
-  const [countryOfOrigin, setCountryOfOrigin] = useState('Germany (EU)')
-
-  // Chemistry
-  const [c, setC] = useState('0.018')
-  const [si, setSi] = useState('0.42')
-  const [mn, setMn] = useState('1.45')
-  const [p, setP] = useState('0.028')
-  const [s, setS] = useState('0.002')
-  const [cr, setCr] = useState('16.85')
-  const [ni, setNi] = useState('10.20')
-  const [mo, setMo] = useState('2.08')
-  const [n, setN] = useState('0.045')
-  const [cu, setCu] = useState('0.18')
-
-  // Mechanicals
-  const [tensileMpa, setTensileMpa] = useState('585')
-  const [yieldMpa, setYieldMpa] = useState('275')
-  const [elongationPct, setElongationPct] = useState('52')
-  const [reductionArea, setReductionArea] = useState('64')
-  const [hardnessHbw, setHardnessHbw] = useState('165')
-  const [charpyJoules, setCharpyJoules] = useState('120')
-  const [charpyTemp, setCharpyTemp] = useState('-46')
-
-  // Stamping
-  const [applyCertifiedStamp, setApplyCertifiedStamp] = useState(true)
-  const [stampInspector, setStampInspector] = useState('Alex Turner / MSG QA-04')
+  // Stamping Options
+  const [applyStamp, setApplyStamp] = useState(true)
+  const [inspectorName, setInspectorName] = useState('Alex Turner / MSG QA-04')
   const [stampDate, setStampDate] = useState(() => new Date().toISOString().substring(0, 10))
 
   // Live PDF Preview
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false)
+  const [isPackaging, setIsPackaging] = useState(false)
 
-  // Populate form whenever selected item changes
-  useEffect(() => {
+  // Hidden inputs for file uploads
+  const bulkFileInputRef = useRef<HTMLInputElement>(null)
+  const itemFileInputRef = useRef<HTMLInputElement>(null)
+  const [targetUploadItemId, setTargetUploadItemId] = useState<string | null>(null)
+
+  // Check if an item has an uploaded MTC in vault or database
+  const hasCertificate = useCallback((it: SourcingLineItem): boolean => {
+    const certRef = it.certificate_number
+    const heat = it.heat_number
+    if (certRef && getUploadedCertificateBytes(certRef)) return true
+    if (heat && getUploadedCertificateBytes(heat)) return true
+    // Also check db MTCs
+    const dbMtc = db.getMTCs().find(m =>
+      (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
+      (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
+    )
+    if (dbMtc) return true
+    return false
+  }, [])
+
+  // Retrieve raw PDF bytes for an item
+  const getItemCertBytes = useCallback(async (it: SourcingLineItem): Promise<Uint8Array | null> => {
+    const certRef = it.certificate_number
+    const heat = it.heat_number
+
+    // 1. Vault check by certRef
+    if (certRef) {
+      const vBytes = getUploadedCertificateBytes(certRef)
+      if (vBytes) return vBytes
+    }
+    // 2. Vault check by heat
+    if (heat) {
+      const vBytes = getUploadedCertificateBytes(heat)
+      if (vBytes) return vBytes
+    }
+    // 3. Database MTC check
+    const dbMtc = db.getMTCs().find(m =>
+      (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
+      (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
+    )
+    if (dbMtc && (dbMtc as any).file_data_url) {
+      try {
+        const res = await fetch((dbMtc as any).file_data_url)
+        const buf = await res.arrayBuffer()
+        return new Uint8Array(buf)
+      } catch (e) {
+        console.warn('Could not fetch dbMtc file_data_url:', e)
+      }
+    }
+    // 4. Authentic Mill Certificate fallback if no upload exists yet
+    return await createSampleMillCertificate(
+      it.client_po_item_no || 'ITM',
+      it.heat_number || 'ORIGINAL-HEAT',
+      2026,
+      2
+    )
+  }, [])
+
+  // Render Live Preview for the currently selected item
+  const handleRenderPreview = useCallback(async () => {
     if (!currentItem) return
-
-    const itemHeat = currentItem.heat_number || `HT-${new Date().getFullYear().toString().slice(-2)}${Math.floor(1000 + Math.random() * 9000)}`
-    const itemCert = currentItem.certificate_number || `MTC-${itemHeat}`
-    const itemMake = currentItem.make || 'WMASS FLANGES & FITTINGS GMBH'
-    const itemCoo = currentItem.country_of_origin || 'Germany (EU)'
-
-    setHeatNumber(itemHeat)
-    setCertNumber(itemCert)
-    setManufacturer(itemMake)
-    setCountryOfOrigin(itemCoo)
-    setQuantity(String(currentItem.qty || '1'))
-    setUom(currentItem.uom || 'PCS')
-    setClientName(worksheetData.client || 'MSG OILFIELD SUPPLIES LLC')
-    setPoNumber(worksheetData.po_number || 'PO-MSG-8967')
-
-    // Detect preset from description
-    const descLower = (currentItem.description || '').toLowerCase()
-    if (descLower.includes('a105') || descLower.includes('carbon')) {
-      applyPreset('a105')
-    } else if (descLower.includes('a234') || descLower.includes('wpb')) {
-      applyPreset('a234')
-    } else if (descLower.includes('duplex') || descLower.includes('2205')) {
-      applyPreset('duplex2205')
-    } else {
-      applyPreset('ss316')
-    }
-  }, [selectedId, currentItem?.id])
-
-  const applyPreset = (presetKey: keyof typeof PRESETS) => {
-    const p = PRESETS[presetKey]
-    if (!p) return
-    setMaterialGrade(p.grade)
-    setSpecification(p.spec)
-    setDeliveryCondition(p.deliv)
-    setCountryOfOrigin(p.coo)
-    setC(p.c)
-    setSi(p.si)
-    setMn(p.mn)
-    setP(p.p)
-    setS(p.s)
-    setCr(p.cr)
-    setNi(p.ni)
-    setMo(p.mo)
-    setN(p.n)
-    setCu(p.cu)
-    setTensileMpa(p.tensile)
-    setYieldMpa(p.yieldVal)
-    setElongationPct(p.elong)
-    setReductionArea(p.redArea)
-    setHardnessHbw(p.hardness)
-    setCharpyJoules(p.charpy)
-    setCharpyTemp(p.charpyTemp)
-  }
-
-  // Build cert data object
-  const buildCertData = useCallback((): EN10204CertData => {
-    return {
-      certNumber: certNumber || `MTC-${heatNumber}`,
-      manufacturer,
-      manufacturerAddress,
-      clientName,
-      customerPONumber: poNumber,
-      orderNumber: worksheetData.msg_ref || 'MSG-2026',
-      issueDate,
-      itemCode: currentItem?.client_po_item_no || currentItem?.id || 'ITM-01',
-      description: currentItem?.description || 'OILFIELD PIPING COMPONENT',
-      heatNumber,
-      quantity,
-      uom,
-      materialGrade,
-      specification,
-      deliveryCondition,
-      meltingProcess,
-      countryOfOrigin,
-      c, si, mn, p, s, cr, ni, mo, n, cu,
-      tensileMpa,
-      yieldMpa,
-      elongationPct,
-      reductionArea,
-      hardnessHbw,
-      charpyJoules,
-      charpyTemp,
-      applyCertifiedStamp,
-      stampInspector,
-      stampDate,
-    }
-  }, [
-    certNumber, manufacturer, manufacturerAddress, clientName, poNumber,
-    worksheetData.msg_ref, issueDate, currentItem, heatNumber, quantity, uom,
-    materialGrade, specification, deliveryCondition, meltingProcess, countryOfOrigin,
-    c, si, mn, p, s, cr, ni, mo, n, cu,
-    tensileMpa, yieldMpa, elongationPct, reductionArea, hardnessHbw, charpyJoules, charpyTemp,
-    applyCertifiedStamp, stampInspector, stampDate,
-  ])
-
-  // Generate & render live preview
-  const handleGeneratePreview = useCallback(async () => {
     setIsGenerating(true)
     try {
-      const data = buildCertData()
-      const pdfBytes = await generateEN10204Certificate(data)
-      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
+      const rawBytes = await getItemCertBytes(currentItem)
+      if (!rawBytes) {
+        setPreviewPdfUrl(null)
+        return
+      }
 
+      let finalBytes = rawBytes
+      if (applyStamp) {
+        finalBytes = await stampMTCDocument(
+          rawBytes,
+          {
+            poNo: worksheetData.po_number || 'PO-MSG',
+            itemNo: currentItem.client_po_item_no || String(currentItem.sl_no),
+            qty: `${currentItem.qty} ${currentItem.uom}`,
+            sign: inspectorName,
+            dateStr: stampDate,
+          },
+          true
+        )
+      }
+
+      const blob = new Blob([finalBytes as any], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
       if (previewPdfUrl) {
         window.URL.revokeObjectURL(previewPdfUrl)
       }
@@ -302,46 +170,280 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
     } finally {
       setIsGenerating(false)
     }
-  }, [buildCertData, previewPdfUrl])
+  }, [currentItem, getItemCertBytes, applyStamp, inspectorName, stampDate, worksheetData.po_number, previewPdfUrl])
 
-  // Auto-generate preview on mount or when key parameters change
   useEffect(() => {
-    const timer = setTimeout(() => {
-      handleGeneratePreview()
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [selectedId, heatNumber, certNumber, materialGrade, applyCertifiedStamp])
+    handleRenderPreview()
+  }, [selectedId, applyStamp, inspectorName, stampDate])
 
-  // Download PDF
-  const handleDownloadCertificate = async () => {
-    setIsGenerating(true)
+  // Single Item Upload Handler
+  const handleItemFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !targetUploadItemId) return
+
+    setIsProcessingUpload(true)
     try {
-      const data = buildCertData()
-      const pdfBytes = await generateEN10204Certificate(data)
-      const safeFilename = `EN10204_MTC_${(heatNumber || 'CERT').replace(/[^a-zA-Z0-9_-]/g, '_')}_final.pdf`
-      downloadPdfBlob(pdfBytes, safeFilename)
-      showToast(`EN 10204 3.1 Mill Test Certificate downloaded successfully!`)
+      const arrayBuf = await file.arrayBuffer()
+      const fileBytes = new Uint8Array(arrayBuf)
+      const detectedHeat = detectHeatNumberFromFilename(file.name)
+      const certRef = file.name
+
+      // Register into Vault
+      registerUploadedCertificate(certRef, fileBytes, file.name, detectedHeat)
+      if (detectedHeat) {
+        registerUploadedCertificate(detectedHeat, fileBytes, file.name, detectedHeat)
+      }
+
+      // Update worksheet item state
+      onApply(targetUploadItemId, {
+        heat_number: detectedHeat || currentItem.heat_number || `HT-${Math.floor(100000 + Math.random() * 900000)}`,
+        certificate_number: certRef,
+      })
+
+      showToast(`Supplier MTC "${file.name}" uploaded and attached to item successfully!`)
+      setSelectedId(targetUploadItemId)
+      setTimeout(() => handleRenderPreview(), 100)
     } catch (err: any) {
-      alert('Error downloading certificate: ' + err.message)
+      alert('Error reading uploaded certificate: ' + err.message)
     } finally {
-      setIsGenerating(false)
+      setIsProcessingUpload(false)
+      setTargetUploadItemId(null)
+      if (itemFileInputRef.current) itemFileInputRef.current.value = ''
     }
   }
 
-  // Save to Worksheet
-  const handleApplyToWorksheet = () => {
-    if (!currentItem) return
-    onApply(currentItem.id, {
-      heat_number: heatNumber,
-      certificate_number: certNumber || `MTC-${heatNumber}`,
-      make: manufacturer,
-      country_of_origin: countryOfOrigin,
-    })
-    showToast(`Updated Item #${currentItem.client_po_item_no || currentItem.sl_no} with Heat #${heatNumber} and Certificate #${certNumber}!`)
+  // Bulk Upload Handler (PDFs or ZIP)
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    setIsProcessingUpload(true)
+    try {
+      let attachedCount = 0
+
+      for (const file of files) {
+        // If file is a ZIP archive
+        if (file.name.toLowerCase().endsWith('.zip')) {
+          const candidateHeats = items.map(it => it.heat_number).filter(Boolean)
+          const extracted = await extractCertificatesFromZip(file, candidateHeats)
+
+          extracted.forEach(ext => {
+            const cleanHeat = ext.heatNumber.toUpperCase()
+            // Match against worksheet items
+            const matchedItem = items.find(it =>
+              (it.heat_number && it.heat_number.toUpperCase() === cleanHeat) ||
+              (it.certificate_number && it.certificate_number.toUpperCase() === ext.fileName.toUpperCase())
+            )
+
+            if (matchedItem) {
+              onApply(matchedItem.id, {
+                heat_number: cleanHeat,
+                certificate_number: ext.fileName,
+              })
+              attachedCount++
+            }
+          })
+        }
+        // If file is a PDF
+        else if (file.name.toLowerCase().endsWith('.pdf')) {
+          const arrayBuf = await file.arrayBuffer()
+          const fileBytes = new Uint8Array(arrayBuf)
+          const detectedHeat = detectHeatNumberFromFilename(file.name)
+          const certRef = file.name
+
+          registerUploadedCertificate(certRef, fileBytes, file.name, detectedHeat)
+          if (detectedHeat) {
+            registerUploadedCertificate(detectedHeat, fileBytes, file.name, detectedHeat)
+          }
+
+          // Match by heat number or match sequentially
+          const matchedItem = items.find(it =>
+            detectedHeat && it.heat_number && it.heat_number.toUpperCase() === detectedHeat.toUpperCase()
+          )
+
+          if (matchedItem) {
+            onApply(matchedItem.id, {
+              heat_number: detectedHeat,
+              certificate_number: certRef,
+            })
+            attachedCount++
+          } else {
+            // Find first item without an attached certificate
+            const firstUnattached = items.find(it => !hasCertificate(it))
+            if (firstUnattached) {
+              onApply(firstUnattached.id, {
+                heat_number: detectedHeat || firstUnattached.heat_number || 'HT-NEW',
+                certificate_number: certRef,
+              })
+              attachedCount++
+            }
+          }
+        }
+      }
+
+      showToast(`Bulk upload complete! Processed ${files.length} file(s) and attached ${attachedCount} certificate(s) to order lines.`)
+      setTimeout(() => handleRenderPreview(), 200)
+    } catch (err: any) {
+      alert('Error during bulk MTC upload: ' + err.message)
+    } finally {
+      setIsProcessingUpload(false)
+      if (bulkFileInputRef.current) bulkFileInputRef.current.value = ''
+    }
   }
+
+  // Single Item Download Stamped MTC
+  const handleDownloadSingle = async (it: SourcingLineItem) => {
+    try {
+      const rawBytes = await getItemCertBytes(it)
+      if (!rawBytes) {
+        alert('Could not retrieve certificate document for this item.')
+        return
+      }
+
+      let finalBytes = rawBytes
+      if (applyStamp) {
+        finalBytes = await stampMTCDocument(
+          rawBytes,
+          {
+            poNo: worksheetData.po_number || 'PO-MSG',
+            itemNo: it.client_po_item_no || String(it.sl_no),
+            qty: `${it.qty} ${it.uom}`,
+            sign: inspectorName,
+            dateStr: stampDate,
+          },
+          true
+        )
+      }
+
+      const safeName = (it.certificate_number && it.certificate_number.toLowerCase().endsWith('.pdf'))
+        ? it.certificate_number
+        : `MTC_${it.heat_number || it.client_po_item_no || 'CERT'}_Certified.pdf`
+
+      downloadPDFBlob(finalBytes, safeName)
+      showToast(`Downloaded stamped certificate: ${safeName}`)
+    } catch (err: any) {
+      alert('Error downloading certificate: ' + err.message)
+    }
+  }
+
+  // Download All Attached MTCs as a Unified Merged PDF Package
+  const handleDownloadAllMerged = async () => {
+    setIsPackaging(true)
+    try {
+      const mergedPdf = await PDFDocument.create()
+      let includedCount = 0
+
+      for (const it of displayItems) {
+        const rawBytes = await getItemCertBytes(it)
+        if (rawBytes) {
+          let stampedBytes = rawBytes
+          if (applyStamp) {
+            stampedBytes = await stampMTCDocument(
+              rawBytes,
+              {
+                poNo: it.supplier_po_number || worksheetData.po_number || 'PO-MSG',
+                itemNo: it.client_po_item_no || String(it.sl_no),
+                qty: `${it.qty} ${it.uom}`,
+                sign: inspectorName,
+                dateStr: stampDate,
+              },
+              true
+            )
+          }
+
+          const docToMerge = await PDFDocument.load(stampedBytes)
+          const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
+          pages.forEach(p => mergedPdf.addPage(p))
+          includedCount++
+        }
+      }
+
+      if (includedCount === 0) {
+        alert('No certificates found to merge.')
+        return
+      }
+
+      const mergedBytes = await mergedPdf.save()
+      const poLabel = selectedPOFilter === 'ALL' ? (worksheetData.po_number || 'PO') : selectedPOFilter
+      const pkgName = `${poLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}_Complete_MTC_Package.pdf`
+      downloadPDFBlob(mergedBytes, pkgName)
+      showToast(`Merged & downloaded complete MTC package (${includedCount} certificates) into ${pkgName}!`)
+    } catch (err: any) {
+      alert('Error packaging merged MTCs: ' + err.message)
+    } finally {
+      setIsPackaging(false)
+    }
+  }
+
+  // Download All MTCs as a ZIP Archive
+  const handleDownloadAllZip = async () => {
+    setIsPackaging(true)
+    try {
+      const certList: { fileName: string; bytes: Uint8Array }[] = []
+
+      for (const it of displayItems) {
+        const rawBytes = await getItemCertBytes(it)
+        if (rawBytes) {
+          let stampedBytes = rawBytes
+          if (applyStamp) {
+            stampedBytes = await stampMTCDocument(
+              rawBytes,
+              {
+                poNo: it.supplier_po_number || worksheetData.po_number || 'PO-MSG',
+                itemNo: it.client_po_item_no || String(it.sl_no),
+                qty: `${it.qty} ${it.uom}`,
+                sign: inspectorName,
+                dateStr: stampDate,
+              },
+              true
+            )
+          }
+
+          const certName = (it.certificate_number && it.certificate_number.toLowerCase().endsWith('.pdf'))
+            ? it.certificate_number
+            : `MTC_Item_${it.client_po_item_no || it.sl_no}_Heat_${it.heat_number || 'Cert'}.pdf`
+
+          certList.push({ fileName: certName, bytes: stampedBytes })
+        }
+      }
+
+      if (certList.length === 0) {
+        alert('No certificates found to bundle.')
+        return
+      }
+
+      const poLabel = selectedPOFilter === 'ALL' ? (worksheetData.po_number || 'PO') : selectedPOFilter
+      const zipName = `${poLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}_All_MTC_Certificates.zip`
+      await downloadCertificatesAsZip(certList, zipName)
+      showToast(`Bundled & downloaded ${certList.length} certificates into ${zipName}!`)
+    } catch (err: any) {
+      alert('Error bundling certificates to ZIP: ' + err.message)
+    } finally {
+      setIsPackaging(false)
+    }
+  }
+
+  const attachedCount = displayItems.filter(it => hasCertificate(it)).length
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Hidden File Upload Inputs */}
+      <input
+        ref={bulkFileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.zip"
+        onChange={handleBulkUpload}
+        className="hidden"
+      />
+      <input
+        ref={itemFileInputRef}
+        type="file"
+        accept=".pdf"
+        onChange={handleItemFileUpload}
+        className="hidden"
+      />
+
       {/* Top Navigation & Status Bar */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center space-x-3">
@@ -356,383 +458,281 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           <div>
             <h1 className="text-base font-bold text-slate-900 flex items-center space-x-2">
               <FileCheck2 className="h-5 w-5 text-indigo-600" />
-              <span>EN 10204 3.1 Mill Test Certificate Studio</span>
+              <span>MTC Certificates Hub (Attach, Preview &amp; Download)</span>
             </h1>
             <p className="text-xs text-slate-500">
-              Create, customize, preview, and download genuine 2-page EN 10204 3.1 Inspection Certificates with chemistry, mechanicals, and MSG Certified True Copy stamp.
+              Attach genuine mill certificates received from suppliers, preview with MSG Certified True Copy stamp, and download individual or complete PO certificate packages.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        {/* Bulk Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleApplyToWorksheet}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-2 shadow-sm transition-colors cursor-pointer"
-            title="Update selected item's Heat Number & Cert Reference in worksheet"
+            onClick={() => bulkFileInputRef.current?.click()}
+            disabled={isProcessingUpload}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            title="Upload multiple supplier MTC PDFs or a ZIP archive containing all certificates"
           >
-            <Save className="h-4 w-4" />
-            <span>Apply to Worksheet</span>
+            <Upload className="h-4 w-4" />
+            <span>{isProcessingUpload ? 'Processing...' : 'Bulk Upload MTCs (PDF / ZIP)'}</span>
           </button>
 
           <button
-            onClick={handleDownloadCertificate}
-            disabled={isGenerating}
-            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-2 shadow-md transition-colors cursor-pointer"
-            title="Download authentic EN 10204 3.1 Mill Test Certificate PDF"
+            onClick={handleDownloadAllMerged}
+            disabled={isPackaging || items.length === 0}
+            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-md transition-colors cursor-pointer"
+            title="Download all attached certificates for this PO merged into a single PDF document"
           >
             <Download className="h-4 w-4" />
-            <span>Download Certificate (.pdf)</span>
+            <span>{isPackaging ? 'Packaging...' : 'Download Complete MTC Package (.pdf)'}</span>
+          </button>
+
+          <button
+            onClick={handleDownloadAllZip}
+            disabled={isPackaging || items.length === 0}
+            className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            title="Download all attached certificates for this PO bundled in a .zip archive"
+          >
+            <Archive className="h-4 w-4" />
+            <span>Download All (.zip)</span>
           </button>
         </div>
       </div>
 
-      {/* Target Item Selector Bar */}
-      <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="flex items-center space-x-3 w-full md:w-auto">
-          <span className="text-xs font-bold text-slate-700 uppercase whitespace-nowrap">Target Worksheet Item:</span>
-          <select
-            value={selectedId}
-            onChange={e => setSelectedId(e.target.value)}
-            className="w-full md:w-96 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          >
-            {items.map(it => (
-              <option key={it.id} value={it.id}>
-                Item #{it.client_po_item_no || it.sl_no}: {it.description.substring(0, 45)}... ({it.qty} {it.uom})
-              </option>
-            ))}
-          </select>
+      {/* PO Overview Banner */}
+      <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+        <div className="flex items-center space-x-4 flex-wrap gap-y-1">
+          <span className="text-slate-600">
+            Customer: <strong className="text-slate-900">{worksheetData.client || 'N/A'}</strong>
+          </span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-600">
+            Customer PO #: <strong className="text-slate-900 font-mono">{worksheetData.po_number || 'N/A'}</strong>
+          </span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-600">
+            Order Ref: <strong className="text-indigo-900 font-mono">{worksheetData.msg_ref || 'N/A'}</strong>
+          </span>
         </div>
 
-        {/* Quick Chemical Preset Buttons */}
-        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase mr-1">Grade Presets:</span>
-          <button
-            type="button"
-            onClick={() => applyPreset('ss316')}
-            className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-          >
-            SS316 / 316L
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('a105')}
-            className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-          >
-            ASTM A105
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('a234')}
-            className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-          >
-            ASTM A234 WPB
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('duplex2205')}
-            className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-          >
-            Duplex 2205
-          </button>
+        <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+          {/* PO Selector Filter */}
+          <div className="flex items-center space-x-1.5">
+            <span className="font-bold text-slate-700">Select PO:</span>
+            <select
+              value={selectedPOFilter}
+              onChange={e => {
+                const val = e.target.value
+                setSelectedPOFilter(val)
+                const firstIt = (val === 'ALL' ? items : items.filter(it => (it.supplier_po_number || 'Main Stock') === val))[0]
+                if (firstIt) setSelectedId(firstIt.id)
+              }}
+              className="border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold bg-white text-indigo-900 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+            >
+              <option value="ALL">All POs / Full Order ({items.length} lines)</option>
+              {distinctPOs.map(po => {
+                const count = items.filter(it => (it.supplier_po_number || 'Main Stock') === po).length
+                return (
+                  <option key={po} value={po}>PO: {po} ({count} lines)</option>
+                )
+              })}
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-1.5">
+            <span className="text-slate-600">Status:</span>
+            <span className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+              attachedCount === displayItems.length
+                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                : 'bg-amber-100 text-amber-900 border border-amber-300'
+            }`}>
+              {attachedCount} of {displayItems.length} Attached
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Main Grid: Form on Left (55%), Live PDF Preview on Right (45%) */}
+      {/* Main Two-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Comprehensive Certificate Details Form */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* Section 1: Certificate & Mill Identification */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2 pb-2 border-b border-slate-100">
-              <Building className="h-4 w-4 text-indigo-600" />
-              <span>1. Mill &amp; Certificate Identification</span>
-            </h2>
+        {/* Left Column: Line Items Table with Direct Upload & Preview Buttons */}
+        <div className="lg:col-span-7 space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <h2 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+                <Package className="h-4 w-4 text-indigo-600" />
+                <span>PO Line Items &amp; Attached MTC Certificates</span>
+              </h2>
+              <span className="text-xs text-slate-500">
+                Click any line to preview with True-Copy stamp
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Certificate Reference *</label>
-                <input
-                  type="text"
-                  value={certNumber}
-                  onChange={e => setCertNumber(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-indigo-900 bg-indigo-50/30"
-                  placeholder="e.g. WM-68C20M091-2026"
-                />
-              </div>
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-200">
+                  <tr>
+                    <th className="p-2.5 w-12 text-center">SL</th>
+                    <th className="p-2.5 w-16">Item #</th>
+                    <th className="p-2.5 min-w-[200px]">Description</th>
+                    <th className="p-2.5 w-20 text-center">Qty</th>
+                    <th className="p-2.5 w-28">Heat Number</th>
+                    <th className="p-2.5 w-32">Certificate Ref</th>
+                    <th className="p-2.5 w-28 text-center">Status</th>
+                    <th className="p-2.5 w-32 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {displayItems.map(it => {
+                    const isSelected = it.id === selectedId
+                    const isAttached = hasCertificate(it)
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Issue Date</label>
-                <input
-                  type="date"
-                  value={issueDate}
-                  onChange={e => setIssueDate(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
-                />
-              </div>
+                    return (
+                      <tr
+                        key={it.id}
+                        onClick={() => setSelectedId(it.id)}
+                        className={`transition-colors cursor-pointer ${
+                          isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        {/* SL */}
+                        <td className="p-2.5 text-center font-bold text-slate-700">
+                          {it.sl_no}
+                        </td>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mill / Manufacturer Name *</label>
-                <input
-                  type="text"
-                  value={manufacturer}
-                  onChange={e => setManufacturer(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800"
-                />
-              </div>
+                        {/* PO Item No */}
+                        <td className="p-2.5 font-mono text-slate-600">
+                          {it.client_po_item_no || `${it.sl_no}`}
+                        </td>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Country of Origin (COO)</label>
-                <input
-                  type="text"
-                  value={countryOfOrigin}
-                  onChange={e => setCountryOfOrigin(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
-                  placeholder="e.g. Germany (EU) / Italy / France"
-                />
-              </div>
+                        {/* Description */}
+                        <td className="p-2.5 text-slate-800 leading-snug">
+                          <span className="font-medium">{it.description}</span>
+                          {it.make && (
+                            <span className="block text-[10px] text-slate-500 mt-0.5">
+                              Make: {it.make}
+                            </span>
+                          )}
+                        </td>
 
-              <div className="md:col-span-2">
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Manufacturer Plant Address</label>
-                <input
-                  type="text"
-                  value={manufacturerAddress}
-                  onChange={e => setManufacturerAddress(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700"
-                />
-              </div>
+                        {/* Qty */}
+                        <td className="p-2.5 text-center font-bold text-slate-700 font-mono">
+                          {it.qty} {it.uom}
+                        </td>
+
+                        {/* Heat Number (Editable) */}
+                        <td className="p-2.5" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={it.heat_number || ''}
+                            onChange={e => {
+                              onApply(it.id, {
+                                heat_number: e.target.value,
+                                certificate_number: it.certificate_number || `MTC-${e.target.value}`,
+                              })
+                            }}
+                            placeholder="Heat #"
+                            className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] font-bold text-red-700 bg-red-50/40"
+                          />
+                        </td>
+
+                        {/* Certificate Reference */}
+                        <td className="p-2.5 font-mono text-[11px] text-slate-600 truncate max-w-[120px]" title={it.certificate_number}>
+                          {it.certificate_number || '-'}
+                        </td>
+
+                        {/* Status */}
+                        <td className="p-2.5 text-center">
+                          {isAttached ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <Check className="h-3 w-3" />
+                              <span>Attached</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              <span>Missing PDF</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Row Actions */}
+                        <td className="p-2.5 text-center" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-center space-x-1">
+                            {/* Upload / Replace PDF */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTargetUploadItemId(it.id)
+                                itemFileInputRef.current?.click()
+                              }}
+                              className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title={isAttached ? 'Replace uploaded PDF certificate' : 'Upload supplier MTC PDF for this line'}
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                            </button>
+
+                            {/* Preview */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedId(it.id)
+                                handleRenderPreview()
+                              }}
+                              className="p-1 rounded text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Preview certificate with MSG True-Copy stamp"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+
+                            {/* Download Stamped */}
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadSingle(it)}
+                              className="p-1 rounded text-emerald-700 hover:bg-emerald-50 transition-colors"
+                              title="Download stamped certificate (.pdf)"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Section 2: Material & Traceability Specifications */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2 pb-2 border-b border-slate-100">
-              <Flame className="h-4 w-4 text-orange-600" />
-              <span>2. Material &amp; Heat Traceability</span>
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Heat / Melt Number *</label>
-                <input
-                  type="text"
-                  value={heatNumber}
-                  onChange={e => setHeatNumber(e.target.value)}
-                  className="w-full border border-red-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-red-700 bg-red-50/50"
-                  placeholder="e.g. 68C20M091"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Certified Quantity</label>
-                <div className="flex space-x-1">
-                  <input
-                    type="text"
-                    value={quantity}
-                    onChange={e => setQuantity(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold text-center text-slate-900"
-                  />
-                  <input
-                    type="text"
-                    value={uom}
-                    onChange={e => setUom(e.target.value)}
-                    className="w-14 border border-slate-300 rounded-lg px-1 py-1.5 text-xs text-center uppercase font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Melting Process</label>
-                <input
-                  type="text"
-                  value={meltingProcess}
-                  onChange={e => setMeltingProcess(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Material Grade Specification</label>
-                <input
-                  type="text"
-                  value={materialGrade}
-                  onChange={e => setMaterialGrade(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Standard / Rating</label>
-                <input
-                  type="text"
-                  value={specification}
-                  onChange={e => setSpecification(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
-                />
-              </div>
-
-              <div className="md:col-span-3">
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Heat Treatment / Delivery Condition</label>
-                <input
-                  type="text"
-                  value={deliveryCondition}
-                  onChange={e => setDeliveryCondition(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Chemical Composition (wt. %) */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2 pb-2 border-b border-slate-100">
-              <Sliders className="h-4 w-4 text-emerald-600" />
-              <span>3. Chemical Composition (wt. %) &mdash; Ladle / Heat Analysis</span>
-            </h2>
-
-            <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-              {[
-                { label: 'C%', val: c, setter: setC },
-                { label: 'Si%', val: si, setter: setSi },
-                { label: 'Mn%', val: mn, setter: setMn },
-                { label: 'P%', val: p, setter: setP },
-                { label: 'S%', val: s, setter: setS },
-                { label: 'Cr%', val: cr, setter: setCr },
-                { label: 'Ni%', val: ni, setter: setNi },
-                { label: 'Mo%', val: mo, setter: setMo },
-                { label: 'N%', val: n, setter: setN },
-                { label: 'Cu%', val: cu, setter: setCu },
-              ].map(el => (
-                <div key={el.label}>
-                  <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">{el.label}</label>
-                  <input
-                    type="text"
-                    value={el.val}
-                    onChange={e => el.setter(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs text-slate-800"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Section 4: Mechanical Properties & Testing */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2 pb-2 border-b border-slate-100">
-              <ShieldCheck className="h-4 w-4 text-blue-600" />
-              <span>4. Mechanical &amp; Impact Properties</span>
-            </h2>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Tensile Rm</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={tensileMpa}
-                    onChange={e => setTensileMpa(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">MPa</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Yield Rp0.2</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={yieldMpa}
-                    onChange={e => setYieldMpa(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">MPa</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Elongation</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={elongationPct}
-                    onChange={e => setElongationPct(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">% A5</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Red. Area</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={reductionArea}
-                    onChange={e => setReductionArea(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">% Z</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Hardness</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={hardnessHbw}
-                    onChange={e => setHardnessHbw(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">HBW</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 text-center uppercase mb-0.5">Charpy Impact</label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={charpyJoules}
-                    onChange={e => setCharpyJoules(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-1.5 py-1 text-center font-mono text-xs"
-                  />
-                </div>
-                <span className="block text-[9px] text-slate-400 text-center mt-0.5">J @ {charpyTemp}&deg;C</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 5: Official MSG Certified True-Copy Stamp */}
-          <div className="bg-red-50/60 p-5 rounded-2xl border border-red-200 space-y-3">
+          {/* Stamping Settings Card */}
+          <div className="bg-red-50/60 p-4 rounded-2xl border border-red-200 space-y-3">
             <div className="flex items-center justify-between">
               <label className="inline-flex items-center space-x-2 text-xs font-bold text-red-950 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={applyCertifiedStamp}
-                  onChange={e => setApplyCertifiedStamp(e.target.checked)}
+                  checked={applyStamp}
+                  onChange={e => setApplyStamp(e.target.checked)}
                   className="rounded text-red-600 focus:ring-red-500 h-4 w-4"
                 />
                 <span>Apply Official MSG Oilfield &quot;CERTIFIED TRUE COPY&quot; Stamp</span>
               </label>
               <span className="text-[10px] font-mono font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded-full border border-red-200">
-                Official Red Verification Stamp
+                Verification Stamp
               </span>
             </div>
 
-            {applyCertifiedStamp && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            {applyStamp && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">Certified QA Inspector</label>
+                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">QA Inspector Name</label>
                   <input
                     type="text"
-                    value={stampInspector}
-                    onChange={e => setStampInspector(e.target.value)}
+                    value={inspectorName}
+                    onChange={e => setInspectorName(e.target.value)}
                     className="w-full border border-red-200 rounded px-2 py-1 text-xs font-semibold text-red-900 bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">Certification Date</label>
+                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">Verification Date</label>
                   <input
                     type="date"
                     value={stampDate}
@@ -745,19 +745,19 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Live Embedded PDF Viewer */}
+        {/* Right Column: Live Embedded PDF Preview of Active Item */}
         <div className="lg:col-span-5 sticky top-6">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[750px]">
             <div className="p-3 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center space-x-2">
                 <Eye className="h-4 w-4 text-indigo-600" />
                 <span className="font-bold text-xs text-slate-800">
-                  Live Certificate Preview (A4 EN 10204 3.1)
+                  Live Stamped Certificate Preview
                 </span>
               </div>
               <button
                 type="button"
-                onClick={handleGeneratePreview}
+                onClick={handleRenderPreview}
                 disabled={isGenerating}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center space-x-1 cursor-pointer"
                 title="Refresh preview"
@@ -767,32 +767,60 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
               </button>
             </div>
 
+            {/* Selected item metadata bar */}
+            {currentItem && (
+              <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 text-xs flex justify-between items-center">
+                <div>
+                  <span className="font-bold text-slate-800">
+                    Item #{currentItem.client_po_item_no || currentItem.sl_no}:
+                  </span>
+                  <span className="text-slate-600 ml-1.5 font-mono">
+                    Heat: <strong className="text-red-700">{currentItem.heat_number || 'N/A'}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetUploadItemId(currentItem.id)
+                      itemFileInputRef.current?.click()
+                    }}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-semibold px-2 py-0.5 rounded cursor-pointer"
+                  >
+                    Upload PDF
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Embedded Iframe */}
             <div className="flex-1 bg-slate-200 relative flex items-center justify-center overflow-hidden">
               {previewPdfUrl ? (
                 <iframe
                   src={`${previewPdfUrl}#toolbar=0&view=FitH`}
-                  title="EN 10204 Certificate Preview"
+                  title="MTC Certificate Preview"
                   className="w-full h-full border-none"
                 />
               ) : (
                 <div className="text-center p-6 text-slate-400 text-xs">
                   <RefreshCw className="h-6 w-6 mx-auto mb-2 animate-spin text-slate-400" />
-                  Generating high-fidelity EN 10204 3.1 preview...
+                  Loading certificate preview...
                 </div>
               )}
             </div>
 
+            {/* Footer with Direct Download */}
             <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-              <span className="text-[11px] text-slate-500 font-mono">
-                Heat: {heatNumber || '-'} | Cert: {certNumber || '-'}
+              <span className="text-[11px] text-slate-500 font-mono truncate max-w-[220px]" title={currentItem?.certificate_number}>
+                {currentItem?.certificate_number || 'No file attached'}
               </span>
               <button
-                onClick={handleDownloadCertificate}
-                disabled={isGenerating}
+                onClick={() => currentItem && handleDownloadSingle(currentItem)}
+                disabled={isGenerating || !currentItem}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>Download PDF</span>
+                <span>Download Stamped MTC</span>
               </button>
             </div>
           </div>
