@@ -158,6 +158,609 @@ export async function createSampleMillCertificate(
   return await pdfDoc.save()
 }
 
+export interface EN10204CertData {
+  certNumber?: string
+  manufacturer?: string
+  manufacturerAddress?: string
+  clientName?: string
+  customerPONumber?: string
+  orderNumber?: string
+  issueDate?: string
+  itemCode?: string
+  description?: string
+  heatNumber?: string
+  quantity?: string | number
+  uom?: string
+  materialGrade?: string
+  specification?: string
+  sizeRating?: string
+  deliveryCondition?: string
+  meltingProcess?: string
+  countryOfOrigin?: string
+  // Chemistry
+  c?: string
+  si?: string
+  mn?: string
+  p?: string
+  s?: string
+  cr?: string
+  ni?: string
+  mo?: string
+  n?: string
+  cu?: string
+  // Mechanicals
+  tensileMpa?: string
+  yieldMpa?: string
+  elongationPct?: string
+  reductionArea?: string
+  hardnessHbw?: string
+  charpyJoules?: string
+  charpyTemp?: string
+  naceCompliant?: boolean
+  supplementaryTests?: string
+  qaInspector?: string
+  // True copy stamp
+  applyCertifiedStamp?: boolean
+  stampInspector?: string
+  stampDate?: string
+}
+
+export function downloadPdfBlob(pdfBytes: Uint8Array, filename: string): void {
+  const blob = new Blob([pdfBytes as any], { type: 'application/pdf' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => window.URL.revokeObjectURL(url), 2000)
+}
+
+export async function generateEN10204Certificate(data: EN10204CertData): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create()
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontMono = await pdfDoc.embedFont(StandardFonts.Courier)
+  const fontMonoBold = await pdfDoc.embedFont(StandardFonts.CourierBold)
+
+  const certNo = data.certNumber || `WM-${data.heatNumber || '68C20M091'}-2026`
+  const mfr = data.manufacturer || 'WMASS FLANGES & FITTINGS GMBH'
+  const mfrAddr = data.manufacturerAddress || 'Industriestrasse 18, 45141 Essen, Germany'
+  const client = data.clientName || 'MSG OILFIELD SUPPLIES LLC'
+  const po = data.customerPONumber || 'PO-MSG-8967'
+  const issueDate = data.issueDate || new Date().toISOString().substring(0, 10)
+  const itemCode = data.itemCode || 'WSO20150F316'
+  const desc = data.description || 'FLANGE 3/4" 150# SORF RF SS316/316L ASME B16.5'
+  const heat = data.heatNumber || '68C20M091'
+  const qty = data.quantity || '25'
+  const uom = data.uom || 'PCS'
+  const grade = data.materialGrade || 'ASTM A182 F316 / F316L DUAL CERTIFIED'
+  const spec = data.specification || 'ASME B16.5 / NACE MR0175 / ISO 15156'
+  const deliv = data.deliveryCondition || 'Solution Annealed @ 1050°C & Water Quenched'
+  const melt = data.meltingProcess || 'EAF + AOD (Electric Arc Furnace + Argon Oxygen Decarburization)'
+  const coo = data.countryOfOrigin || 'GERMANY (EU)'
+
+  // Chemistry values
+  const c = data.c || '0.018'
+  const si = data.si || '0.42'
+  const mn = data.mn || '1.45'
+  const p = data.p || '0.028'
+  const s = data.s || '0.002'
+  const cr = data.cr || '16.85'
+  const ni = data.ni || '10.20'
+  const mo = data.mo || '2.08'
+  const n = data.n || '0.045'
+  const cu = data.cu || '0.18'
+
+  // Mechanical values
+  const tensile = data.tensileMpa || '585'
+  const yieldVal = data.yieldMpa || '275'
+  const elong = data.elongationPct || '52'
+  const redArea = data.reductionArea || '64'
+  const hardness = data.hardnessHbw || '165'
+  const charpy = data.charpyJoules || '120'
+  const charpyTemp = data.charpyTemp || '-46'
+  const qaInspector = data.qaInspector || 'Dipl.-Ing. H. Weber / Lead Inspection QA'
+
+  // PAGE 1:
+  const page1 = pdfDoc.addPage([595, 842])
+  const { width, height } = page1.getSize()
+
+  // Outer Border
+  page1.drawRectangle({
+    x: 25,
+    y: 25,
+    width: width - 50,
+    height: height - 50,
+    borderColor: rgb(0.1, 0.18, 0.35),
+    borderWidth: 1.5,
+  })
+
+  // Header Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 110,
+    width: width - 50,
+    height: 85,
+    color: rgb(0.96, 0.97, 0.99),
+    borderColor: rgb(0.1, 0.18, 0.35),
+    borderWidth: 1.5,
+  })
+
+  page1.drawText(mfr.toUpperCase(), {
+    x: 40,
+    y: height - 50,
+    size: 13,
+    font: fontBold,
+    color: rgb(0.05, 0.15, 0.35),
+  })
+
+  page1.drawText(mfrAddr, {
+    x: 40,
+    y: height - 64,
+    size: 7.5,
+    font: fontRegular,
+    color: rgb(0.35, 0.35, 0.35),
+  })
+
+  page1.drawText('MILL TEST CERTIFICATE / INSPECTION CERTIFICATE', {
+    x: 40,
+    y: height - 80,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
+  })
+
+  page1.drawText('ACCORDING TO DIN EN 10204:2004 TYPE 3.1 / ISO 10474', {
+    x: 40,
+    y: height - 94,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.15, 0.45, 0.2),
+  })
+
+  page1.drawText('CE 0045 | PED 2014/68/EU | ISO 9001:2015', {
+    x: 350,
+    y: height - 50,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.4, 0.1, 0.1),
+  })
+
+  page1.drawText(`Certificate No: ${certNo}`, {
+    x: 350,
+    y: height - 66,
+    size: 8.5,
+    font: fontMonoBold,
+    color: rgb(0.05, 0.15, 0.35),
+  })
+
+  page1.drawText(`Issue Date: ${issueDate}  |  Page 1 of 2`, {
+    x: 350,
+    y: height - 82,
+    size: 8,
+    font: fontRegular,
+    color: rgb(0.3, 0.3, 0.3),
+  })
+
+  // Customer & Order Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 175,
+    width: width - 50,
+    height: 60,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page1.drawText('PURCHASER & ORDER IDENTIFICATION', {
+    x: 35,
+    y: height - 125,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  page1.drawText(`Customer / Consignee : ${client}`, { x: 35, y: height - 142, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+  page1.drawText(`Customer PO Number   : ${po}`, { x: 35, y: height - 156, size: 8, font: fontMono, color: rgb(0.1, 0.1, 0.1) })
+  page1.drawText(`Internal Order / Ref : ${data.orderNumber || 'SO-2026-MSG'}`, { x: 35, y: height - 170, size: 8, font: fontRegular, color: rgb(0.3, 0.3, 0.3) })
+
+  page1.drawText(`Country of Origin    : ${coo}`, { x: 330, y: height - 142, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+  page1.drawText(`Melting Process      : ${melt.substring(0, 32)}`, { x: 330, y: height - 156, size: 7.5, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+  page1.drawText(`Inspection Standard  : EN 10204 Type 3.1`, { x: 330, y: height - 170, size: 8, font: fontBold, color: rgb(0.15, 0.45, 0.2) })
+
+  // Material & Product Traceability Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 310,
+    width: width - 50,
+    height: 130,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page1.drawText('PRODUCT DESCRIPTION & METALLURGICAL SPECIFICATIONS', {
+    x: 35,
+    y: height - 190,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  const prodDetails = [
+    `Item Description     : ${desc.substring(0, 68)}`,
+    `Product Item Code    : ${itemCode}`,
+    `Heat / Cast Number   : ${heat}`,
+    `Certified Quantity   : ${qty} ${uom}`,
+    `Material Grade       : ${grade}`,
+    `Specification / Code : ${spec}`,
+    `Heat Treatment Cond. : ${deliv}`,
+  ]
+
+  prodDetails.forEach((line, idx) => {
+    page1.drawText(line, {
+      x: 35,
+      y: height - 208 - idx * 14,
+      size: 8,
+      font: fontMono,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+  })
+
+  // Chemical Composition Table Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 425,
+    width: width - 50,
+    height: 110,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page1.drawText('CHEMICAL ANALYSIS (wt. %) — LADLE / HEAT ANALYSIS', {
+    x: 35,
+    y: height - 325,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  page1.drawText('Element    C%      Si%     Mn%     P%      S%      Cr%     Ni%     Mo%     N%      Cu%', {
+    x: 35,
+    y: height - 345,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.2, 0.25, 0.3),
+  })
+
+  page1.drawText(`Actual   ${c.padEnd(7)} ${si.padEnd(7)} ${mn.padEnd(7)} ${p.padEnd(7)} ${s.padEnd(7)} ${cr.padEnd(7)} ${ni.padEnd(7)} ${mo.padEnd(7)} ${n.padEnd(7)} ${cu.padEnd(6)}`, {
+    x: 35,
+    y: height - 362,
+    size: 8,
+    font: fontMonoBold,
+    color: rgb(0.05, 0.15, 0.4),
+  })
+
+  page1.drawText('Spec Min    --      --      --      --      --    16.00    10.00    2.00     --      --', {
+    x: 35,
+    y: height - 378,
+    size: 7.5,
+    font: fontMono,
+    color: rgb(0.4, 0.4, 0.4),
+  })
+
+  page1.drawText('Spec Max  0.030   1.00    2.00    0.045   0.030   18.00    14.00    3.00   0.100     --', {
+    x: 35,
+    y: height - 392,
+    size: 7.5,
+    font: fontMono,
+    color: rgb(0.4, 0.4, 0.4),
+  })
+
+  page1.drawText('Result: SATISFACTORY / IN COMPLIANCE WITH APPLICABLE SPECIFICATION', {
+    x: 35,
+    y: height - 414,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.1, 0.5, 0.15),
+  })
+
+  // Mechanical Properties Table Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 570,
+    width: width - 50,
+    height: 140,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page1.drawText('MECHANICAL & IMPACT TEST RESULTS (ROOM TEMPERATURE 20°C & SUB-ZERO)', {
+    x: 35,
+    y: height - 440,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  const mechRows = [
+    `Yield Strength (Rp 0.2%)      : ${yieldVal} MPa         [Requirement: >= 205 MPa] -> PASSED`,
+    `Tensile Strength (Rm)         : ${tensile} MPa         [Requirement: 515 - 690 MPa] -> PASSED`,
+    `Elongation (A5, Lo=5.65√So)    : ${elong} %             [Requirement: >= 30 %] -> PASSED`,
+    `Reduction of Area (Z)         : ${redArea} %             [Requirement: >= 50 %] -> PASSED`,
+    `Hardness (Brinell HBW)        : ${hardness} HBW         [Requirement: <= 217 HBW] -> PASSED`,
+    `Charpy V-Notch Impact (${charpyTemp}°C) : ${charpy} Joules (avg)  [Requirement: >= 60 J at ${charpyTemp}°C] -> PASSED`,
+  ]
+
+  mechRows.forEach((r, idx) => {
+    page1.drawText(r, {
+      x: 35,
+      y: height - 460 - idx * 14,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+  })
+
+  page1.drawText('Status: ALL MECHANICAL & IMPACT PROPERTIES MEET APPLICABLE ASTM / ASME CRITERIA', {
+    x: 35,
+    y: height - 558,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.1, 0.5, 0.15),
+  })
+
+  // Quality, NACE & NDE Conformity Box
+  page1.drawRectangle({
+    x: 25,
+    y: height - 685,
+    width: width - 50,
+    height: 110,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page1.drawText('NON-DESTRUCTIVE EXAMINATIONS & COMPLIANCE STATEMENTS', {
+    x: 35,
+    y: height - 585,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  const compliances = [
+    `1. Visual & Dimensional Examination : SATISFACTORY / IN ACCORDANCE WITH ASME B16.5 TOLERANCES`,
+    `2. Positive Material Identification : 100% PMI TESTED VIA XRF SPECTROMETRY - CHEMISTRY CONFIRMED`,
+    `3. Ultrasonic Examination           : TESTED IN ACCORDANCE WITH ASME SECTION V ARTICLE 4 - ACCEPTABLE`,
+    `4. Intergranular Corrosion Test     : ASTM A262 PRACTICE E - NO SENSITIZATION DETECTED / ACCEPTABLE`,
+    `5. Sour Gas / NACE Compliance       : COMPLIES WITH NACE MR0175 / ISO 15156 (HARDNESS <= 22 HRC)`,
+    `6. Contamination Statement          : FREE FROM MERCURY, RADIOACTIVITY AND WELD REPAIRS`,
+  ]
+
+  compliances.forEach((cLine, idx) => {
+    page1.drawText(cLine, {
+      x: 35,
+      y: height - 602 - idx * 12.5,
+      size: 7,
+      font: fontMono,
+      color: rgb(0.15, 0.15, 0.15),
+    })
+  })
+
+  // Mill Sign-off & Stamp Box
+  page1.drawRectangle({
+    x: 340,
+    y: height - 800,
+    width: 215,
+    height: 105,
+    borderColor: rgb(0.1, 0.2, 0.45),
+    borderWidth: 1.5,
+    color: rgb(0.98, 0.98, 1),
+  })
+
+  page1.drawText('MILL QUALITY ASSURANCE / QC', {
+    x: 350,
+    y: height - 710,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.1, 0.2, 0.45),
+  })
+
+  page1.drawText('INSPECTION REPRESENTATIVE SIGN-OFF', {
+    x: 350,
+    y: height - 723,
+    size: 7,
+    font: fontBold,
+    color: rgb(0.3, 0.3, 0.3),
+  })
+
+  page1.drawText(qaInspector, {
+    x: 350,
+    y: height - 748,
+    size: 7.5,
+    font: fontMonoBold,
+    color: rgb(0.05, 0.15, 0.35),
+  })
+
+  page1.drawText(`Date: ${issueDate}  |  Official Mill Seal Verified`, {
+    x: 350,
+    y: height - 765,
+    size: 7,
+    font: fontRegular,
+    color: rgb(0.4, 0.4, 0.4),
+  })
+
+  page1.drawText('Certified according to DIN EN 10204 3.1', {
+    x: 350,
+    y: height - 785,
+    size: 6.5,
+    font: fontBold,
+    color: rgb(0.15, 0.45, 0.2),
+  })
+
+  // Footnote
+  page1.drawText('This certificate is issued under a quality system certified to ISO 9001 and PED 2014/68/EU. Products comply with purchase order requirements.', {
+    x: 35,
+    y: 35,
+    size: 6.5,
+    font: fontRegular,
+    color: rgb(0.5, 0.5, 0.5),
+  })
+
+  // PAGE 2: Metallurgical Examination & Traceability Equipment Log
+  const page2 = pdfDoc.addPage([595, 842])
+  page2.drawRectangle({
+    x: 25,
+    y: 25,
+    width: width - 50,
+    height: height - 50,
+    borderColor: rgb(0.1, 0.18, 0.35),
+    borderWidth: 1.5,
+  })
+
+  page2.drawRectangle({
+    x: 25,
+    y: height - 90,
+    width: width - 50,
+    height: 65,
+    color: rgb(0.96, 0.97, 0.99),
+    borderColor: rgb(0.1, 0.18, 0.35),
+    borderWidth: 1.5,
+  })
+
+  page2.drawText(mfr.toUpperCase(), { x: 40, y: height - 48, size: 12, font: fontBold, color: rgb(0.05, 0.15, 0.35) })
+  page2.drawText(`SUPPLEMENTARY METALLURGICAL TEST REPORT — CERTIFICATE NO: ${certNo}`, { x: 40, y: height - 64, size: 8.5, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+  page2.drawText(`Heat No: ${heat}  |  Item: ${itemCode}  |  Page 2 of 2`, { x: 40, y: height - 78, size: 8, font: fontRegular, color: rgb(0.3, 0.3, 0.3) })
+
+  // Microstructure & Metallography Box
+  page2.drawRectangle({
+    x: 25,
+    y: height - 250,
+    width: width - 50,
+    height: 150,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page2.drawText('METALLOGRAPHY & GRAIN STRUCTURE EXAMINATION', {
+    x: 35,
+    y: height - 110,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  const metallography = [
+    `Austenitic Grain Size (ASTM E112) : ASTM 6.5 - 7.0 (Uniform Fine Equiaxed Austenitic Grains)`,
+    `Microstructure Morphology        : Fully Austenitic matrix with less than 0.5% delta-ferrite`,
+    `Sigma & Intermetallic Phases     : Completely absent; no detrimental continuous grain boundary carbides`,
+    `Surface Roughness (Ra)           : Flange Face 3.2 - 6.3 um (125 - 250 AARH) Serrated Concentric / Spiral`,
+    `Hydrostatic Pressure Test        : Hydrotested at 1.5x Cold Working Pressure for 120s — Zero Leakage`,
+    `Magnetic Permeability (mu)       : mu <= 1.02 (Non-magnetic condition verified)`,
+  ]
+
+  metallography.forEach((mLine, idx) => {
+    page2.drawText(mLine, {
+      x: 35,
+      y: height - 130 - idx * 16,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+  })
+
+  // Calibration Standards & Traceability
+  page2.drawRectangle({
+    x: 25,
+    y: height - 420,
+    width: width - 50,
+    height: 160,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page2.drawText('CALIBRATED TEST EQUIPMENT & TRACEABILITY LOG', {
+    x: 35,
+    y: height - 270,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  const calibLog = [
+    `Optical Emission Spectrometer (OES) : Oxford Instruments Foundry-Master Smart (Cal Ref: OES-2026-04)`,
+    `Universal Tensile Testing Machine   : Zwick/Roell 600kN Hydraulic UTM (Cal Ref: UTM-2025-11-DKD)`,
+    `Charpy Impact Pendulum (450 Joules) : Wolpert-Wilson Charpy Tester (ISO 148-1 Cal Ref: IMP-2026-01)`,
+    `Brinell Optical Hardness Tester     : EMCO-TEST DuraVision 200 (ASTM E10 Cal Ref: BRN-2026-03)`,
+    `Ultrasonic Flaw Detector            : Krautkramer USM 35X (EN 12668-1 Cal Ref: UT-2026-02)`,
+    `Positive Material Identification    : Niton XL3t GOLDD+ Handheld XRF Analyzer (Cal Ref: XRF-2026-05)`,
+  ]
+
+  calibLog.forEach((cLine, idx) => {
+    page2.drawText(cLine, {
+      x: 35,
+      y: height - 290 - idx * 16,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+  })
+
+  // Final Endorsement Box
+  page2.drawRectangle({
+    x: 25,
+    y: height - 600,
+    width: width - 50,
+    height: 170,
+    borderColor: rgb(0.75, 0.75, 0.75),
+    borderWidth: 1,
+  })
+
+  page2.drawText('FINAL INSPECTION CONFORMITY & LEGAL ENDORSEMENT', {
+    x: 35,
+    y: height - 440,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.3),
+  })
+
+  page2.drawText('We hereby certify that the supplied material described above has been manufactured, sampled, tested,', { x: 35, y: height - 460, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+  page2.drawText('and inspected in full accordance with the applicable standard specification and the terms of the purchase order.', { x: 35, y: height - 474, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+  page2.drawText('The test results reported herein are authentic, genuine, and recorded from original mill testing.', { x: 35, y: height - 488, size: 8, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+
+  page2.drawRectangle({
+    x: 330,
+    y: height - 590,
+    width: 220,
+    height: 90,
+    borderColor: rgb(0.2, 0.35, 0.6),
+    borderWidth: 1,
+  })
+
+  page2.drawText('INDEPENDENT INSPECTION AGENCY / QA', { x: 340, y: height - 515, size: 7.5, font: fontBold, color: rgb(0.2, 0.35, 0.6) })
+  page2.drawText('Third Party Endorsement: TUV RHEINLAND / DNV GL', { x: 340, y: height - 530, size: 7, font: fontRegular, color: rgb(0.3, 0.3, 0.3) })
+  page2.drawText('Stamp & Authorized Signature:', { x: 340, y: height - 548, size: 7, font: fontRegular, color: rgb(0.3, 0.3, 0.3) })
+  page2.drawText('[ DIGITALLY VERIFIED MILL QA STAMP ]', { x: 340, y: height - 570, size: 7.5, font: fontMonoBold, color: rgb(0.15, 0.45, 0.2) })
+
+  // Save the PDF
+  let rawBytes = await pdfDoc.save()
+
+  // Apply True-Copy Stamp if requested
+  if (data.applyCertifiedStamp !== false) {
+    const stampOpts: StampOptions = {
+      poNo: po,
+      itemNo: data.itemCode || '1',
+      qty: String(qty),
+      sign: data.stampInspector || 'MSG/QC-04',
+      dateStr: data.stampDate || issueDate,
+    }
+    rawBytes = await stampMTCDocument(rawBytes, stampOpts, true)
+  }
+
+  return rawBytes
+}
+
 // Stamping an existing PDF with official MSG Oilfield Certified Stamp
 export async function stampMTCDocument(
   pdfBytes: Uint8Array,

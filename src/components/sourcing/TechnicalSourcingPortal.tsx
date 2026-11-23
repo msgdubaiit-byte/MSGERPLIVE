@@ -22,9 +22,13 @@ import {
   Eye,
   Download,
   Wrench,
+  ShoppingCart,
+  LayoutGrid,
 } from 'lucide-react'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDeliverablesPreviewModal'
 import { LocalPurchaseAllocationModal } from './LocalPurchaseAllocationModal'
+import { InPagePurchaseOrderTab } from './InPagePurchaseOrderTab'
+import { InPageCertificateTab } from './InPageCertificateTab'
 import {
   SourcingWorksheetData,
   SourcingLineItem,
@@ -52,9 +56,27 @@ import {
 } from '../../services/stickerEngine'
 import { parseCustomerSOPDF } from '../../services/pdfEngine'
 import { db } from '../../services/db'
+import { SalesOrder } from '../../types'
+
+export type PortalActiveTab = 'worksheet' | 'purchase_order' | 'create_certificate'
 
 export const TechnicalSourcingPortal: React.FC = () => {
-  const existingOrders = db.getOrders()
+  // Database orders subscription
+  const [orders, setOrders] = useState<SalesOrder[]>(() => db.getOrders())
+  useEffect(() => {
+    const unsub = db.subscribe(() => {
+      setOrders([...db.getOrders()])
+    })
+    return () => unsub()
+  }, [])
+
+  // Deduplicate orders by id / so_number
+  const uniqueOrders = Array.from(new Map(orders.map(o => [o.id || o.so_number, o])).values())
+
+  // In-Page Navigation State
+  const [activePortalTab, setActivePortalTab] = useState<PortalActiveTab>('worksheet')
+  const [activeCertItemId, setActiveCertItemId] = useState<string>('')
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
 
   // Worksheet State
   const [clientName, setClientName] = useState('')
@@ -78,7 +100,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [isLocalPurchaseModalOpen, setIsLocalPurchaseModalOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
   const [draftsList, setDraftsList] = useState<SourcingWorksheetData[]>([])
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => existingOrders[0]?.id || '')
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => uniqueOrders[0]?.id || '')
 
   const handleOpenPreview = (tab: SourcingPreviewTab) => {
     setPreviewTab(tab)
@@ -87,11 +109,42 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
   useEffect(() => {
     setDraftsList(getSourcingDrafts())
-    const orders = db.getOrders()
-    if (orders.length > 0) {
-      handleLoadFromOrder(orders[0].id)
+    const initialOrders = db.getOrders()
+    if (initialOrders.length > 0) {
+      handleLoadFromOrder(initialOrders[0].id)
     }
   }, [])
+
+  // Checkbox helpers
+  const toggleSelectItem = (id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedItemIds(new Set(items.map(it => it.id)))
+    } else {
+      setSelectedItemIds(new Set())
+    }
+  }
+
+  const handleConvertToPO = () => {
+    if (selectedItemIds.size === 0 && items.length > 0) {
+      setSelectedItemIds(new Set(items.map(it => it.id)))
+    }
+    setActivePortalTab('purchase_order')
+  }
+
+  const handleOpenCreateCertificate = (targetId?: string) => {
+    const idToCert = targetId || Array.from(selectedItemIds)[0] || items[0]?.id || ''
+    setActiveCertItemId(idToCert)
+    setActivePortalTab('create_certificate')
+  }
 
   // Auto-clear notice after 4 seconds
   useEffect(() => {
@@ -174,7 +227,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
   // Load from existing Sales Order
   const handleLoadFromOrder = (orderId: string) => {
-    const order = existingOrders.find(o => o.id === orderId)
+    const order = orders.find(o => o.id === orderId) || uniqueOrders.find(o => o.id === orderId)
     if (!order) return
 
     setSelectedOrderId(orderId)
@@ -458,26 +511,35 @@ export const TechnicalSourcingPortal: React.FC = () => {
   // Auto-Detect All Missing
   const handleAutoDetectAll = () => {
     const updated = items.map(it => {
-      const make = it.make || autoDetectMake(it.description) || ''
-      const coo = it.country_of_origin || (make ? autoDetectCountryOfOrigin(make, it.description, it.remarks) : '')
-      const hs = it.hs_code || autoDetectHSCode(it.description)
+      // Preserve existing make and country of origin if already set
+      const existingMake = (it.make || '').trim()
+      const make = existingMake && existingMake.toUpperCase() !== 'MAKE'
+        ? existingMake
+        : (autoDetectMake(it.description) || '')
+
+      const existingCoo = (it.country_of_origin || '').trim()
+      const coo = existingCoo
+        ? existingCoo
+        : (make ? autoDetectCountryOfOrigin(make, it.description, it.remarks) : '')
+
+      const hs = (it.hs_code || '').trim() ? it.hs_code : autoDetectHSCode(it.description)
       const unitWt = it.unit_weight_kg || estimateUnitWeight(it.description, it.uom)
       const isMach = isMeaningfulItem({ description: it.description, remarks: it.remarks })
 
-        const numQ = extractQtyNumber(it.qty)
-        return {
-          ...it,
-          make,
-          country_of_origin: coo,
-          hs_code: hs,
-          unit_weight_kg: unitWt,
-          total_net_weight_kg: Math.round(numQ * unitWt * 100) / 100,
-          total_gross_weight_kg: Math.round(numQ * unitWt * 1.15 * 100) / 100,
-          is_machined: isMach,
-        }
+      const numQ = extractQtyNumber(it.qty)
+      return {
+        ...it,
+        make,
+        country_of_origin: coo,
+        hs_code: hs,
+        unit_weight_kg: unitWt,
+        total_net_weight_kg: Math.round(numQ * unitWt * 100) / 100,
+        total_gross_weight_kg: Math.round(numQ * unitWt * 1.15 * 100) / 100,
+        is_machined: isMach,
+      }
     })
     setItems(updated)
-    setStatusNotice('Auto-detected MAKE, Country of Origin, HS Codes, and Weights for all items!')
+    setStatusNotice('Auto-detected missing specifications while preserving all your custom Makes and Origins!')
   }
 
   // Grand Totals
@@ -519,7 +581,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }}
                 className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[220px] truncate"
               >
-                {existingOrders.map(o => (
+                {uniqueOrders.map(o => (
                   <option key={o.id} value={o.id} className="bg-slate-900 text-white">
                     {o.so_number} - {o.po_number} ({o.customer_name})
                   </option>
@@ -595,7 +657,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
             }}
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800 bg-emerald-50/50 border-emerald-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           >
-            {existingOrders.map(o => (
+            {uniqueOrders.map(o => (
               <option key={o.id} value={o.id}>
                 {o.so_number} - {o.customer_name} ({o.items.length} items)
               </option>
@@ -645,6 +707,160 @@ export const TechnicalSourcingPortal: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Portal In-Page Tab Navigation Bar */}
+      <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('worksheet')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+              activePortalTab === 'worksheet'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span>Sourcing Worksheet</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full ${activePortalTab === 'worksheet' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700 font-mono'}`}>
+              {items.length} lines
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleConvertToPO}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+              activePortalTab === 'purchase_order'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+            }`}
+          >
+            <ShoppingCart className="h-4 w-4" />
+            <span>Purchase Order / Local PO</span>
+            {selectedItemIds.size > 0 && (
+              <span className="bg-amber-500 text-white text-[10px] font-mono px-2 py-0.5 rounded-full">
+                {selectedItemIds.size} selected
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenCreateCertificate()}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+              activePortalTab === 'create_certificate'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+            }`}
+          >
+            <FileCheck2 className="h-4 w-4" />
+            <span>Create Certificate (EN 10204 3.1)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenPreview('client')}
+            className="px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 transition-all cursor-pointer"
+          >
+            <Eye className="h-4 w-4" />
+            <span>Preview Deliverables</span>
+          </button>
+        </div>
+
+        {/* Quick Context Action Buttons */}
+        {activePortalTab === 'worksheet' && (
+          <div className="flex items-center space-x-2">
+            {selectedItemIds.size > 0 ? (
+              <div className="flex items-center space-x-2 animate-fade-in bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                <span className="text-xs font-bold text-amber-900">
+                  {selectedItemIds.size} item(s) selected
+                </span>
+                <button
+                  type="button"
+                  onClick={handleConvertToPO}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  <span>Convert to PO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCreateCertificate()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                >
+                  <FileCheck2 className="h-3 w-3" />
+                  <span>Create Cert</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleConvertToPO}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                  title="Create Purchase Order for lines"
+                >
+                  <ShoppingCart className="h-3.5 w-3.5" />
+                  <span>Create Purchase Order</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCreateCertificate()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                  title="Create EN 10204 3.1 Mill Certificate"
+                >
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                  <span>Create Certificate</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* In-Page PO Tab View */}
+      {activePortalTab === 'purchase_order' && (
+        <InPagePurchaseOrderTab
+          worksheetData={currentWorksheetData}
+          selectedItemIds={selectedItemIds}
+          onApply={updatedItems => {
+            setItems(updatedItems)
+            setActivePortalTab('worksheet')
+          }}
+          onBack={() => setActivePortalTab('worksheet')}
+          showToast={msg => setStatusNotice(msg)}
+        />
+      )}
+
+      {/* In-Page Certificate Studio View */}
+      {activePortalTab === 'create_certificate' && (
+        <InPageCertificateTab
+          worksheetData={currentWorksheetData}
+          activeItemId={activeCertItemId}
+          onApply={(itemId, certDetails) => {
+            setItems(prev =>
+              prev.map(it => {
+                if (it.id !== itemId) return it
+                return {
+                  ...it,
+                  heat_number: certDetails.heat_number,
+                  certificate_number: certDetails.certificate_number,
+                  make: certDetails.make || it.make,
+                  country_of_origin: certDetails.country_of_origin || it.country_of_origin,
+                }
+              })
+            )
+            setActivePortalTab('worksheet')
+          }}
+          onBack={() => setActivePortalTab('worksheet')}
+          showToast={msg => setStatusNotice(msg)}
+        />
+      )}
+
+      {/* Worksheet Tab Content */}
+      {activePortalTab === 'worksheet' && (
+        <>
 
       {/* 4 Action Export Buttons Banner */}
       <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -911,6 +1127,24 @@ export const TechnicalSourcingPortal: React.FC = () => {
             <div className="flex items-center space-x-1.5 pl-2 border-l border-slate-300">
               <button
                 type="button"
+                onClick={handleConvertToPO}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                title="Convert selected items into a Purchase Order"
+              >
+                <ShoppingCart className="h-3 w-3" />
+                <span>Purchase Order</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenCreateCertificate()}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                title="Create EN 10204 3.1 Mill Certificate"
+              >
+                <FileCheck2 className="h-3 w-3" />
+                <span>Create Cert</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   const val = prompt('Enter Supplier PO Number to apply to all items:', '')
                   if (val && val.trim()) {
@@ -969,6 +1203,15 @@ export const TechnicalSourcingPortal: React.FC = () => {
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-200">
               <tr>
+                <th className="p-2.5 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={items.length > 0 && items.every(it => selectedItemIds.has(it.id))}
+                    onChange={e => toggleSelectAll(e.target.checked)}
+                    className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    title="Select all items"
+                  />
+                </th>
                 <th className="p-2.5 w-12 text-center">SL</th>
                 <th className="p-2.5 w-20">PO Item</th>
                 <th className="p-2.5 min-w-[260px]">Description &amp; Machining Spec</th>
@@ -996,9 +1239,21 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 <tr
                   key={it.id}
                   className={`hover:bg-slate-50/70 transition-colors ${
+                    selectedItemIds.has(it.id) ? 'bg-amber-50/30' : ''
+                  } ${
                     it.is_machined ? 'bg-amber-50/40' : ''
                   }`}
                 >
+                  {/* Select Checkbox */}
+                  <td className="p-2.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedItemIds.has(it.id)}
+                      onChange={() => toggleSelectItem(it.id)}
+                      className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                  </td>
+
                   {/* SL NO */}
                   <td className="p-2.5 text-center font-bold text-slate-700">
                     {it.sl_no}
@@ -1168,9 +1423,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     </span>
                   </td>
 
-                  {/* Actions (Split, Delete) */}
+                  {/* Actions (Cert, Split, Delete) */}
                   <td className="p-2.5 text-center">
                     <div className="flex items-center justify-center space-x-1">
+                      <button
+                        onClick={() => handleOpenCreateCertificate(it.id)}
+                        className="p-1 rounded text-indigo-600 hover:bg-indigo-50"
+                        title="Create & customize EN 10204 3.1 Certificate for this item"
+                      >
+                        <FileCheck2 className="h-4 w-4" />
+                      </button>
+
                       <button
                         onClick={() => handleSplitItem(idx)}
                         className="p-1 rounded text-orange-600 hover:bg-orange-50"
@@ -1194,6 +1457,8 @@ export const TechnicalSourcingPortal: React.FC = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* Drafts Modal */}
       {isDraftsModalOpen && (

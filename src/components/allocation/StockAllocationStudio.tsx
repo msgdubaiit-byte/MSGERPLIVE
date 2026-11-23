@@ -42,9 +42,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
   const allocatableOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Dispatched')
   const [selectedOrderId, setSelectedOrderId] = useState<string>(() => preselectedOrderId || allocatableOrders[0]?.id || '')
 
-  // Critical fix: Keep selectedOrderId strictly in sync whenever preselectedOrderId prop changes
+  // Keep selectedOrderId strictly in sync only when preselectedOrderId prop itself changes
+  const lastPreselectedPropRef = React.useRef(preselectedOrderId)
   useEffect(() => {
-    if (preselectedOrderId && preselectedOrderId !== selectedOrderId) {
+    if (preselectedOrderId && preselectedOrderId !== lastPreselectedPropRef.current) {
+      lastPreselectedPropRef.current = preselectedOrderId
       setSelectedOrderId(preselectedOrderId)
       const targetOrd = orders.find(o => o.id === preselectedOrderId)
       if (targetOrd && targetOrd.items[0]) {
