@@ -14,6 +14,12 @@ export interface StampOptions {
   qty: string | number
   sign?: string
   dateStr?: string
+  make?: string
+  heatNo?: string
+  certificateRef?: string
+  fileName?: string
+  description?: string
+  isBenkan?: boolean
 }
 
 export async function createSampleMillCertificate(
@@ -831,16 +837,43 @@ export async function stampMTCDocument(
   const redInk = rgb(0.85, 0.05, 0.05)
   const signInk = rgb(0.05, 0.15, 0.5)
 
+  // Benkan Certificate Detection: Check PDF metadata, options, make, certificateRef, and heat patterns
+  const docCreator = (pdfDoc.getCreator() || '').toUpperCase()
+  const docTitle = (pdfDoc.getTitle() || '').toUpperCase()
+  const docSubject = (pdfDoc.getSubject() || '').toUpperCase()
+  const docAuthor = (pdfDoc.getAuthor() || '').toUpperCase()
+
+  const isBenkan = Boolean(
+    options.isBenkan ||
+    docCreator.includes('BENKAN') ||
+    docTitle.includes('BENKAN') ||
+    docSubject.includes('BENKAN') ||
+    docAuthor.includes('BENKAN') ||
+    (docAuthor.startsWith('QA-') && !docAuthor.includes('MSG')) ||
+    options.make?.toUpperCase().includes('BENKAN') ||
+    options.certificateRef?.toUpperCase().includes('BENKAN') ||
+    options.fileName?.toUpperCase().includes('BENKAN') ||
+    options.description?.toUpperCase().includes('BENKAN') ||
+    (options.heatNo && /^(68C|68[0-9]|65P|65N|65[0-9])/i.test(options.heatNo.trim()))
+  )
+
   for (let p = 0; p < pages.length; p++) {
     const page = pages[p]
     const { width, height } = page.getSize()
+    const isLandscape = width > height
 
     if (p === 0) {
       // PAGE 1: Official Rectangular "VERIFIED TRUE COPY" with Full Details
       const stampW = Math.min(210, width * 0.42)
       const stampH = stampW * (424 / 843)
-      const stampX = width - stampW - Math.min(35, width * 0.05)
-      const stampY = Math.min(55, height * 0.08)
+      let stampX = width - stampW - Math.min(35, width * 0.05)
+      let stampY = Math.min(55, height * 0.08)
+
+      // Center-right positioning for Benkan: leaves QA signature clean, sits in dedicated open box
+      if (isBenkan) {
+        stampX = width - stampW - 45
+        stampY = isLandscape ? 295 : Math.round(height * 0.48)
+      }
       const scale = stampW / 210
 
       if (sealImg) {
@@ -914,8 +947,13 @@ export async function stampMTCDocument(
     } else {
       // SUBSEQUENT PAGES (Page 2, 3...): Official Round Seal with "VERIFIED TRUE COPY" & Sign Line
       const roundSize = Math.min(130, width * 0.25, height * 0.22)
-      const roundX = width - roundSize - Math.min(35, width * 0.05)
-      const roundY = Math.min(50, height * 0.07)
+      let roundX = width - roundSize - Math.min(35, width * 0.05)
+      let roundY = Math.min(50, height * 0.07)
+
+      if (isBenkan) {
+        roundX = width - roundSize - 45
+        roundY = isLandscape ? 295 : Math.round(height * 0.48)
+      }
 
       if (roundSealImg) {
         page.drawImage(roundSealImg, {
@@ -1168,6 +1206,8 @@ export async function mergeSalesOrderMTCPackage(
         qty: certItem.qty,
         sign: 'MSG/QC-04',
         dateStr: new Date().toISOString().substring(0, 10).toUpperCase(),
+        heatNo: certItem.heatNumber,
+        certificateRef: certRef,
       }, true)
 
       const certDoc = await PDFDocument.load(stampedBytes)

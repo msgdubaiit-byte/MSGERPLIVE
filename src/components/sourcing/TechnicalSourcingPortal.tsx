@@ -29,6 +29,7 @@ import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDelive
 import { LocalPurchaseAllocationModal } from './LocalPurchaseAllocationModal'
 import { InPagePurchaseOrderTab } from './InPagePurchaseOrderTab'
 import { InPageCertificateTab } from './InPageCertificateTab'
+import { HeatNumberCombobox } from './HeatNumberCombobox'
 import {
   SourcingWorksheetData,
   SourcingLineItem,
@@ -1406,22 +1407,25 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   </td>
 
                   {/* Heat Number */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      placeholder="e.g. 68C20M091"
+                  <td className="p-2.5 min-w-[150px]">
+                    <HeatNumberCombobox
                       value={it.heat_number}
-                      onClick={() => {
-                        if (!it.heat_number) {
-                          const combined = `${it.description || ''} ${it.remarks || ''}`
-                          const heatMatch = combined.match(/\bHEAT\s*(?:NUMBER|NO|#)?\s*[:.-]?\s*([A-Za-z0-9_\-\.\/]+)/i)
-                          if (heatMatch && heatMatch[1] && !['NO', 'NUMBER', 'N/A', 'NA', '-', ''].includes(heatMatch[1].toUpperCase())) {
-                            handleUpdateItem(it.id, 'heat_number', heatMatch[1].trim())
+                      description={it.description}
+                      extraLots={db.getLots()}
+                      onChange={(heat, meta) => {
+                        handleUpdateItem(it.id, 'heat_number', heat)
+                        if (meta?.fileName) {
+                          handleUpdateItem(it.id, 'certificate_number', meta.fileName)
+                        }
+                        if (meta?.isBenkan) {
+                          if (!it.make || it.make.toUpperCase().includes('BENKAN') || it.make === 'MSG STOCK') {
+                            handleUpdateItem(it.id, 'make', 'BENKAN THAILAND CORP')
+                          }
+                          if (!it.country_of_origin || it.country_of_origin === 'UAE') {
+                            handleUpdateItem(it.id, 'country_of_origin', 'Thailand')
                           }
                         }
                       }}
-                      onChange={e => handleUpdateItem(it.id, 'heat_number', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] font-bold text-red-700 bg-red-50/40"
                     />
                   </td>
 

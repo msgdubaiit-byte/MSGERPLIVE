@@ -47,6 +47,7 @@ import {
   ManifestCertificate
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
+import { HeatNumberCombobox } from './HeatNumberCombobox'
 
 interface InPagePurchaseOrderTabProps {
   worksheetData: SourcingWorksheetData
@@ -509,6 +510,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
             qty: `${r.poQty} ${r.uom}`,
             sign: inspectorName,
             dateStr: stampDate,
+            make: r.make,
+            heatNo: r.heat_number,
+            certificateRef: r.certificate_number,
+            description: r.description,
           },
           true
         )
@@ -544,6 +549,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
             qty: `${r.poQty} ${r.uom}`,
             sign: inspectorName,
             dateStr: stampDate,
+            make: r.make,
+            heatNo: r.heat_number,
+            certificateRef: r.certificate_number,
+            description: r.description,
           },
           true
         )
@@ -580,6 +589,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
                 qty: `${it.poQty} ${it.uom}`,
                 sign: inspectorName,
                 dateStr: stampDate,
+                make: it.make,
+                heatNo: it.heat_number,
+                certificateRef: it.certificate_number,
+                description: it.description,
               },
               true
             )
@@ -627,6 +640,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
                 qty: `${it.poQty} ${it.uom}`,
                 sign: inspectorName,
                 dateStr: stampDate,
+                make: it.make,
+                heatNo: it.heat_number,
+                certificateRef: it.certificate_number,
+                description: it.description,
               },
               true
             )
@@ -1027,14 +1044,26 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
                     </td>
 
                     {/* Heat Number */}
-                    <td className="p-2.5">
-                      <input
-                        type="text"
-                        placeholder="e.g. 68C01M04"
+                    <td className="p-2.5 min-w-[140px]">
+                      <HeatNumberCombobox
                         value={r.heat_number}
+                        description={r.description}
+                        extraLots={db.getLots()}
                         disabled={!r.included}
-                        onChange={e => handleUpdateItem(r.id, 'heat_number', e.target.value)}
-                        className="w-full border border-red-200 rounded px-1.5 py-1 font-mono text-[11px] font-bold text-red-700 bg-red-50/30"
+                        onChange={(heat, meta) => {
+                          handleUpdateItem(r.id, 'heat_number', heat)
+                          if (meta?.fileName) {
+                            handleUpdateItem(r.id, 'certificate_number', meta.fileName)
+                          }
+                          if (meta?.isBenkan) {
+                            if (!r.make || r.make.toUpperCase().includes('BENKAN')) {
+                              handleUpdateItem(r.id, 'make', 'BENKAN THAILAND CORP')
+                            }
+                            if (!r.countryOfOrigin || r.countryOfOrigin === 'UAE') {
+                              handleUpdateItem(r.id, 'countryOfOrigin', 'Thailand')
+                            }
+                          }
+                        }}
                       />
                     </td>
 

@@ -212,3 +212,87 @@ export function extractTextAndHeatsFromPDFBytes(
 
   return {}
 }
+
+export interface VaultHeatOption {
+  heatNumber: string
+  fileName: string
+  label: string
+  isBenkan: boolean
+  matched?: boolean
+  make?: string
+  countryOfOrigin?: string
+}
+
+export async function getAllVaultHeatOptions(
+  itemDescription?: string,
+  extraLots?: { heat_number: string; lot_no?: string; item_code?: string }[]
+): Promise<VaultHeatOption[]> {
+  const manifest = await getVaultManifest()
+  const options: VaultHeatOption[] = []
+  const seenHeats = new Set<string>()
+
+  const descWords = itemDescription
+    ? itemDescription
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter(w => w.length >= 2 && !['THE', 'FOR', 'AND', 'WITH', 'DEG', 'INCH'].includes(w))
+    : []
+
+  for (const m of manifest) {
+    const rawHeat = (m.heatNumber || '').trim()
+    if (!rawHeat || seenHeats.has(rawHeat.toUpperCase())) continue
+    seenHeats.add(rawHeat.toUpperCase())
+
+    const upperFile = m.fileName.toUpperCase()
+    const isBenkan = Boolean(
+      upperFile.includes('BENKAN') ||
+      /^(68C|68[0-9]|65P|65N|65[0-9])/i.test(rawHeat)
+    )
+
+    let matchCount = 0
+    for (const w of descWords) {
+      if (upperFile.includes(w)) matchCount++
+    }
+
+    const shortFile = m.fileName.replace(/\.pdf$/i, '').replace(/^[0-9]+-/, '')
+    const displayLabel = `${rawHeat} — ${shortFile.length > 38 ? shortFile.substring(0, 35) + '...' : shortFile}${isBenkan ? ' [Benkan]' : ''}`
+
+    options.push({
+      heatNumber: rawHeat,
+      fileName: m.fileName,
+      label: displayLabel,
+      isBenkan,
+      matched: matchCount > 0,
+      make: isBenkan ? 'BENKAN THAILAND CORP' : undefined,
+      countryOfOrigin: isBenkan ? 'Thailand' : undefined,
+    })
+  }
+
+  // Include inventory lots if provided
+  if (extraLots && extraLots.length > 0) {
+    for (const lot of extraLots) {
+      const rawHeat = (lot.heat_number || '').trim()
+      if (!rawHeat || seenHeats.has(rawHeat.toUpperCase())) continue
+      seenHeats.add(rawHeat.toUpperCase())
+
+      options.push({
+        heatNumber: rawHeat,
+        fileName: '',
+        label: `${rawHeat} — Lot: ${lot.lot_no || lot.item_code || 'Stock'}`,
+        isBenkan: /^(68C|68[0-9]|65P|65N|65[0-9])/i.test(rawHeat),
+        matched: false,
+      })
+    }
+  }
+
+  // Sort: Matched first, then Benkan, then alphabetical
+  options.sort((a, b) => {
+    if (a.matched && !b.matched) return -1
+    if (!a.matched && b.matched) return 1
+    if (a.isBenkan && !b.isBenkan) return -1
+    if (!a.isBenkan && b.isBenkan) return 1
+    return a.heatNumber.localeCompare(b.heatNumber)
+  })
+
+  return options
+}

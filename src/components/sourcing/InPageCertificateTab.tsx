@@ -35,6 +35,7 @@ import {
   ManifestCertificate
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
+import { HeatNumberCombobox } from './HeatNumberCombobox'
 
 interface InPageCertificateTabProps {
   worksheetData: SourcingWorksheetData
@@ -155,6 +156,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
             qty: `${currentItem.qty} ${currentItem.uom}`,
             sign: inspectorName,
             dateStr: stampDate,
+            make: currentItem.make,
+            heatNo: currentItem.heat_number,
+            certificateRef: currentItem.certificate_number,
+            description: currentItem.description,
           },
           true
         )
@@ -311,6 +316,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
             qty: `${it.qty} ${it.uom}`,
             sign: inspectorName,
             dateStr: stampDate,
+            make: it.make,
+            heatNo: it.heat_number,
+            certificateRef: it.certificate_number,
+            description: it.description,
           },
           true
         )
@@ -347,6 +356,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 qty: `${it.qty} ${it.uom}`,
                 sign: inspectorName,
                 dateStr: stampDate,
+                make: it.make,
+                heatNo: it.heat_number,
+                certificateRef: it.certificate_number,
+                description: it.description,
               },
               true
             )
@@ -395,6 +408,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 qty: `${it.qty} ${it.uom}`,
                 sign: inspectorName,
                 dateStr: stampDate,
+                make: it.make,
+                heatNo: it.heat_number,
+                certificateRef: it.certificate_number,
+                description: it.description,
               },
               true
             )
@@ -653,19 +670,20 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                           {it.qty} {it.uom}
                         </td>
 
-                        {/* Heat Number (Editable) */}
-                        <td className="p-2.5" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="text"
+                        {/* Heat Number (Dropdown / Editable) */}
+                        <td className="p-2.5 min-w-[140px]" onClick={e => e.stopPropagation()}>
+                          <HeatNumberCombobox
                             value={it.heat_number || ''}
-                            onChange={e => {
+                            description={it.description}
+                            extraLots={db.getLots()}
+                            placeholder="Heat #"
+                            onChange={(heat, meta) => {
                               onApply(it.id, {
-                                heat_number: e.target.value,
-                                certificate_number: it.certificate_number || `MTC-${e.target.value}`,
+                                heat_number: heat,
+                                certificate_number: meta?.fileName || it.certificate_number || `MTC-${heat}`,
+                                ...(meta?.isBenkan ? { make: 'BENKAN THAILAND CORP', country_of_origin: 'Thailand' } : {})
                               })
                             }}
-                            placeholder="Heat #"
-                            className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] font-bold text-red-700 bg-red-50/40"
                           />
                         </td>
 
