@@ -168,7 +168,6 @@ const MainApp: React.FC = () => {
                 onSelectOrder={(ord) => {
                   setPreselectedAllocationOrderId(ord.id)
                   db.setActiveOrderId(ord.id)
-                  setActiveTab('allocation')
                 }}
                 onNavigateToAllocation={(orderId) => {
                   setPreselectedAllocationOrderId(orderId)

@@ -1763,23 +1763,41 @@ export async function parseCustomerSOPDF(file: File): Promise<{
 
   const combinedText = decodedLines.join('\n')
 
-  // 3. Detect Customer Name (Bill To)
-  let customerName = 'REI OIL & GAS PROCESS SERVICES L.L.C-AED'
-  if (/REI\s+OIL/i.test(combinedText)) {
-    customerName = 'REI OIL & GAS PROCESS SERVICES L.L.C-AED'
-  } else if (/Dubai\s+Petroleum/i.test(combinedText)) {
-    customerName = 'Dubai Petroleum Establishment'
-  } else if (/JSS\s*PIPES/i.test(combinedText)) {
-    customerName = 'JSS PIPES AND FITTINGS TRADING LLC'
+  // 3. Detect Customer Name (Bill To / Buyer / Company)
+  let customerName = 'Valued Client'
+  const billToMatch = combinedText.match(/(?:Bill\s*To|Buyer|Customer|Client|Sold\s*To|Invoice\s*To|Messrs\.?)[\s:]*[\r\n]+([^\r\n]{3,80})/i)
+  if (billToMatch && billToMatch[1] && !/order\s*date|msg\s*oilfield|date\b/i.test(billToMatch[1])) {
+    customerName = billToMatch[1].trim().replace(/^[:\-\s]+/, '')
   } else if (/Bill\s*To\s*[\r\n]+([^\r\n]{3,80})/i.test(combinedText)) {
     const match = combinedText.match(/Bill\s*To\s*[\r\n]+([^\r\n]{3,80})/i)
     if (match && match[1] && !match[1].toLowerCase().includes('order date')) {
       customerName = match[1].trim()
     }
+  } else if (/REI\s+OIL/i.test(combinedText)) {
+    customerName = 'REI OIL & GAS PROCESS SERVICES L.L.C-AED'
+  } else if (/Dubai\s+Petroleum/i.test(combinedText)) {
+    customerName = 'Dubai Petroleum Establishment'
+  } else if (/JSS\s*PIPES/i.test(combinedText)) {
+    customerName = 'JSS PIPES AND FITTINGS TRADING LLC'
   } else if (/Arabian\s+International/i.test(combinedText)) {
     customerName = 'Arabian International Special Technical Services L.L.C.'
   } else if (/adnoc/i.test(combinedText)) {
     customerName = 'ADNOC Offshore'
+  } else if (/McDermott/i.test(combinedText)) {
+    customerName = 'McDermott Middle East Inc'
+  } else if (/Petrofac/i.test(combinedText)) {
+    customerName = 'Petrofac International Ltd'
+  } else if (/Saipem/i.test(combinedText)) {
+    customerName = 'Saipem S.p.A.'
+  } else {
+    // If filename has a recognizable customer prefix e.g. "McDermott_PO.pdf"
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '')
+    const fileParts = nameWithoutExt.split(/[-_]+/)
+    if (fileParts.length > 1 && fileParts[0].length >= 3 && !/^(PO|SO|LPO|ORDER|MSG)$/i.test(fileParts[0])) {
+      customerName = fileParts[0].trim()
+    } else {
+      customerName = 'Valued Client'
+    }
   }
 
   // 4. Detect PO Number / Ref# and SO Number

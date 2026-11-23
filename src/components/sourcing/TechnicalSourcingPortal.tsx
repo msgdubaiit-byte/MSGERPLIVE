@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   FileSpreadsheet,
   FileDown,
@@ -98,6 +98,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [items, setItems] = useState<SourcingLineItem[]>([])
 
   // UI State
+  const pdfInputRef = useRef<HTMLInputElement>(null)
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -783,6 +784,23 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={handlePDFUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => pdfInputRef.current?.click()}
+              disabled={isUploading}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-md transition-all active:scale-95 disabled:opacity-50"
+              title="Upload Customer PO PDF directly into this worksheet"
+            >
+              <Upload className="h-4 w-4" />
+              <span>{isUploading ? 'Parsing PO...' : 'Upload PO (PDF)'}</span>
+            </button>
 
             <button
               onClick={handleSaveToSalesOrder}

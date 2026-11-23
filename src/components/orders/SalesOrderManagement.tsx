@@ -273,8 +273,6 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       setCustomerId('')
       setPoNumber('')
       setPoFile(null)
-      // Direct user straight to allocation
-      onNavigateToAllocation(res.order.id)
     } else {
       alert(res.message || 'Error creating sales order')
     }
@@ -482,10 +480,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       db.setActiveOrderId(res.order.id)
       localStorage.setItem('msg_sourcing_active_so_id', res.order.id)
       setOrders([...db.getOrders()])
-      alert(`Sales Order ${res.order.so_number} created successfully from customer PDF!`)
       setIsPdfModalOpen(false)
       setPdfParsedData(null)
-      onNavigateToAllocation(res.order.id)
     } else {
       alert(res.message || 'Error creating order from PDF')
     }
@@ -798,7 +794,8 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     })
 
     if (res.success && res.order) {
-      onNavigateToAllocation(res.order.id)
+      db.setActiveOrderId(res.order.id)
+      setOrders([...db.getOrders()])
     }
   }
 
