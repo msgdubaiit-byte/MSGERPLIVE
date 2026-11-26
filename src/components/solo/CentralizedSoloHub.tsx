@@ -72,7 +72,18 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const mtcs = useMemo(() => db.getMTCs(), [dbRefreshKey])
 
   // Selected Order for Instant Deliverables
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(() => orders[0]?.id || '')
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(
+    () => db.getActiveOrderId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_sourcing_active_so_id') || '' : '') || orders[0]?.id || ''
+  )
+  const selectOrderAndSync = (orderId: string) => {
+    setSelectedOrderId(orderId)
+    if (orderId) {
+      db.setActiveOrderId(orderId)
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('msg_sourcing_active_so_id', orderId)
+      }
+    }
+  }
   const [heatSearchQuery, setHeatSearchQuery] = useState('')
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
@@ -313,7 +324,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
         if (res.success && res.order) {
           refreshData()
-          setSelectedOrderId(res.order.id)
+          selectOrderAndSync(res.order.id)
           setStatusNotice(
             `🎉 Sales Order ${res.order.so_number} (${res.order.customer_name}) loaded with ${res.order.items.length} items! 1-Click deliverables are ready below.`
           )
@@ -328,7 +339,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         )
         if (res.success && res.orders && res.orders.length > 0) {
           refreshData()
-          setSelectedOrderId(res.orders[0].id)
+          selectOrderAndSync(res.orders[0].id)
           setStatusNotice(
             `🎉 Successfully imported ${res.orders.length} order(s) with ${rows.length} line items from spreadsheet!`
           )
@@ -483,7 +494,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
               <div className="flex items-center gap-2">
                 <select
                   value={selectedOrderId}
-                  onChange={e => setSelectedOrderId(e.target.value)}
+                  onChange={e => selectOrderAndSync(e.target.value)}
                   className="text-xs font-medium bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 max-w-[260px]"
                 >
                   {orders.map(o => (
@@ -648,7 +659,11 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => onNavigateTab('sourcing')}
+                  onClick={() => {
+                    const targetId = selectedOrder?.id || selectedOrderId
+                    if (targetId) selectOrderAndSync(targetId)
+                    onNavigateTab('sourcing')
+                  }}
                   className="ml-auto text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 cursor-pointer"
                 >
                   <span>Open Sourcing Portal</span>

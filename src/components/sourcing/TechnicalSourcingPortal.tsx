@@ -108,7 +108,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
   const [draftsList, setDraftsList] = useState<SourcingWorksheetData[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>(() => {
-    const saved = localStorage.getItem('msg_sourcing_active_so_id') || db.getActiveOrderId()
+    const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
     return (saved && uniqueOrders.some(o => o.id === saved)) ? saved : (uniqueOrders[0]?.id || '')
   })
 
@@ -121,7 +121,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
     setDraftsList(getSourcingDrafts())
     const initialOrders = db.getOrders()
     if (initialOrders.length > 0) {
-      const saved = localStorage.getItem('msg_sourcing_active_so_id') || db.getActiveOrderId()
+      const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
       const target = (saved && initialOrders.find(o => o.id === saved)) || initialOrders[0]
       if (target) {
         handleLoadFromOrder(target.id)

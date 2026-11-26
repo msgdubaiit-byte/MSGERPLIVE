@@ -248,6 +248,7 @@ class DBService {
   private adjustments: StockAdjustment[] = []
   private audits: AuditLog[] = []
   private importJobs: ExcelImportJob[] = []
+  private storedFiles: any[] = []
   private users: UserProfile[] = []
   private systemConfig: SystemCustomConfig = defaultSystemCustomConfig
 
@@ -2688,6 +2689,7 @@ class DBService {
       if (Array.isArray(d.adjustments)) this.adjustments = d.adjustments
       if (Array.isArray(d.audits)) this.audits = d.audits
       if (Array.isArray(d.importJobs)) this.importJobs = d.importJobs
+      if (Array.isArray(d.storedFiles)) this.storedFiles = d.storedFiles
       if (Array.isArray(d.users) && d.users.length > 0) this.users = d.users
       if (d.systemConfig) {
         this.systemConfig = { ...this.systemConfig, ...d.systemConfig }
@@ -2887,6 +2889,10 @@ class DBService {
   // Active Sales Order Persistence: keeps the active SO constant across navigation & reloads
   public getActiveOrderId(): string {
     return loadFromStorage<string>('active_so_id', '')
+  }
+
+  public getStoredFiles(): any[] {
+    return [...this.storedFiles]
   }
 
   public setActiveOrderId(id: string): void {

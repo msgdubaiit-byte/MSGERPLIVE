@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FileCheck2, Download, ExternalLink, Printer, ShieldCheck, AlertTriangle, FileX } from 'lucide-react'
 import { stampMTCDocument, downloadPDFBlob, createSampleMillCertificate } from '../../services/pdfEngine'
 import { getUploadedCertificateBytes } from '../../services/zipExtractor'
+import { getAuthenticCertificateBytes } from '../../services/certificateVault'
 import { db } from '../../services/db'
 
 interface PDFPreviewModalProps {
@@ -15,6 +16,9 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
   const [pdfDataUri, setPdfDataUri] = useState<string | null>(null)
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null)
   const [withStamp, setWithStamp] = useState(false) // Default to EXACT ORIGINAL UNALTERED FORMAT
+  const [viewMode, setViewMode] = useState<'auto' | 'system'>('auto')
+  const [hasUploadedOriginal, setHasUploadedOriginal] = useState(false)
+  const [isSystemReceipt, setIsSystemReceipt] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isNotFound, setIsNotFound] = useState(false)
   const [realFileName, setRealFileName] = useState(docName)
@@ -27,6 +31,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
       setIsNotFound(false)
       try {
         let rawBytes: Uint8Array | null = null
+        let uploadedBytesFound: Uint8Array | null = null
         let resolvedFileName = docName
 
         // 1. Check existing MTCs registered in database
@@ -43,12 +48,12 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           const cached = getUploadedCertificateBytes(foundMtc.original_file_path) || 
                          getUploadedCertificateBytes(foundMtc.certificate_reference) || 
                          getUploadedCertificateBytes(foundMtc.heat_number)
-          if (cached) rawBytes = cached
+          if (cached) uploadedBytesFound = cached
         }
 
-        if (!rawBytes) {
+        if (!uploadedBytesFound) {
           const cached = getUploadedCertificateBytes(docName) || getUploadedCertificateBytes(heatNumber)
-          if (cached) rawBytes = cached
+          if (cached) uploadedBytesFound = cached
         }
 
         // 3. Try fetching from stored original_file_path if it's an accessible URL / blob / asset / cloud storage
@@ -62,24 +67,24 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           )
         )
 
-        if (!rawBytes && isValidPath(foundMtc?.original_file_path) && foundMtc!.original_file_path !== '/sample-mtc.pdf') {
+        if (!uploadedBytesFound && isValidPath(foundMtc?.original_file_path) && foundMtc!.original_file_path !== '/sample-mtc.pdf') {
           try {
             const resp = await fetch(foundMtc!.original_file_path)
             if (resp.ok) {
               const ab = await resp.arrayBuffer()
-              rawBytes = new Uint8Array(ab)
+              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
             }
           } catch (e) {
             console.warn('Could not fetch mtc path', e)
           }
         }
 
-        if (!rawBytes && isValidPath(docName)) {
+        if (!uploadedBytesFound && isValidPath(docName) && docName !== '/sample-mtc.pdf') {
           try {
             const resp = await fetch(docName)
             if (resp.ok) {
               const ab = await resp.arrayBuffer()
-              rawBytes = new Uint8Array(ab)
+              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
             }
           } catch (e) {
             console.warn('Could not fetch docName', e)
@@ -87,20 +92,43 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
         }
 
         // 3b. Resolve from backend authentic certificate vault (/api/mtc/resolve)
-        if (!rawBytes && (docName || heatNumber)) {
+        if (!uploadedBytesFound && (docName || heatNumber)) {
           try {
             const params = new URLSearchParams()
-            if (docName) params.set('doc_name', docName)
+            if (docName && docName !== '/sample-mtc.pdf') params.set('doc_name', docName)
             if (heatNumber) params.set('heat_number', heatNumber)
             const resp = await fetch(`/api/mtc/resolve?${params.toString()}`)
             if (resp.ok) {
-              rawBytes = new Uint8Array(await resp.arrayBuffer())
+              const ab = await resp.arrayBuffer()
+              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
             }
           } catch {}
         }
 
-        // 4. If certificate was not uploaded, generate authentic-format EN 10204 3.1 Mill Certificate
-        if (!rawBytes) {
+        // 3c. Resolve from bundled/uploaded vault manifest (/certificates/manifest.json - 338 real supplier PDFs)
+        if (!uploadedBytesFound) {
+          const authVault = await getAuthenticCertificateBytes(
+            docName && docName !== '/sample-mtc.pdf' ? docName : foundMtc?.certificate_reference,
+            heatNumber || foundMtc?.heat_number,
+            itemCode || foundMtc?.item_code
+          )
+          if (authVault?.bytes && authVault.bytes.length > 50) {
+            uploadedBytesFound = authVault.bytes
+            resolvedFileName = authVault.fileName || resolvedFileName
+          }
+        }
+
+        if (isMounted) {
+          setHasUploadedOriginal(Boolean(uploadedBytesFound))
+        }
+
+        // 4. Use uploaded authentic PDF unless user explicitly switches to System Receipt or no uploaded PDF exists
+        let usingSystem = false
+        if (viewMode !== 'system' && uploadedBytesFound) {
+          rawBytes = uploadedBytesFound
+          usingSystem = false
+        } else {
+          usingSystem = true
           rawBytes = await createSampleMillCertificate(
             itemCode || foundMtc?.item_code || 'OILFIELD-FITTING',
             heatNumber || foundMtc?.heat_number || 'HEAT-ORIGINAL',
@@ -110,6 +138,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
         }
 
         if (isMounted) {
+          setIsSystemReceipt(usingSystem)
           setRealFileName(resolvedFileName)
         }
 
@@ -149,7 +178,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
     return () => {
       isMounted = false
     }
-  }, [docName, itemCode, heatNumber, withStamp])
+  }, [docName, itemCode, heatNumber, withStamp, viewMode])
 
   const handleDownload = () => {
     if (!pdfBytes || isNotFound) {
@@ -175,9 +204,9 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
               <div className="flex items-center space-x-2">
                 <h3 className="font-semibold text-sm">Mill Test Certificate Viewer</h3>
                 {!isNotFound && !withStamp && (
-                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded flex items-center space-x-1">
+                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded flex items-center space-x-1 border ${isSystemReceipt ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                     <ShieldCheck className="h-3 w-3" />
-                    <span>Real MTC Document</span>
+                    <span>{isSystemReceipt ? 'System Generated Receipt' : 'Uploaded Supplier MTC'}</span>
                   </span>
                 )}
                 {!isNotFound && withStamp && (
@@ -197,7 +226,27 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Uploaded Original vs System Receipt Switch */}
+            {!isNotFound && hasUploadedOriginal && (
+              <div className="flex items-center bg-white border border-slate-300 rounded-md p-0.5 text-[11px] font-medium">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('auto')}
+                  className={`px-2 py-0.5 rounded transition-colors cursor-pointer ${viewMode === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Uploaded MTC
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('system')}
+                  className={`px-2 py-0.5 rounded transition-colors cursor-pointer ${viewMode === 'system' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  System Receipt
+                </button>
+              </div>
+            )}
+
             {/* Stamp Toggle */}
             {!isNotFound && (
               <label className="flex items-center space-x-1.5 text-xs text-slate-700 bg-white border border-slate-300 px-2.5 py-1 rounded-md cursor-pointer">

@@ -315,4 +315,52 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
       unmount()
     }
   })
+
+  it('keeps the selected Operations Hub order synced when opening Sourcing Portal and exposes Uploaded MTC Vault', async () => {
+    mockBackendFetch()
+    setAuthToken('test-admin-jwt')
+
+    const orderA = db.createSalesOrder({
+      customer_id: 'CUST-STS',
+      customer_name: 'Client Alpha',
+      po_number: 'PO-ALPHA',
+      required_delivery_date: '2026-12-20',
+      items: [{ item_code: 'ITEM-ALPHA', item_description: 'Alpha Valve', uom: 'PCS', required_qty: 2 }],
+      userEmail: 'admin@msgoilfield.ae',
+    }).order!
+
+    const orderB = db.createSalesOrder({
+      customer_id: 'CUST-001',
+      customer_name: 'Client Beta',
+      po_number: 'PO-BETA',
+      required_delivery_date: '2026-12-21',
+      items: [{ item_code: 'ITEM-BETA', item_description: 'Beta Flange', uom: 'PCS', required_qty: 5 }],
+      userEmail: 'admin@msgoilfield.ae',
+    }).order!
+
+    // Stale msg_sourcing_active_so_id points to orderA, while activeOrderId is switched to orderB
+    localStorage.setItem('msg_sourcing_active_so_id', orderA.id)
+    db.setActiveOrderId(orderB.id)
+
+    const { unmount } = render(
+      <AuthProvider>
+        <TechnicalSourcingPortal />
+      </AuthProvider>
+    )
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('PO-BETA')).toBeInTheDocument()
+    })
+    unmount()
+
+    render(
+      <AuthProvider>
+        <MTCManagement onPreviewMTC={() => {}} />
+      </AuthProvider>
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Uploaded MTC Vault/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Uploaded MTC Vault/i }))
+    expect(screen.getByText(/Uploaded PDF File/i)).toBeInTheDocument()
+  })
 })
