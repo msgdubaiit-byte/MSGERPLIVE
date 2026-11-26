@@ -352,15 +352,27 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
     })
     unmount()
 
+    const hubRender = render(
+      <AuthProvider>
+        <CentralizedSoloHub onNavigateTab={() => {}} onOpenHeatModal={() => {}} />
+      </AuthProvider>
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/No Sales Order uploaded yet/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('PO-ALPHA')).not.toBeInTheDocument()
+    expect(screen.queryByText('PO-BETA')).not.toBeInTheDocument()
+    hubRender.unmount()
+
     render(
       <AuthProvider>
         <MTCManagement onPreviewMTC={() => {}} />
       </AuthProvider>
     )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Uploaded MTC Vault/i })).toBeInTheDocument()
+      expect(screen.getByText(/Uploaded MTC Vault/i)).toBeInTheDocument()
     })
-    fireEvent.click(screen.getByRole('button', { name: /Uploaded MTC Vault/i }))
-    expect(screen.getByText(/Uploaded PDF File/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Registered Stock MTCs/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Uploaded PDF File/i).length).toBeGreaterThan(0)
   })
 })

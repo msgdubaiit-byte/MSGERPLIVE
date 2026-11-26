@@ -46,3 +46,5 @@ server/data/
 test_*.pdf
 test_*.png
 test_*.xlsx
+.vercel
+.env*

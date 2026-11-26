@@ -71,10 +71,9 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const balances = useMemo(() => db.getBalances(), [dbRefreshKey])
   const mtcs = useMemo(() => db.getMTCs(), [dbRefreshKey])
 
-  // Selected Order for Instant Deliverables
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(
-    () => db.getActiveOrderId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_sourcing_active_so_id') || '' : '') || orders[0]?.id || ''
-  )
+  // Selected Order for Instant Deliverables (only populated from Sales Order uploaded in this view)
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('')
+  const [uploadedSessionOrderIds, setUploadedSessionOrderIds] = useState<string[]>([])
   const selectOrderAndSync = (orderId: string) => {
     setSelectedOrderId(orderId)
     if (orderId) {
@@ -101,9 +100,14 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const [editingHsnIndex, setEditingHsnIndex] = useState<number | null>(null)
   const [editingHsnValue, setEditingHsnValue] = useState<string>('')
 
-  // Fast-track selected order details
+  // Fast-track selected order details (strictly scoped to uploaded file in Operations Hub)
+  const uploadedSessionOrders = useMemo(() => {
+    return orders.filter(o => uploadedSessionOrderIds.includes(o.id))
+  }, [orders, uploadedSessionOrderIds])
+
   const selectedOrder = useMemo(() => {
-    return orders.find(o => o.id === selectedOrderId) || orders[0]
+    if (!selectedOrderId) return undefined
+    return orders.find(o => o.id === selectedOrderId)
   }, [orders, selectedOrderId])
 
   // Convert selected order into SourcingWorksheetData for 1-click deliverables
@@ -324,6 +328,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
 
         if (res.success && res.order) {
           refreshData()
+          setUploadedSessionOrderIds(prev => (prev.includes(res.order!.id) ? prev : [res.order!.id, ...prev]))
           selectOrderAndSync(res.order.id)
           setStatusNotice(
             `🎉 Sales Order ${res.order.so_number} (${res.order.customer_name}) loaded with ${res.order.items.length} items! 1-Click deliverables are ready below.`
@@ -339,6 +344,8 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         )
         if (res.success && res.orders && res.orders.length > 0) {
           refreshData()
+          const importedIds = res.orders.map(o => o.id)
+          setUploadedSessionOrderIds(prev => [...importedIds, ...prev.filter(id => !importedIds.includes(id))])
           selectOrderAndSync(res.orders[0].id)
           setStatusNotice(
             `🎉 Successfully imported ${res.orders.length} order(s) with ${rows.length} line items from spreadsheet!`
@@ -481,32 +488,34 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
             </div>
           </div>
 
-          {/* Card 2: Order Deliverables & Line Items */}
+          {/* Card 2: Uploaded Order Deliverables & Line Items */}
           <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-semibold text-sm text-slate-900">Order Deliverables</h3>
+                <h3 className="font-semibold text-sm text-slate-900">Uploaded Order Deliverables</h3>
                 <p className="text-[11px] text-slate-500">
-                  Select an active order to preview or export Client, Stores, and CIPL sheets.
+                  Shows details and deliverables strictly for the Sales Order uploaded above.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <select
-                  value={selectedOrderId}
-                  onChange={e => selectOrderAndSync(e.target.value)}
-                  className="text-xs font-medium bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 max-w-[260px]"
-                >
-                  {orders.map(o => (
-                    <option key={o.id} value={o.id}>
-                      {o.so_number} — {o.customer_name} ({o.items.length})
-                    </option>
-                  ))}
-                </select>
+                {uploadedSessionOrders.length > 1 && (
+                  <select
+                    value={selectedOrderId}
+                    onChange={e => selectOrderAndSync(e.target.value)}
+                    className="text-xs font-medium bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 max-w-[260px]"
+                  >
+                    {uploadedSessionOrders.map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.so_number} — {o.customer_name} ({o.items.length})
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Upload New Order"
+                  title="Upload Sales Order File"
                   className="p-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"
                 >
                   <FileUp className="h-4 w-4" />
@@ -514,7 +523,12 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
               </div>
             </div>
 
-            {selectedOrder && (
+            {!selectedOrder ? (
+              <div className="bg-slate-50 border border-dashed border-slate-300 rounded-md p-6 text-center text-xs text-slate-500">
+                No Sales Order uploaded yet. Drop or browse a Sales Order PDF / Excel file above to view its extracted details and generate deliverables.
+              </div>
+            ) : (
+            <>
               <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
@@ -551,7 +565,6 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                   </button>
                 </div>
               </div>
-            )}
 
             {/* Clean Uniform Deliverable Action Tiles */}
             <div>
@@ -672,7 +685,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
               </div>
 
               {/* Line Items & HSN Code Table */}
-              {selectedOrder && selectedOrder.items && selectedOrder.items.length > 0 && (
+              {selectedOrder.items && selectedOrder.items.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-slate-200">
                   <div className="flex items-center justify-between mb-2">
                     <button
@@ -795,6 +808,8 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
 
           {/* Pending Approvals Fast-Pass */}

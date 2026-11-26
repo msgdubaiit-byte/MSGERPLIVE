@@ -62,7 +62,6 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
   const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set())
   const [isBatchDownloading, setIsBatchDownloading] = useState(false)
   const [batchActionType, setBatchActionType] = useState<'merged' | 'zip' | null>(null)
-  const [activeViewTab, setActiveViewTab] = useState<'registered' | 'vault'>('registered')
   const [vaultManifest, setVaultManifest] = useState<ManifestCertificate[]>([])
 
   useEffect(() => {
@@ -128,23 +127,6 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     .map(t => t.trim().toLowerCase())
     .filter(Boolean)
 
-  const filteredMTCs = mtcs.filter(m => {
-    if (searchTokens.length === 0) return true
-    const itemCode = m.item_code.toLowerCase()
-    const heat = m.heat_number.toLowerCase()
-    const certRef = m.certificate_reference.toLowerCase()
-    const supplier = m.supplier_name.toLowerCase()
-    const lCode = (m.l_code || '').toLowerCase()
-
-    return searchTokens.some(token =>
-      itemCode.includes(token) ||
-      heat.includes(token) ||
-      certRef.includes(token) ||
-      supplier.includes(token) ||
-      lCode.includes(token)
-    )
-  })
-
   const filteredVaultList = uploadedVaultList.filter(vf => {
     if (searchTokens.length === 0) return true
     const fn = vf.fileName.toLowerCase()
@@ -152,20 +134,18 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     return searchTokens.some(token => fn.includes(token) || heat.includes(token))
   })
 
-  // Checkbox helpers
+  // Checkbox helpers for Uploaded MTC Vault
   const allFilteredSelected =
-    filteredMTCs.length > 0 && filteredMTCs.every(m => selectedCertIds.has(m.id))
+    filteredVaultList.length > 0 && filteredVaultList.every(v => selectedCertIds.has(v.id))
 
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
-      // Deselect filtered
       const updated = new Set(selectedCertIds)
-      filteredMTCs.forEach(m => updated.delete(m.id))
+      filteredVaultList.forEach(v => updated.delete(v.id))
       setSelectedCertIds(updated)
     } else {
-      // Select all filtered
       const updated = new Set(selectedCertIds)
-      filteredMTCs.forEach(m => updated.add(m.id))
+      filteredVaultList.forEach(v => updated.add(v.id))
       setSelectedCertIds(updated)
     }
   }
@@ -178,6 +158,41 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       updated.add(id)
     }
     setSelectedCertIds(updated)
+  }
+
+  const getVaultItemBytes = async (vf: { fileName: string; heatNumber: string; url: string }): Promise<Uint8Array | null> => {
+    const cached =
+      getUploadedCertificateBytes(vf.fileName) ||
+      getUploadedCertificateBytes(vf.heatNumber)
+    if (cached) return cached
+
+    if (vf.url) {
+      try {
+        const resp = await fetch(vf.url)
+        if (resp.ok) {
+          const bytes = new Uint8Array(await resp.arrayBuffer())
+          if (bytes.length > 50) return bytes
+        }
+      } catch {}
+    }
+
+    try {
+      const params = new URLSearchParams()
+      if (vf.fileName) params.set('doc_name', vf.fileName)
+      if (vf.heatNumber && vf.heatNumber !== '-') params.set('heat_number', vf.heatNumber)
+      const r = await fetch(`/api/mtc/resolve?${params.toString()}`)
+      if (r.ok) {
+        const bytes = new Uint8Array(await r.arrayBuffer())
+        if (bytes.length > 50) return bytes
+      }
+    } catch {}
+
+    try {
+      const found = await getAuthenticCertificateBytes(vf.fileName, vf.heatNumber !== '-' ? vf.heatNumber : undefined)
+      if (found?.bytes && found.bytes.length > 50) return found.bytes
+    } catch {}
+
+    return null
   }
 
   // Retrieve raw bytes for a certificate (uploaded ZIP/cloud/backend/manifest vault first, then generated EN 10204 3.1 receipt)
@@ -318,25 +333,23 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     }
   }
 
-  // Bulk Download Option 1: Merged PDF (Compiles all ticked certificates into a single PDF)
+  // Bulk Download Option 1: Merged PDF (Compiles all ticked uploaded certificates into a single PDF)
   const handleDownloadSelectedMerged = async () => {
     if (selectedCertIds.size === 0) return
 
     setIsBatchDownloading(true)
     setBatchActionType('merged')
     try {
-      const selectedMTCs = mtcs.filter(m => selectedCertIds.has(m.id))
+      const selectedItems = uploadedVaultList.filter(v => selectedCertIds.has(v.id))
       const list: { fileName: string; heatNumber: string; itemCode: string; bytes: Uint8Array }[] = []
 
-      for (const m of selectedMTCs) {
-        const bytes = await getCertBytes(m)
+      for (const vf of selectedItems) {
+        const bytes = await getVaultItemBytes(vf)
         if (bytes) {
           list.push({
-            fileName: m.certificate_reference.toLowerCase().endsWith('.pdf')
-              ? m.certificate_reference
-              : `${m.certificate_reference}.pdf`,
-            heatNumber: m.heat_number,
-            itemCode: m.item_code,
+            fileName: vf.fileName.toLowerCase().endsWith('.pdf') ? vf.fileName : `${vf.fileName}.pdf`,
+            heatNumber: vf.heatNumber,
+            itemCode: vf.fileName,
             bytes,
           })
         }
@@ -351,7 +364,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       const downloadName = `MSG_MTC_Batch_${list.length}_Certificates.pdf`
       downloadPDFBlob(mergedBytes, downloadName)
 
-      setStatusMessage(`Successfully merged and downloaded ${list.length} selected certificates into ${downloadName}!`)
+      setStatusMessage(`Successfully merged and downloaded ${list.length} uploaded certificates into ${downloadName}!`)
     } catch (err: any) {
       alert('Error merging selected certificates: ' + err.message)
     } finally {
@@ -360,23 +373,21 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     }
   }
 
-  // Bulk Download Option 2: ZIP Package (Downloads all ticked certificates bundled in a .zip archive)
+  // Bulk Download Option 2: ZIP Package (Downloads all ticked uploaded certificates bundled in a .zip archive)
   const handleDownloadSelectedZip = async () => {
     if (selectedCertIds.size === 0) return
 
     setIsBatchDownloading(true)
     setBatchActionType('zip')
     try {
-      const selectedMTCs = mtcs.filter(m => selectedCertIds.has(m.id))
+      const selectedItems = uploadedVaultList.filter(v => selectedCertIds.has(v.id))
       const list: { fileName: string; bytes: Uint8Array }[] = []
 
-      for (const m of selectedMTCs) {
-        const bytes = await getCertBytes(m)
+      for (const vf of selectedItems) {
+        const bytes = await getVaultItemBytes(vf)
         if (bytes) {
           list.push({
-            fileName: m.certificate_reference.toLowerCase().endsWith('.pdf')
-              ? m.certificate_reference
-              : `${m.certificate_reference}.pdf`,
+            fileName: vf.fileName.toLowerCase().endsWith('.pdf') ? vf.fileName : `${vf.fileName}.pdf`,
             bytes,
           })
         }
@@ -390,7 +401,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       const zipName = `MSG_MTC_Selected_${list.length}_Certificates.zip`
       await downloadCertificatesAsZip(list, zipName)
 
-      setStatusMessage(`Successfully bundled and downloaded ${list.length} selected certificates into ${zipName}!`)
+      setStatusMessage(`Successfully bundled and downloaded ${list.length} uploaded certificates into ${zipName}!`)
     } catch (err: any) {
       alert('Error packaging selected certificates to ZIP: ' + err.message)
     } finally {
@@ -646,7 +657,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
           <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-md text-xs">
             <Building className="h-3.5 w-3.5 text-slate-500" />
             <span className="font-medium text-slate-600">Vault:</span>
-            <span className="font-mono font-semibold text-slate-900 tabular-nums">{mtcs.length} MTCs</span>
+            <span className="font-mono font-semibold text-slate-900 tabular-nums">{uploadedVaultList.length} PDFs</span>
           </div>
         </div>
       </div>
@@ -903,78 +914,81 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
         </div>
       )}
 
-      {/* CERTIFICATES VAULT TABLE */}
+      {/* UPLOADED MTC VAULT TABLE */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveViewTab('registered')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                activeViewTab === 'registered'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Registered Stock MTCs ({filteredMTCs.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveViewTab('vault')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                activeViewTab === 'vault'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Uploaded MTC Vault ({filteredVaultList.length})
-            </button>
+          <div className="flex items-center space-x-2">
+            <span>Uploaded MTC Vault</span>
+            <span className="text-[11px] font-mono text-slate-500 font-normal">
+              ({filteredVaultList.length} uploaded PDF files)
+            </span>
           </div>
 
-          {activeViewTab === 'registered' && (
-            <div className="flex items-center space-x-2 text-[11px] font-normal">
-              <button
-                onClick={handleToggleSelectAll}
-                className="text-blue-700 font-bold hover:underline flex items-center space-x-1"
-              >
-                {allFilteredSelected ? (
-                  <>
-                    <CheckSquare className="h-3.5 w-3.5 text-blue-700" />
-                    <span>Deselect All Filtered</span>
-                  </>
-                ) : (
-                  <>
-                    <Square className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Tick All ({filteredMTCs.length})</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+          <div className="flex items-center space-x-2 text-[11px] font-normal">
+            <button
+              onClick={handleToggleSelectAll}
+              className="text-blue-700 font-bold hover:underline flex items-center space-x-1"
+            >
+              {allFilteredSelected ? (
+                <>
+                  <CheckSquare className="h-3.5 w-3.5 text-blue-700" />
+                  <span>Deselect All Filtered</span>
+                </>
+              ) : (
+                <>
+                  <Square className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Tick All ({filteredVaultList.length})</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
-        {activeViewTab === 'vault' ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold sticky top-0 shadow-sm z-10">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold sticky top-0 shadow-sm z-10">
+              <tr>
+                <th className="p-2.5 text-center w-10">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={handleToggleSelectAll}
+                    title="Tick / Untick All Uploaded Certificates"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
+                  />
+                </th>
+                <th className="p-2.5">Uploaded PDF File</th>
+                <th className="p-2.5">Detected Heat Number</th>
+                <th className="p-2.5">Source</th>
+                <th className="p-2.5">Size</th>
+                <th className="p-2.5 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-sans">
+              {filteredVaultList.length === 0 ? (
                 <tr>
-                  <th className="p-2.5">Uploaded PDF File</th>
-                  <th className="p-2.5">Detected Heat Number</th>
-                  <th className="p-2.5">Source</th>
-                  <th className="p-2.5">Size</th>
-                  <th className="p-2.5 text-center">Actions</th>
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                    No uploaded MTC PDFs found matching your search.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-sans">
-                {filteredVaultList.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400">
-                      No uploaded MTC PDFs found matching your search.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredVaultList.map(vf => (
-                    <tr key={vf.id} className="hover:bg-slate-50 transition-colors">
+              ) : (
+                filteredVaultList.map(vf => {
+                  const isSelected = selectedCertIds.has(vf.id)
+                  return (
+                    <tr
+                      key={vf.id}
+                      className={`transition-colors ${
+                        isSelected ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <td className="p-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectOne(vf.id)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
+                        />
+                      </td>
                       <td className="p-2.5 font-mono font-semibold text-slate-900">{vf.fileName}</td>
                       <td className="p-2.5 font-mono font-semibold text-blue-700">{vf.heatNumber}</td>
                       <td className="p-2.5">
@@ -1008,123 +1022,12 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold sticky top-0 shadow-sm z-10">
-              <tr>
-                <th className="p-2.5 text-center w-10">
-                  <input
-                    type="checkbox"
-                    checked={allFilteredSelected}
-                    onChange={handleToggleSelectAll}
-                    title="Tick / Untick All Filtered Certificates"
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
-                  />
-                </th>
-                <th className="p-2.5">Certificate Ref</th>
-                <th className="p-2.5">Item Code</th>
-                <th className="p-2.5">Heat Number</th>
-                <th className="p-2.5">YOM</th>
-                <th className="p-2.5">Purchase Type</th>
-                <th className="p-2.5">L-Code</th>
-                <th className="p-2.5">Mill / Supplier</th>
-                <th className="p-2.5">Status</th>
-                <th className="p-2.5 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-sans">
-              {filteredMTCs.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-400">
-                    No certificates found matching your search.
-                  </td>
-                </tr>
-              ) : (
-                filteredMTCs.map(m => {
-                  const isSelected = selectedCertIds.has(m.id)
-
-                  return (
-                    <tr
-                      key={m.id}
-                      className={`transition-colors ${
-                        isSelected ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <td className="p-2.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelectOne(m.id)}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
-                        />
-                      </td>
-                      <td className="p-2.5 font-semibold font-mono text-slate-900">{m.certificate_reference}</td>
-                      <td className="p-2.5 font-mono text-slate-700">{m.item_code}</td>
-                      <td className="p-2.5 font-mono font-semibold text-slate-800">{m.heat_number}</td>
-                      <td className="p-2.5 font-medium text-slate-700 tabular-nums">{m.yom}</td>
-                      <td className="p-2.5">
-                        <span
-                          className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
-                            m.purchase_type === 'local_purchase'
-                              ? 'bg-slate-100 text-slate-700 border-slate-200'
-                              : 'bg-blue-50 text-blue-700 border-blue-200'
-                          }`}
-                        >
-                          {m.purchase_type === 'local_purchase' ? 'Local Purchase' : 'Mill Stock'}
-                        </span>
-                      </td>
-                      <td className="p-2.5 font-mono text-slate-600">{m.l_code || '-'}</td>
-                      <td className="p-2.5 text-slate-600">{m.supplier_name}</td>
-                      <td className="p-2.5">
-                        <span className="text-emerald-700 font-medium flex items-center space-x-1 text-[11px]">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>{m.verification_status}</span>
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <button
-                            onClick={() => onPreviewMTC(m.original_file_path, m.item_code, m.heat_number)}
-                            className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 hover:underline"
-                            title="Preview Certificate"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>Preview</span>
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => handleDownloadSingle(m)}
-                            className="text-slate-700 hover:text-slate-900 font-medium flex items-center space-x-1 hover:underline"
-                            title="Download Certificate PDF"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            <span>Download</span>
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => handleDownloadStamped(m)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold flex items-center space-x-1 hover:underline"
-                            title="Download with Transparent Verified True Copy Seal & Autofilled Details"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            <span>Stamp Seal</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
                   )
                 })
               )}
             </tbody>
           </table>
         </div>
-        )}
       </div>
     </div>
   )
