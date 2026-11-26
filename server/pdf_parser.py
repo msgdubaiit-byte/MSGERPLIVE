@@ -1,7 +1,10 @@
 import os
 import json
 import re
-import pdfplumber
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
 from pypdf import PdfReader
 
 def load_master_suppliers():
@@ -434,18 +437,26 @@ def extract_pdf_data(pdf_path_or_file):
     """
     full_text = ""
     table_items = []
-    try:
-        with pdfplumber.open(pdf_path_or_file) as pdf:
-            # Extract full text for headers
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    full_text += page_text + "\n"
-            
-            # Primary: Extract structured tables
-            table_items = _extract_items_from_tables(pdf)
-    except Exception as e:
-        print(f"pdfplumber error: {e}")
+    if pdfplumber is not None:
+        try:
+            with pdfplumber.open(pdf_path_or_file) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        full_text += page_text + "\n"
+                table_items = _extract_items_from_tables(pdf)
+        except Exception as e:
+            print(f"pdfplumber error: {e}")
+
+    if not full_text.strip():
+        try:
+            reader = PdfReader(pdf_path_or_file)
+            for page in reader.pages:
+                pt = page.extract_text()
+                if pt:
+                    full_text += pt + "\n"
+        except Exception as e:
+            print(f"pypdf error: {e}")
 
     if not full_text.strip() and isinstance(pdf_path_or_file, str):
         try:

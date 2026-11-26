@@ -71,19 +71,17 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
   initialShowPreview,
   onOrderUpdated,
 }) => {
-  if (!isOpen || !order) return null
-
-  // Header State
-  const [clientName, setClientName] = useState(order.customer_name || '')
-  const [poNumber, setPoNumber] = useState(order.po_number || '')
-  const [msgRef, setMsgRef] = useState(order.msg_ref || order.so_number || '')
-  const [orderDate, setOrderDate] = useState(order.order_date || new Date().toISOString().substring(0, 10))
+  // Header State (hooks must run unconditionally before any early return)
+  const [clientName, setClientName] = useState(order?.customer_name || '')
+  const [poNumber, setPoNumber] = useState(order?.po_number || '')
+  const [msgRef, setMsgRef] = useState(order?.msg_ref || order?.so_number || '')
+  const [orderDate, setOrderDate] = useState(order?.order_date || new Date().toISOString().substring(0, 10))
   const [currency, setCurrency] = useState<'USD' | 'AED'>('USD')
 
   // Items State
   const masterStock = db.getMasterStockView()
-  const initialItems: SourcingLineItem[] = (order.items || []).map((item, idx) => {
-    const alloc = order.allocations?.find(a => (a.sales_order_item_id || a.so_item_id) === item.id)
+  const initialItems: SourcingLineItem[] = (order?.items || []).map((item, idx) => {
+    const alloc = order?.allocations?.find(a => (a.sales_order_item_id || a.so_item_id) === item.id)
     const lot = alloc ? masterStock.find(s => s.id === alloc.stock_lot_id) : undefined
     const heat = alloc?.heat_number || item.heat_number || lot?.heat_number || ''
     const cert = item.certificate_number || (lot as any)?.certificate_reference || ''
@@ -185,6 +183,8 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
   const [bulkCert, setBulkCert] = useState('')
   const [bulkPkgType, setBulkPkgType] = useState('')
   const [bulkPkgNo, setBulkPkgNo] = useState('')
+
+  if (!isOpen || !order) return null
 
   // Build current worksheet payload
   const buildCurrentPayload = (): SourcingWorksheetData => ({
@@ -568,25 +568,25 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm overflow-y-auto p-4 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs overflow-y-auto p-4 flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden">
         
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between border-b border-slate-700">
+        <div className="px-6 py-4 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
+            <div className="w-9 h-9 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
               <FileSpreadsheet className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-base font-bold text-white tracking-wide">
-                  Summary Sheet & Sourcing Live Preview
+                <h2 className="text-base font-semibold text-slate-900">
+                  Summary Sheet &amp; Sourcing Live Preview
                 </h2>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-orange-500/30 text-orange-300 border border-orange-500/40">
+                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-700 border border-slate-200">
                   {msgRef || order.so_number}
                 </span>
               </div>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-500">
                 View &amp; edit sheet details, allocate suppliers &amp; PO numbers in bulk, and apply changes everywhere.
               </p>
             </div>
@@ -595,7 +595,7 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors"
+              className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -604,9 +604,9 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
         {/* Success Banner */}
         {successBanner && (
-          <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 flex items-center justify-between text-xs text-emerald-800 font-semibold animate-in slide-in-from-top-1">
+          <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 flex items-center justify-between text-xs text-emerald-800 font-medium">
             <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
               <span>{successBanner}</span>
             </div>
             <button onClick={() => setSuccessBanner(null)} className="text-emerald-600 hover:text-emerald-900">
@@ -616,13 +616,13 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
         )}
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1 bg-slate-50/50 text-xs">
+        <div className="p-5 overflow-y-auto space-y-4 flex-1 bg-slate-50/50 text-xs">
           
           {/* Header Details Card */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="font-bold text-slate-800 text-xs uppercase tracking-wide flex items-center space-x-1.5">
-                <Building className="h-3.5 w-3.5 text-orange-600" />
+              <span className="font-semibold text-slate-800 text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                <Building className="h-3.5 w-3.5 text-blue-600" />
                 <span>Header Details (Live Editable)</span>
               </span>
               <span className="text-[11px] text-slate-500">
@@ -753,19 +753,19 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
           {/* Bulk Allocation Drawer */}
           {showBulkToolbar && (
-            <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm space-y-3 animate-in slide-in-from-top-2">
+            <div className="bg-white p-4 rounded-lg border border-blue-200 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="font-bold text-orange-900 text-xs">
+                  <span className="font-semibold text-slate-900 text-xs">
                     Bulk Allocate to {selectedIds.length} Selected Item(s):
                   </span>
-                  <span className="text-[11px] text-orange-700">
+                  <span className="text-[11px] text-slate-500">
                     Fill in details and click Apply. Empty fields leave existing values untouched.
                   </span>
                 </div>
                 <button
                   onClick={() => setShowBulkToolbar(false)}
-                  className="text-orange-600 hover:text-orange-900"
+                  className="text-slate-400 hover:text-slate-700"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -773,14 +773,14 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-orange-900 mb-0.5">Supplier Name</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Supplier Name</label>
                   <input
                     type="text"
                     list="modalSuppliersList"
                     value={bulkSupplier}
                     onChange={e => setBulkSupplier(e.target.value)}
                     placeholder="e.g. DELCORTE SAS"
-                    className="w-full border border-orange-300 rounded px-2 py-1 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                   <datalist id="modalSuppliersList">
                     {COMMON_SUPPLIERS.map(s => (
@@ -1217,26 +1217,26 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
 
       {/* Visual Excel Layout Preview Modal with Tabs for ALL Sheets */}
       {showPreviewModal && (
-        <div className="fixed inset-0 z-60 bg-slate-950/75 backdrop-blur-sm overflow-y-auto p-3 sm:p-5 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 z-60 bg-slate-900/50 backdrop-blur-xs overflow-y-auto p-3 sm:p-5 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* Modal Header & Sheet Tabs */}
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700">
+            <div className="px-5 py-3.5 bg-white text-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200">
               <div className="flex items-center space-x-2">
-                <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
-                <span className="font-bold text-sm tracking-wide">Excel Deliverables Preview</span>
-                <span className="text-xs text-slate-400">({items.length} items)</span>
+                <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+                <span className="font-semibold text-sm">Excel Deliverables Preview</span>
+                <span className="text-xs text-slate-500">({items.length} items)</span>
               </div>
 
               {/* Sheet Switcher Tabs */}
-              <div className="flex flex-wrap items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+              <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setPreviewTab('summary')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 ${
                     previewTab === 'summary'
-                      ? 'bg-emerald-600 text-white shadow'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                   }`}
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" />
@@ -1246,10 +1246,10 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewTab('stores')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 ${
                     previewTab === 'stores'
-                      ? 'bg-purple-600 text-white shadow'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                   }`}
                 >
                   <Layers className="h-3.5 w-3.5" />
@@ -1259,10 +1259,10 @@ export const SummarySheetModal: React.FC<SummarySheetModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewTab('client')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 ${
                     previewTab === 'client'
-                      ? 'bg-teal-600 text-white shadow'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                   }`}
                 >
                   <FileText className="h-3.5 w-3.5" />

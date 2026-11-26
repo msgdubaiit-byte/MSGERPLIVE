@@ -353,28 +353,26 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
   const simplifiedPercentage = Math.round(((20 - selectedModules.length) / 20) * 100)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-amber-300/60 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-200">
         
         {/* VIP Top Header */}
-        <div className="bg-gradient-to-r from-[#07192F] via-[#0D2D56] to-[#07192F] text-white p-5 border-b border-amber-400/40 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-0.5 shadow-lg shadow-amber-500/20 flex items-center justify-center">
-              <div className="w-full h-full bg-[#07192F] rounded-[10px] flex items-center justify-center">
-                <Crown className="h-6 w-6 text-amber-400 animate-pulse" />
-              </div>
+        <div className="bg-white text-slate-900 px-5 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-md bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+              <Crown className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-900 font-extrabold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
-                  VIP Admin Portal
+                <span className="bg-blue-50 text-blue-700 border border-blue-200 font-semibold text-[11px] px-2 py-0.5 rounded">
+                  Admin Customizer
                 </span>
-                <span className="text-white font-extrabold text-base tracking-wide uppercase">
+                <span className="text-slate-900 font-semibold text-base">
                   Team Software Customizer
                 </span>
               </div>
-              <p className="text-xs text-amber-100/90 mt-0.5">
-                Customize exactly which options each person or role can see. Keep screens clean and simple for your team!
+              <p className="text-xs text-slate-500 mt-0.5">
+                Customize exactly which options each person or role can see in the sidebar.
               </p>
             </div>
           </div>
@@ -382,7 +380,7 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
           <div className="flex items-center space-x-2">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -660,10 +658,10 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
           </div>
 
           {/* Right Live Sidebar Preview */}
-          <div className="w-full md:w-72 bg-[#081C33] text-slate-300 p-4 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col shrink-0">
+          <div className="w-full md:w-72 bg-[#1F2437] text-slate-300 p-4 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col shrink-0">
             <div className="pb-3 border-b border-slate-700/80 flex items-center justify-between">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-400 flex items-center space-x-1">
                   <Eye className="h-3.5 w-3.5" />
                   <span>Live Screen Preview</span>
                 </span>
@@ -671,7 +669,7 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
                   What {activeTabMode === 'person' ? activeUser?.employee_name : selectedRole.replace('_', ' ')} will see:
                 </p>
               </div>
-              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
+              <span className="bg-slate-800 text-slate-200 border border-slate-600 font-mono text-[10px] px-1.5 py-0.5 rounded font-semibold tabular-nums">
                 {selectedModules.length} items
               </span>
             </div>
@@ -683,10 +681,10 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
                 return (
                   <div
                     key={m.id}
-                    className={`flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                    className={`flex items-center space-x-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
                       idx === 0
-                        ? 'bg-red-600 text-white font-bold shadow-xs'
-                        : 'text-slate-300 bg-slate-800/60'
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : 'text-slate-300 bg-slate-800/50'
                     }`}
                   >
                     <Icon className={`h-3.5 w-3.5 shrink-0 ${idx === 0 ? 'text-white' : 'text-slate-400'}`} />
@@ -705,12 +703,12 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
         </div>
 
         {/* Modal Footer Controls */}
-        <div className="p-4 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center space-x-2">
             <button
               type="button"
               onClick={handleReset}
-              className="text-slate-600 hover:text-red-700 font-semibold text-xs px-3 py-2 rounded-lg flex items-center space-x-1 transition-colors"
+              className="text-slate-600 hover:text-slate-900 font-medium text-xs px-3 py-2 rounded-md flex items-center space-x-1 hover:bg-slate-100 transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Reset to Standard Defaults</span>
@@ -721,17 +719,17 @@ export const VipAdminCustomizerModal: React.FC<VipAdminCustomizerModalProps> = (
             <button
               type="button"
               onClick={onClose}
-              className="bg-white hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold text-xs px-4 py-2 rounded-lg transition-colors"
+              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold text-xs px-4 py-2 rounded-md transition-colors"
             >
               Close
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-extrabold text-xs px-5 py-2 rounded-lg shadow-md flex items-center space-x-1.5 transition-all"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-xs flex items-center space-x-1.5 transition-colors"
             >
-              <Check className="h-4 w-4" />
-              <span>Save & Apply Customization</span>
+              <Check className="h-3.5 w-3.5" />
+              <span>Save &amp; Apply Customization</span>
             </button>
           </div>
         </div>

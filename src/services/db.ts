@@ -31,9 +31,11 @@ import {
   pullAllTablesFromSupabase,
   subscribeToRealtimeChanges
 } from './supabase'
-import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin } from './sourcingEngine'
+import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin, setSourcingDraftsCache } from './sourcingEngine'
+import { setLOCDraftsCache } from './locEngine'
 import { uploadToCloudinary, isCloudinaryConfigured } from './cloudinary'
 import { registerUploadedCertificate } from './certificateVault'
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiUpload, getAuthToken } from './api'
 
 const STORAGE_KEY_PREFIX = 'msg_oilfield_v1_'
 
@@ -52,8 +54,8 @@ function saveToStorage<T>(key: string, data: T) {
     let payload = data
     if (key === 'mtcs' && Array.isArray(data)) {
       payload = data.map((m: any) => {
-        if (m.original_file_path && m.original_file_path.startsWith('data:') && m.original_file_path.length > 500) {
-          return { ...m, original_file_path: '/sample-mtc.pdf' }
+        if (m.original_file_path && m.original_file_path.startsWith('data:') && m.original_file_path.length > 5000) {
+          return { ...m, original_file_path: m.certificate_reference || '' }
         }
         return m
       }) as any
@@ -495,6 +497,12 @@ class DBService {
 
     this.logAudit(userEmail, 'FIFO Stock Allocation', 'Sales Orders', order.so_number, null, { allocatedLots })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/allocate-fifo`, {
+        line_id: orderItem.id,
+        required_qty: requiredQty,
+      })
+    )
 
     return {
       success: true,
@@ -588,6 +596,13 @@ class DBService {
 
     this.logAudit(userEmail, 'Manual Heat Allocation', 'Sales Orders', order.so_number, null, { heat: lot.heat_number, qty: requiredQty })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/allocate-manual`, {
+        line_id: orderItem.id,
+        stock_lot_id: stockLotId,
+        required_qty: requiredQty,
+      })
+    )
 
     return {
       success: true,
@@ -644,6 +659,11 @@ class DBService {
 
     this.logAudit(userEmail, 'Release Line Allocation', 'Sales Orders', order.so_number, null, { lineId })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/deallocate`, {
+        line_id: orderItem.id,
+      })
+    )
 
     return { success: true, message: 'Line reservations released.' }
   }
@@ -662,6 +682,7 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Submitted for Approval', 'Sales Orders', order.so_number)
     this.notify()
+    this.backendMutation(() => apiPost(`/api/orders/${encodeURIComponent(orderId)}/submit-approval`))
     return { success: true, message: 'Sales Order submitted to Storekeeper approval queue.' }
   }
 
@@ -699,6 +720,13 @@ class DBService {
     this.saveAll()
     this.logAudit(approverName, `Storekeeper ${status}`, 'Approvals', order.so_number, null, { remarks })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/approve`, {
+        approver_name: approverName,
+        status,
+        remarks,
+      })
+    )
     return { success: true, message: `Storekeeper status recorded: ${status}` }
   }
 
@@ -762,6 +790,9 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Cancel Sales Order', 'Sales Orders', order.so_number, null, { reason })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { reason })
+    )
 
     return {
       success: true,
@@ -871,6 +902,14 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Dispatch Confirmed', 'Dispatch', order.so_number, null, { deliveryNote, itemsSummary })
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/dispatch`, {
+        items: dispatchItems,
+        delivery_note: deliveryNote,
+        dispatch_ref: deliveryRef,
+        remarks,
+      })
+    )
 
     return {
       success: true,
@@ -927,6 +966,14 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Material Return Accepted', 'Returns', lot.heat_number, null, { qty, reason })
     this.notify()
+    this.backendMutation(() =>
+      apiPost('/api/returns', {
+        sales_order_id: orderId,
+        stock_lot_id: stockLotId,
+        qty,
+        reason,
+      })
+    )
 
     return { success: true, message: `Material Return recorded. ${qty} PCS restored to physical and available inventory.` }
   }
@@ -987,6 +1034,13 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Stock Adjustment', 'Inventory', lot.heat_number, { oldPhysical }, { newPhysicalQty, reason })
     this.notify()
+    this.backendMutation(() =>
+      apiPost('/api/adjustments', {
+        stock_lot_id: stockLotId,
+        new_physical_qty: newPhysicalQty,
+        reason,
+      })
+    )
 
     return { success: true, message: `Stock adjusted for Heat ${lot.heat_number} from ${oldPhysical} to ${newPhysicalQty} PCS.` }
   }
@@ -1367,6 +1421,7 @@ class DBService {
 
     this.logAudit(orderData.userEmail, 'Create Sales Order', 'Sales Orders', soNumber, null, newOrder)
     this.notify()
+    this.backendMutation(() => apiPost('/api/orders', newOrder))
 
     return {
       success: true,
@@ -1474,6 +1529,7 @@ class DBService {
     }
 
     this.notify()
+    this.backendMutation(() => apiPut(`/api/orders/${encodeURIComponent(order.id)}`, order))
     return { success: true, order, message: `Sales Order ${order.so_number} successfully updated across the ERP system!` }
   }
 
@@ -1550,6 +1606,7 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Add Item', 'Item Master', newItem.item_code, null, newItem)
     this.notify()
+    this.backendMutation(() => apiPost('/api/items', newItem))
     return { success: true, item: newItem }
   }
 
@@ -1683,6 +1740,19 @@ class DBService {
     this.saveAll()
     this.logAudit(lotData.userEmail, 'Add Stock Lot', 'Stock Inventory', lotData.heat_number, null, newLot)
     this.notify()
+    this.backendMutation(() =>
+      apiPost('/api/stock/lots', {
+        item_id: lotData.item_id,
+        heat_number: lotData.heat_number,
+        yom: lotData.yom,
+        received_qty: lotData.quantity,
+        purchase_type: lotData.purchase_type,
+        supplier_name: lotData.supplier_name,
+        warehouse_location: lotData.warehouse_location,
+        l_code: lotData.l_code,
+        mtc_ref: lotData.mtc_ref,
+      })
+    )
 
     return { success: true, lot: newLot }
   }
@@ -1742,6 +1812,9 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Generated MTC Package', 'MTC Management', order.so_number)
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/mtc-package-generated`, { package_url: packageUrl })
+    )
 
     return { success: true, message: `MTC Package successfully generated for ${order.so_number}.` }
   }
@@ -1754,6 +1827,7 @@ class DBService {
     order.updated_at = new Date().toISOString()
     this.saveAll()
     this.notify()
+    this.backendMutation(() => apiPatch(`/api/orders/${orderId}/status`, { status }))
     return { success: true, order }
   }
 
@@ -1827,6 +1901,28 @@ class DBService {
     this.importJobs.unshift(job)
     this.saveAll()
     this.notify()
+    this.backendMutation(() =>
+      apiPost('/api/stock/import-excel', {
+        filename,
+        records: records.map(r => ({
+          item_code: r.item_code,
+          item_description: r.description,
+          material_grade: r.grade,
+          specification: r.specification,
+          size: r.size,
+          uom: r.uom,
+          unit_price_aed: r.unit_price,
+          received_qty: r.quantity,
+          heat_number: r.heat_number,
+          yom: r.yom,
+          purchase_type: String(r.purchase_type).toLowerCase().includes('local') ? 'local_purchase' : 'regular',
+          supplier_name: r.supplier,
+          warehouse_location: r.location,
+          l_code: r.l_code,
+          selected_mtc_ref: r.selected_mtc_ref,
+        })),
+      })
+    )
 
     return { success: true, job }
   }
@@ -2008,6 +2104,19 @@ class DBService {
       { total: certFiles.length, linkedCount, unlinkedCount }
     )
     this.notify()
+    this.backendMutation(() =>
+      apiPost('/api/mtc/bulk-register', {
+        certificates: certFiles.map(c => ({
+          fileName: c.fileName,
+          heatNumber: c.heatNumber,
+          itemCode: c.itemCode,
+          fileUrl: c.fileDataUrl && !c.fileDataUrl.startsWith('data:') ? c.fileDataUrl : c.fileName,
+          supplierName: c.supplierName,
+          purchaseType: c.purchaseType,
+          lCode: c.lCode,
+        })),
+      })
+    )
 
     return {
       total: certFiles.length,
@@ -2035,13 +2144,17 @@ class DBService {
     this.saveAll()
     this.logAudit(userEmail, 'Clear All Data', 'System', 'ALL_OPERATIONAL_TABLES', null, { status: 'Cleared for fresh upload testing' })
     this.notify()
+    this.backendMutation(() => apiPost('/api/admin/clear-data'))
   }
 
-  // Reset to default factory demonstration dataset
-  public resetToDefault() {
-    localStorage.clear()
-    this.init()
-    this.notify()
+  // Reset to default factory demonstration dataset (preserving active auth session)
+  public resetToDefault(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith(STORAGE_KEY_PREFIX))
+        .forEach(k => localStorage.removeItem(k))
+    }
+    return this.resetToDemoData()
   }
 
   public resetToDemoData(userEmail?: string) {
@@ -2066,6 +2179,7 @@ class DBService {
       this.logAudit(userEmail, 'Reset to Demo Data', 'System', 'ALL_TABLES')
     }
     this.notify()
+    return this.backendMutationAsync(() => apiPost('/api/admin/reset-demo'))
   }
 
   // IT Systems Custom Configuration & System Control
@@ -2081,6 +2195,7 @@ class DBService {
       this.logAudit(userEmail, 'Update System Custom Config', 'IT Systems', 'SYSTEM_SETTINGS', null, config)
     }
     this.notify()
+    this.backendMutation(() => apiPut('/api/config', config))
     return { ...this.systemConfig }
   }
 
@@ -2127,6 +2242,7 @@ class DBService {
         this.logAudit(userEmail, 'Restore Database Backup', 'IT Systems', 'ALL_TABLES')
       }
       this.notify()
+      this.backendMutation(() => apiPost('/api/admin/import-json', parsed))
       return { success: true, message: 'Database restored successfully from backup file!' }
     } catch (e: any) {
       return { success: false, message: 'Failed to import backup file: ' + e.message }
@@ -2185,6 +2301,7 @@ class DBService {
       this.logAudit(userEmail, 'Add Supplier', 'Suppliers Catalog', newSupp.supplier_name, null, newSupp)
     }
     this.notify()
+    this.backendMutation(() => apiPost('/api/suppliers', newSupp))
     return newSupp
   }
 
@@ -2205,6 +2322,7 @@ class DBService {
       this.logAudit(userEmail, 'Preload Standard Suppliers', 'Suppliers Catalog', `${addedCount} Suppliers Added`)
     }
     this.notify()
+    this.backendMutation(() => apiPost('/api/suppliers/preload'))
     return {
       count: addedCount,
       message: `Successfully pre-loaded ${addedCount} standard makers & approved UAE stockists into the master catalog!`
@@ -2243,6 +2361,7 @@ class DBService {
       this.logAudit(userEmail, 'Bulk Import Suppliers', 'Suppliers Catalog', `${imported} Suppliers Imported`)
     }
     this.notify()
+    this.backendMutation(() => apiPost('/api/suppliers/bulk', { suppliers: suppliersList }))
     return {
       success: true,
       count: imported,
@@ -2335,45 +2454,53 @@ class DBService {
       if (orderUpdated) affectedOrders++
     })
 
-    // In-memory cache registration for immediate zero-lag PDF preview
+    // In-memory cache registration & real backend file vault upload
     if (fileData.fileDataUrl) {
       if (fileData.fileDataUrl.startsWith('data:')) {
         try {
           fetch(fileData.fileDataUrl)
             .then(r => r.arrayBuffer())
-            .then(buf => {
-              registerUploadedCertificate(cleanHeat, new Uint8Array(buf), cleanFileName, cleanHeat)
-              registerUploadedCertificate(certRef, new Uint8Array(buf), cleanFileName, cleanHeat)
+            .then(async (buf) => {
+              const bytes = new Uint8Array(buf)
+              registerUploadedCertificate(cleanHeat, bytes, cleanFileName, cleanHeat)
+              registerUploadedCertificate(certRef, bytes, cleanFileName, cleanHeat)
+              if (getAuthToken()) {
+                try {
+                  const up = await apiUpload<any>('/api/files/upload', bytes, cleanFileName, {
+                    category: 'mtc',
+                    heat_number: cleanHeat,
+                  })
+                  const finalUrl = up?.file?.cloudUrl || up?.file?.url || ''
+                  if (finalUrl) {
+                    cert!.original_file_path = finalUrl
+                    await apiPost('/api/mtc/link-heat', {
+                      heatNumber: cleanHeat,
+                      fileName: cleanFileName,
+                      fileUrl: finalUrl,
+                      itemCode: cert!.item_code,
+                      supplierName: cert!.supplier_name,
+                      pages: cert!.pages,
+                    })
+                    await this.refreshFromBackend()
+                  }
+                } catch (err) {
+                  console.warn('Backend MTC file upload notice:', err)
+                }
+              }
             })
             .catch(() => {})
         } catch {}
-      }
-
-      // High-speed CDN Cloud Storage sync (Cloudinary first, then Supabase Storage fallback)
-      if (isCloudinaryConfigured()) {
-        fetch(fileData.fileDataUrl)
-          .then(r => r.blob())
-          .then(blob => uploadToCloudinary(blob, cleanFileName, 'mtcs'))
-          .then(res => {
-            if (res.success && (res.secureUrl || res.url)) {
-              cert!.original_file_path = res.secureUrl || res.url || ''
-              this.saveAll()
-              this.notify()
-            }
+      } else if (getAuthToken()) {
+        this.backendMutation(() =>
+          apiPost('/api/mtc/link-heat', {
+            heatNumber: cleanHeat,
+            fileName: cleanFileName,
+            fileUrl: fileData.fileDataUrl,
+            itemCode: cert!.item_code,
+            supplierName: cert!.supplier_name,
+            pages: cert!.pages,
           })
-          .catch(err => console.warn('Cloudinary MTC upload notice:', err))
-      } else if (isSupabaseConfigured()) {
-        fetch(fileData.fileDataUrl)
-          .then(r => r.blob())
-          .then(blob => uploadMTCFileToSupabase(cleanFileName, blob, 'mtcs'))
-          .then(res => {
-            if (res.success && res.url) {
-              cert!.original_file_path = res.url
-              this.saveAll()
-              this.notify()
-            }
-          })
-          .catch(err => console.warn('Supabase MTC upload background notice:', err))
+        )
       }
     }
 
@@ -2510,6 +2637,9 @@ class DBService {
       { deliveryNote, totalDispatchedPcs, itemsSummary }
     )
     this.notify()
+    this.backendMutation(() =>
+      apiPost(`/api/orders/${encodeURIComponent(orderId)}/fast-dispatch`, { delivery_note: deliveryNote })
+    )
 
     return {
       success: true,
@@ -2518,47 +2648,122 @@ class DBService {
     }
   }
 
-  // 1-Click Cloud Sync to Supabase PostgreSQL & Storage
+  // 1-Click Cloud Sync to Supabase PostgreSQL & Storage via Production Backend
   public async syncToSupabase(): Promise<{ success: boolean; message: string; details: any }> {
-    const res = await pushAllTablesToSupabase(this)
-    if (res.success) {
-      this.logAudit('system', 'Supabase Cloud Sync', 'Database Sync', 'ALL_TABLES', null, res.details)
-      this.notify()
+    try {
+      const res = await apiPost<{ success: boolean; message: string; details: any }>('/api/sync/push')
+      if (res.success) {
+        await this.refreshFromBackend()
+      }
+      return res
+    } catch {
+      const res = await pushAllTablesToSupabase(this)
+      if (res.success) {
+        this.logAudit('system', 'Supabase Cloud Sync', 'Database Sync', 'ALL_TABLES', null, res.details)
+        this.notify()
+      }
+      return res
     }
-    return res
   }
 
-  // 1-Click Cloud Restore from Supabase
-  // Automatic Background Cloud Synchronization
+  public async refreshFromBackend(): Promise<boolean> {
+    if (this.isPullingCloud) return false
+    this.isPullingCloud = true
+    try {
+      const res = await apiGet<{ success: boolean; data: any }>('/api/bootstrap')
+      if (!res?.success || !res.data) return false
+      const d = res.data
+      if (Array.isArray(d.suppliers)) this.suppliers = d.suppliers
+      if (Array.isArray(d.customers)) this.customers = d.customers
+      if (Array.isArray(d.items)) this.items = d.items
+      if (Array.isArray(d.lots)) this.lots = d.lots
+      if (Array.isArray(d.balances)) this.balances = d.balances
+      if (Array.isArray(d.orders)) this.orders = d.orders
+      if (Array.isArray(d.mtcs)) this.mtcs = d.mtcs
+      if (Array.isArray(d.localPurchases)) this.localPurchases = d.localPurchases
+      if (Array.isArray(d.movements)) this.movements = d.movements
+      if (Array.isArray(d.approvals)) this.approvals = d.approvals
+      if (Array.isArray(d.dispatches)) this.dispatches = d.dispatches
+      if (Array.isArray(d.returns)) this.returns = d.returns
+      if (Array.isArray(d.adjustments)) this.adjustments = d.adjustments
+      if (Array.isArray(d.audits)) this.audits = d.audits
+      if (Array.isArray(d.importJobs)) this.importJobs = d.importJobs
+      if (Array.isArray(d.users) && d.users.length > 0) this.users = d.users
+      if (d.systemConfig) {
+        this.systemConfig = { ...this.systemConfig, ...d.systemConfig }
+        saveToStorage('systemConfig', this.systemConfig)
+      }
+      if (Array.isArray(d.sourcingDrafts)) setSourcingDraftsCache(d.sourcingDrafts)
+      if (Array.isArray(d.locDrafts)) setLOCDraftsCache(d.locDrafts)
+      if (d.activeOrderId) saveToStorage('active_so_id', d.activeOrderId)
+
+      this.saveLocalStorageOnly()
+      this.notify()
+      return true
+    } catch {
+      return false
+    } finally {
+      this.isPullingCloud = false
+    }
+  }
+
+  private lastSyncError: string | null = null
+
+  public getLastSyncError(): string | null {
+    return this.lastSyncError
+  }
+
+  private async backendMutationAsync(fn: () => Promise<any>): Promise<void> {
+    if (typeof window === 'undefined' || !getAuthToken()) return
+    try {
+      await fn()
+      this.lastSyncError = null
+      await this.refreshFromBackend()
+    } catch (err: any) {
+      this.lastSyncError = err?.message || 'Backend sync failed'
+      console.warn('Backend persistence warning:', this.lastSyncError)
+      this.notify()
+      await this.refreshFromBackend().catch(() => {})
+    }
+  }
+
+  private backendMutation(fn: () => Promise<any>) {
+    void this.backendMutationAsync(fn)
+  }
+
+  // Automatic Background Cloud & Backend Synchronization
   public startSupabaseAutoSync() {
     if (typeof window === 'undefined') return
-    // 1. Initial background pull on app load
     setTimeout(() => {
-      if (isSupabaseConfigured() && !this.isPullingCloud) {
+      if (getAuthToken()) {
+        this.refreshFromBackend().catch(() => {})
+      } else if (isSupabaseConfigured() && !this.isPullingCloud) {
         this.pullFromSupabase().catch(() => {})
       }
-    }, 1000)
+    }, 600)
 
-    // 2. Real-time WebSocket subscriber: updates in real-time when another system modifies database
-    // Debounced by 3.5s and checks that we did not perform a local write within the last 4 seconds
-    // to prevent echo loop storms that peg the CPU and wipe local in-flight records.
     subscribeToRealtimeChanges((_table) => {
-      if (Date.now() - this.lastLocalWriteTime < 4000) {
-        return // Ignore local write echo
-      }
+      if (Date.now() - this.lastLocalWriteTime < 4000) return
       if (this.realtimeDebounceTimer) clearTimeout(this.realtimeDebounceTimer)
       this.realtimeDebounceTimer = setTimeout(() => {
         if (!this.isPullingCloud && Date.now() - this.lastLocalWriteTime >= 4000) {
-          this.pullFromSupabase().catch(() => {})
+          if (getAuthToken()) {
+            this.refreshFromBackend().catch(() => {})
+          } else {
+            this.pullFromSupabase().catch(() => {})
+          }
         }
       }, 3500)
     })
 
-    // 3. Fallback periodic background sync every 120 seconds (2 mins)
     if (!this.autoSyncTimer) {
       this.autoSyncTimer = setInterval(() => {
-        if (isSupabaseConfigured() && !this.isPullingCloud && Date.now() - this.lastLocalWriteTime >= 4000) {
-          this.pullFromSupabase().catch(() => {})
+        if (!this.isPullingCloud && Date.now() - this.lastLocalWriteTime >= 4000) {
+          if (getAuthToken()) {
+            this.refreshFromBackend().catch(() => {})
+          } else if (isSupabaseConfigured()) {
+            this.pullFromSupabase().catch(() => {})
+          }
         }
       }, 120000)
     }
@@ -2566,6 +2771,7 @@ class DBService {
 
   public triggerCloudSync() {
     this.lastLocalWriteTime = Date.now()
+    if (getAuthToken()) return
     if (!isSupabaseConfigured() || this.isPullingCloud) return
     if (this.syncTimeout) clearTimeout(this.syncTimeout)
     this.syncTimeout = setTimeout(() => {
@@ -2573,8 +2779,15 @@ class DBService {
     }, 1500)
   }
 
-  // 1-Click Cloud Restore from Supabase
+  // 1-Click Cloud Restore from Supabase via Production Backend
   public async pullFromSupabase(): Promise<{ success: boolean; message: string }> {
+    if (getAuthToken()) {
+      try {
+        const res = await apiPost<{ success: boolean; message: string }>('/api/sync/pull')
+        await this.refreshFromBackend()
+        return res
+      } catch {}
+    }
     if (this.isPullingCloud) return { success: false, message: 'Sync already in progress' }
     this.isPullingCloud = true
     try {
@@ -2595,7 +2808,6 @@ class DBService {
       if (res.data.users !== undefined) this.users = mergeEntities(this.users, res.data.users)
       if (res.data.config) this.systemConfig = { ...this.systemConfig, ...res.data.config }
 
-      // Save locally to cache without triggering outbound push
       this.saveLocalStorageOnly()
       this.notify()
       return { success: true, message: 'All ERP tables, users, and MTC metadata restored from Supabase Cloud!' }
@@ -2630,6 +2842,7 @@ class DBService {
       { employee_name: newUser.employee_name, email: newUser.email, role: newUser.role, department: newUser.department }
     )
     this.notify()
+    this.backendMutation(() => apiPost('/api/users', newUser))
     return newUser
   }
 
@@ -2648,6 +2861,7 @@ class DBService {
       updates
     )
     this.notify()
+    this.backendMutation(() => apiPatch(`/api/users/${encodeURIComponent(userId)}`, updates))
     return this.users[idx]
   }
 
@@ -2666,6 +2880,7 @@ class DBService {
       null
     )
     this.notify()
+    this.backendMutation(() => apiDelete(`/api/users/${encodeURIComponent(userId)}`))
     return true
   }
 
@@ -2677,6 +2892,9 @@ class DBService {
   public setActiveOrderId(id: string): void {
     if (!id) return
     saveToStorage('active_so_id', id)
+    if (getAuthToken()) {
+      apiPut('/api/preferences/active_so_id', { value: id }).catch(() => {})
+    }
   }
 }
 

@@ -52,28 +52,28 @@ export const ReportsCenter: React.FC = () => {
   const currentRep = reportsList.find(r => r.id === selectedReport) || reportsList[0]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <BarChart3 className="h-5 w-5 text-red-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Executive Reports & Analytics Center</h1>
-            <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <BarChart3 className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Executive Reports &amp; Analytics Center</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 22 Standard
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Generate, filter, and export verified inventory, traceability, MTC, sales order, and audit reports to Microsoft Excel.
+            Generate, filter, and export verified inventory, traceability, MTC, sales order, and audit reports to Excel.
           </p>
         </div>
 
         <button
           onClick={() => currentRep.exportFn()}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-xs transition-colors flex items-center space-x-2"
         >
-          <Download className="h-4 w-4" />
-          <span>Export "{currentRep.title.slice(3)}" (.xlsx)</span>
+          <Download className="h-3.5 w-3.5" />
+          <span>Export &quot;{currentRep.title.slice(3)}&quot; (.xlsx)</span>
         </button>
       </div>
 
@@ -86,29 +86,29 @@ export const ReportsCenter: React.FC = () => {
             <div
               key={rep.id}
               onClick={() => setSelectedReport(rep.id)}
-              className={`p-4 rounded-xl border cursor-pointer transition-all ${
+              className={`p-4 rounded-lg border cursor-pointer transition-colors ${
                 isSelected
-                  ? 'border-red-500 bg-red-50/30 ring-1 ring-red-400 shadow-md'
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                  ? 'border-blue-600 bg-blue-50/40 ring-1 ring-blue-500/30 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
-              <div className="flex justify-between items-start">
-                <h3 className="font-bold text-xs text-slate-900">{rep.title}</h3>
-                <span className="bg-slate-100 text-slate-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded">
-                  {rep.count} Records
+              <div className="flex justify-between items-start gap-2">
+                <h3 className="font-semibold text-xs text-slate-900">{rep.title}</h3>
+                <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-mono font-medium px-2 py-0.5 rounded tabular-nums">
+                  {rep.count}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">{rep.desc}</p>
 
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center text-xs">
-                <span className="text-[10px] text-slate-400">Live Supabase Sync</span>
+                <span className="text-[11px] text-slate-400">Live Sync</span>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     rep.exportFn()
                   }}
-                  className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1 hover:underline"
+                  className="text-blue-600 hover:text-blue-800 font-semibold flex items-center space-x-1 hover:underline"
                 >
                   <Download className="h-3 w-3" />
                   <span>Download Excel</span>

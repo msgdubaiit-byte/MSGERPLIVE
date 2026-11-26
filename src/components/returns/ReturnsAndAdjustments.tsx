@@ -74,14 +74,14 @@ export const ReturnsAndAdjustments: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <RotateCcw className="h-5 w-5 text-teal-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Stock Returns & Adjustments Control</h1>
-            <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <RotateCcw className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Stock Returns &amp; Adjustments</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 21 Standard
             </span>
           </div>
@@ -90,19 +90,19 @@ export const ReturnsAndAdjustments: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex rounded-lg bg-slate-100 p-1 text-xs">
+        <div className="flex rounded-md bg-slate-100 p-1 text-xs">
           <button
             onClick={() => setActiveTab('returns')}
-            className={`px-4 py-1.5 rounded-md font-bold transition-all ${
-              activeTab === 'returns' ? 'bg-[#0B2545] text-white shadow' : 'text-slate-600 hover:text-slate-900'
+            className={`px-3.5 py-1.5 rounded font-semibold transition-colors ${
+              activeTab === 'returns' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Material Returns ({returns.length})
           </button>
           <button
             onClick={() => setActiveTab('adjustments')}
-            className={`px-4 py-1.5 rounded-md font-bold transition-all ${
-              activeTab === 'adjustments' ? 'bg-[#0B2545] text-white shadow' : 'text-slate-600 hover:text-slate-900'
+            className={`px-3.5 py-1.5 rounded font-semibold transition-colors ${
+              activeTab === 'adjustments' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Stock Adjustments ({adjustments.length})
@@ -112,10 +112,10 @@ export const ReturnsAndAdjustments: React.FC = () => {
 
       {/* TAB 1: Material Returns */}
       {activeTab === 'returns' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* New Return Form */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4 text-xs">
-            <h2 className="font-bold uppercase tracking-wider text-slate-800 pb-2 border-b border-slate-100">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-5 space-y-4 text-xs">
+            <h2 className="font-semibold uppercase tracking-wider text-slate-700 pb-2 border-b border-slate-100">
               Process Authorized Customer Return
             </h2>
 
@@ -177,21 +177,21 @@ export const ReturnsAndAdjustments: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full bg-teal-700 hover:bg-teal-800 text-white font-bold py-2.5 rounded-lg shadow"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md shadow-xs transition-colors"
               >
-                Accept Return & Restore to Stock
+                Accept Return &amp; Restore to Stock
               </button>
             </form>
           </div>
 
           {/* Historical Returns List (2 Cols) */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200">
+          <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 font-semibold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-200">
               Authorized Material Returns Ledger
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="p-2.5">Date</th>
                     <th className="p-2.5">Sales Order</th>
@@ -213,10 +213,10 @@ export const ReturnsAndAdjustments: React.FC = () => {
                     returns.map(r => (
                       <tr key={r.id} className="hover:bg-slate-50">
                         <td className="p-2.5 text-slate-500">{r.return_date}</td>
-                        <td className="p-2.5 font-mono font-bold text-slate-800">{r.so_number}</td>
+                        <td className="p-2.5 font-mono font-semibold text-slate-900">{r.so_number}</td>
                         <td className="p-2.5 font-mono">{r.item_code}</td>
-                        <td className="p-2.5 font-mono font-bold text-red-700">🔥 {r.heat_number}</td>
-                        <td className="p-2.5 text-center font-extrabold text-teal-700">+{r.returned_qty} PCS</td>
+                        <td className="p-2.5 font-mono font-semibold text-slate-800">{r.heat_number}</td>
+                        <td className="p-2.5 text-center font-semibold text-emerald-700 tabular-nums">+{r.returned_qty} PCS</td>
                         <td className="p-2.5">
                           <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full">
                             {r.acceptance_status}
@@ -291,26 +291,26 @@ export const ReturnsAndAdjustments: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full bg-[#0B2545] hover:bg-[#133C55] text-white font-bold py-2.5 rounded-lg shadow"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md shadow-xs transition-colors"
                 >
-                  Confirm & Commit Stock Adjustment
+                  Confirm &amp; Commit Stock Adjustment
                 </button>
               </form>
             ) : (
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800 text-xs">
                 You do not have administrative permission to execute stock adjustments. Please log in as Super Admin or Inventory Manager.
               </div>
             )}
           </div>
 
           {/* Historical Adjustments List (2 Cols) */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200">
+          <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 font-semibold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-200">
               Stock Adjustment Audit Records
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="p-2.5">Date</th>
                     <th className="p-2.5">Item Code</th>
@@ -334,7 +334,7 @@ export const ReturnsAndAdjustments: React.FC = () => {
                       <tr key={adj.id} className="hover:bg-slate-50">
                         <td className="p-2.5 text-slate-500">{adj.created_at.substring(0, 10)}</td>
                         <td className="p-2.5 font-mono">{adj.item_code}</td>
-                        <td className="p-2.5 font-mono font-bold text-red-700">🔥 {adj.heat_number}</td>
+                        <td className="p-2.5 font-mono font-semibold text-slate-800">{adj.heat_number}</td>
                         <td className="p-2.5 text-center text-slate-500">{adj.original_balance}</td>
                         <td className="p-2.5 text-center font-bold text-slate-900">{adj.adjusted_balance}</td>
                         <td className="p-2.5 text-center font-extrabold">

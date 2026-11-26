@@ -86,6 +86,19 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
           }
         }
 
+        // 3b. Resolve from backend authentic certificate vault (/api/mtc/resolve)
+        if (!rawBytes && (docName || heatNumber)) {
+          try {
+            const params = new URLSearchParams()
+            if (docName) params.set('doc_name', docName)
+            if (heatNumber) params.set('heat_number', heatNumber)
+            const resp = await fetch(`/api/mtc/resolve?${params.toString()}`)
+            if (resp.ok) {
+              rawBytes = new Uint8Array(await resp.arrayBuffer())
+            }
+          } catch {}
+        }
+
         // 4. If certificate was not uploaded, generate authentic-format EN 10204 3.1 Mill Certificate
         if (!rawBytes) {
           rawBytes = await createSampleMillCertificate(
@@ -152,47 +165,47 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-4xl w-full h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg max-w-4xl w-full h-[90vh] shadow-xl border border-slate-200 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center shrink-0">
-          <div className="flex items-center space-x-2">
-            <FileCheck2 className="h-5 w-5 text-emerald-400" />
+        <div className="bg-slate-50 px-5 py-3.5 text-slate-900 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 shrink-0">
+          <div className="flex items-center space-x-2.5">
+            <FileCheck2 className="h-5 w-5 text-blue-600" />
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="font-bold text-sm uppercase">Mill Test Certificate Viewer</h3>
+                <h3 className="font-semibold text-sm">Mill Test Certificate Viewer</h3>
                 {!isNotFound && !withStamp && (
-                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded flex items-center space-x-1">
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded flex items-center space-x-1">
                     <ShieldCheck className="h-3 w-3" />
-                    <span>Real MTC Document (Format Preserved)</span>
+                    <span>Real MTC Document</span>
                   </span>
                 )}
                 {!isNotFound && withStamp && (
-                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded">
+                  <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium px-2 py-0.5 rounded">
                     MSG Acceptance Stamp Overlay
                   </span>
                 )}
                 {isNotFound && (
-                  <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold px-2 py-0.5 rounded">
+                  <span className="bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-medium px-2 py-0.5 rounded">
                     MTC Missing
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-300">
-                {itemCode} &bull; Heat: <span className="font-mono text-red-400 font-bold">{heatNumber}</span>
+              <p className="text-[11px] text-slate-500">
+                {itemCode} &bull; Heat: <span className="font-mono text-slate-900 font-semibold">{heatNumber}</span>
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-3">
-            {/* Stamp Toggle - Only available if real certificate exists */}
+            {/* Stamp Toggle */}
             {!isNotFound && (
-              <label className="flex items-center space-x-1.5 text-xs text-slate-200 bg-slate-800 px-2.5 py-1 rounded-lg cursor-pointer">
+              <label className="flex items-center space-x-1.5 text-xs text-slate-700 bg-white border border-slate-300 px-2.5 py-1 rounded-md cursor-pointer">
                 <input
                   type="checkbox"
                   checked={withStamp}
                   onChange={(e) => setWithStamp(e.target.checked)}
-                  className="rounded text-red-600 focus:ring-red-500"
+                  className="rounded text-blue-600 focus:ring-blue-500"
                 />
                 <span>Render MSG Acceptance Stamp</span>
               </label>
@@ -202,7 +215,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
             {!isNotFound ? (
               <button
                 onClick={handleDownload}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow flex items-center space-x-1 transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md shadow-xs flex items-center space-x-1 transition-colors"
                 title="Download original certificate from MTC repository"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -211,13 +224,13 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
             ) : (
               <button
                 disabled
-                className="bg-slate-700 text-slate-400 font-bold text-xs px-3.5 py-1.5 rounded-lg cursor-not-allowed"
+                className="bg-slate-200 text-slate-400 font-semibold text-xs px-3.5 py-1.5 rounded-md cursor-not-allowed"
               >
                 No MTC to Download
               </button>
             )}
 
-            <button onClick={onClose} className="text-slate-300 hover:text-white text-lg p-1">✕</button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg p-1">✕</button>
           </div>
         </div>
 

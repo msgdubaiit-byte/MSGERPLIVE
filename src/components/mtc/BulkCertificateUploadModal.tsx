@@ -127,8 +127,35 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
     setIsCommitting(true)
 
     try {
-      // Upload raw certificate bytes to Cloudinary CDN for persistent storage
-      if (isCloudinaryConfigured()) {
+      // Upload raw certificate bytes to production backend vault (/api/files/upload)
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+      if (token) {
+        await Promise.all(
+          extractedList.map(async (item) => {
+            if (item.rawBytes) {
+              try {
+                const form = new FormData()
+                form.append('file', new Blob([item.rawBytes as any], { type: 'application/pdf' }), item.fileName)
+                form.append('category', 'mtc')
+                form.append('heat_number', item.heatNumber || '')
+                const resp = await fetch('/api/files/upload', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` },
+                  body: form,
+                })
+                if (resp.ok) {
+                  const data = await resp.json()
+                  if (data.file?.url) {
+                    item.pdfBlobUrl = data.file.cloudUrl || data.file.url
+                  }
+                }
+              } catch (e) {
+                console.warn('Backend MTC upload notice:', e)
+              }
+            }
+          })
+        )
+      } else if (isCloudinaryConfigured()) {
         await Promise.all(
           extractedList.map(async (item) => {
             if (item.rawBytes) {
@@ -179,21 +206,21 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
   const unmatchedCount = extractedList.filter(c => c.matchStatus === 'unmatched').length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
         {/* Header */}
-        <div className="bg-[#0B2545] text-white p-4 flex justify-between items-center shrink-0">
-          <div className="flex items-center space-x-2">
-            <FolderArchive className="h-5 w-5 text-emerald-400" />
+        <div className="bg-slate-50 text-slate-900 px-5 py-3.5 border-b border-slate-200 flex justify-between items-center shrink-0">
+          <div className="flex items-center space-x-2.5">
+            <FolderArchive className="h-4 w-4 text-blue-600" />
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider">Bulk Certificate Upload (.ZIP / Multi-PDF)</h2>
-              <p className="text-[11px] text-blue-200">
-                Upload a .zip file of PDF certificates. The system automatically extracts files and links each certificate to matching Heat Numbers in Master Stock.
+              <h2 className="text-sm font-semibold">Bulk Certificate Upload (.ZIP / Multi-PDF)</h2>
+              <p className="text-[11px] text-slate-500">
+                Upload a .zip file of PDF certificates. The system extracts files and links each certificate to matching Heat Numbers in Master Stock.
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white">
-            <X className="h-5 w-5" />
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -262,16 +289,16 @@ export const BulkCertificateUploadModal: React.FC<BulkCertificateUploadModalProp
                 <button
                   onClick={handleCommitCertificates}
                   disabled={isCommitting}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-xs px-4 py-2 rounded-lg shadow flex items-center space-x-1.5 transition-colors"
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-xs flex items-center space-x-1.5 transition-colors"
                 >
-                  <FileCheck2 className="h-4 w-4" />
-                  <span>Commit {extractedList.length} Certificates to Database</span>
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                  <span>Commit {extractedList.length} Certificates</span>
                 </button>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+              <div className="border border-slate-200 rounded-lg max-h-72 overflow-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] sticky top-0 shadow-sm">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] tracking-wider border-b border-slate-200 sticky top-0">
                     <tr>
                       <th className="p-2">Certificate File</th>
                       <th className="p-2">Size</th>

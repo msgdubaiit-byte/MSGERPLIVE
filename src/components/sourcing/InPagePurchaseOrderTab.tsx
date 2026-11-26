@@ -692,23 +692,23 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
       />
 
       {/* Top Navigation & Status Bar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBack}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Return to Sourcing Worksheet"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Worksheet</span>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back</span>
           </button>
           <div>
-            <h1 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-              <ShoppingCart className="h-5 w-5 text-amber-600" />
+            <h1 className="text-base font-semibold text-slate-900 flex items-center space-x-2">
+              <ShoppingCart className="h-4 w-4 text-blue-600" />
               <span>Purchase Order &amp; Local Sourcing Entry</span>
             </h1>
             <p className="text-xs text-slate-500">
-              Configure supplier, PO number, unit costs, attach mill test certificates, preview with Certified True Copy stamp, and download deliverables.
+              Configure supplier, PO number, unit costs, attach mill test certificates, preview stamp, and download deliverables.
             </p>
           </div>
         </div>
@@ -719,10 +719,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
           <button
             onClick={handleExportPOExcel}
             disabled={isExporting || includedItems.length === 0}
-            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Export official Supplier PO to Excel"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5 text-slate-500" />
             <span>Supplier PO (.xlsx)</span>
           </button>
 
@@ -730,10 +730,10 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
           <button
             onClick={() => bulkFileInputRef.current?.click()}
             disabled={isUploadingCert}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Upload supplier MTC PDFs or ZIP archive for this PO"
           >
-            <Upload className="h-4 w-4" />
+            <Upload className="h-3.5 w-3.5 text-slate-500" />
             <span>{isUploadingCert ? 'Uploading...' : 'Upload MTCs (PDF/ZIP)'}</span>
           </button>
 
@@ -741,21 +741,21 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
           <button
             onClick={handleDownloadPOMTCPackage}
             disabled={isPackaging || includedItems.length === 0}
-            className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Download all attached certificates for this PO merged into a single multi-page stamped PDF"
           >
-            <FileCheck2 className="h-4 w-4" />
-            <span>{isPackaging ? 'Packaging...' : 'Download PO MTC Package (.pdf)'}</span>
+            <FileCheck2 className="h-3.5 w-3.5 text-blue-600" />
+            <span>{isPackaging ? 'Packaging...' : 'PO MTC Package (.pdf)'}</span>
           </button>
 
           {/* 4. Download All MTCs ZIP */}
           <button
             onClick={handleDownloadPOZip}
             disabled={isPackaging || includedItems.length === 0}
-            className="bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Download all stamped certificates for this PO bundled in a .zip archive"
           >
-            <Archive className="h-4 w-4" />
+            <Archive className="h-3.5 w-3.5 text-slate-500" />
             <span>MTCs (.zip)</span>
           </button>
 
@@ -763,20 +763,20 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
           <button
             onClick={handleApplyToWorksheet}
             disabled={includedItems.length === 0}
-            className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-md transition-colors cursor-pointer"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
             title="Save and synchronize all PO fields and MTC attachments back into main worksheet"
           >
-            <Save className="h-4 w-4" />
+            <Save className="h-3.5 w-3.5" />
             <span>Apply &amp; Sync</span>
           </button>
         </div>
       </div>
 
       {/* PO Master Details Form */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200">
         <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
-            <Building className="h-4 w-4 text-indigo-600" />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+            <Building className="h-4 w-4 text-blue-600" />
             <span>1. Supplier &amp; Order Information</span>
           </h2>
           <span className="text-xs bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full font-semibold">
@@ -892,13 +892,13 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
       </div>
 
       {/* Line Items Table with MTC Attachment, Preview & Download */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+      <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="flex items-center space-x-2">
-            <h2 className="font-bold text-sm text-slate-800">
+            <h2 className="font-semibold text-sm text-slate-900">
               2. PO Line Items &amp; MTC Certificates
             </h2>
-            <span className="text-xs bg-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full">
+            <span className="text-[11px] bg-slate-100 border border-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full tabular-nums">
               {includedItems.length} of {poItems.length} included
             </span>
           </div>
@@ -907,7 +907,7 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
             <button
               type="button"
               onClick={() => handleToggleSelectAll(true)}
-              className="text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
+              className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Select All
             </button>
@@ -915,47 +915,47 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
             <button
               type="button"
               onClick={() => handleToggleSelectAll(false)}
-              className="text-slate-600 hover:text-slate-800 font-semibold cursor-pointer"
+              className="text-slate-600 hover:text-slate-800 font-medium cursor-pointer"
             >
               Deselect All
             </button>
             <span className="text-slate-300">|</span>
-            <span className="text-slate-600">
+            <span className="text-slate-600 tabular-nums">
               Total PO Qty: <strong className="text-slate-900">{totalPOQty}</strong>
             </span>
             <span className="text-slate-300">|</span>
-            <span className="text-slate-600">
-              Total PO Value: <strong className="text-amber-900">{currency} {totalPOAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+            <span className="text-slate-600 tabular-nums">
+              Total Value: <strong className="text-slate-900">{currency} {totalPOAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
             </span>
           </div>
         </div>
 
         <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-200">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="p-2.5 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={poItems.length > 0 && poItems.every(r => r.included)}
                     onChange={e => handleToggleSelectAll(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
                   />
                 </th>
                 <th className="p-2.5 w-12 text-center">SL</th>
                 <th className="p-2.5 w-16">Item #</th>
                 <th className="p-2.5 min-w-[240px]">Description &amp; Specifications</th>
                 <th className="p-2.5 w-24 text-center">Order Qty</th>
-                <th className="p-2.5 w-28 text-center bg-amber-50 text-amber-900 border-b-2 border-amber-400">
+                <th className="p-2.5 w-28 text-center">
                   PO Qty
-                  <span className="block text-[9px] text-amber-700 font-normal">Split if partial</span>
+                  <span className="block text-[9px] text-slate-400 font-normal normal-case">Split if partial</span>
                 </th>
-                <th className="p-2.5 w-24 text-right bg-amber-50 text-amber-900 border-b-2 border-amber-400">
+                <th className="p-2.5 w-24 text-right">
                   Unit Price
                 </th>
                 <th className="p-2.5 w-24 text-right">Line Total</th>
                 <th className="p-2.5 w-28">Heat Number</th>
-                <th className="p-2.5 w-44 text-center bg-indigo-50/50 text-indigo-900 border-b-2 border-indigo-400">
+                <th className="p-2.5 w-44 text-center">
                   MTC Certificate (Preview &amp; Download)
                 </th>
                 <th className="p-2.5 w-28">Make / Mfr</th>
@@ -1175,15 +1175,15 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
           </div>
 
           <div className="flex items-center space-x-3">
-            <span className="text-sm font-bold text-slate-800">
-              Total Purchase Order: <span className="text-amber-900 font-mono">{currency} {totalPOAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <span className="text-sm font-semibold text-slate-800 tabular-nums">
+              Total Purchase Order: <span className="text-slate-900 font-mono">{currency} {totalPOAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </span>
             <button
               onClick={handleApplyToWorksheet}
               disabled={includedItems.length === 0}
-              className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs px-4 py-2 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
             >
-              <Check className="h-4 w-4" />
+              <Check className="h-3.5 w-3.5" />
               <span>Apply to Worksheet</span>
             </button>
           </div>
@@ -1192,17 +1192,17 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
 
       {/* Embedded Certificate Preview Modal */}
       {previewModalItem && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="px-5 py-3.5 bg-slate-50 text-slate-900 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center space-x-3">
-                <FileCheck2 className="h-5 w-5 text-amber-400" />
+                <FileCheck2 className="h-5 w-5 text-blue-600" />
                 <div>
-                  <h3 className="font-bold text-sm">
+                  <h3 className="font-semibold text-sm text-slate-900">
                     MTC Certificate Preview — Item #{previewModalItem.client_po_item_no || previewModalItem.sl_no}
                   </h3>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-slate-500">
                     PO #{supplierPONumber || 'PO'} | Heat: {previewModalItem.heat_number || 'N/A'} | {previewModalItem.description}
                   </p>
                 </div>
@@ -1211,7 +1211,7 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => handleDownloadSingle(previewModalItem)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 cursor-pointer shadow-xs"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>Download Stamped PDF</span>
@@ -1222,7 +1222,7 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
                     setPreviewModalItem(null)
                     setPreviewPdfUrl(null)
                   }}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
+                  className="p-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-700 cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -1230,9 +1230,9 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
             </div>
 
             {/* Stamp Configuration Sub-bar */}
-            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-1.5 font-bold text-amber-900 cursor-pointer">
+                <label className="flex items-center space-x-1.5 font-semibold text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applyStamp}
@@ -1240,7 +1240,7 @@ export const InPagePurchaseOrderTab: React.FC<InPagePurchaseOrderTabProps> = ({
                       setApplyStamp(e.target.checked)
                       setTimeout(() => handleOpenPreview(previewModalItem), 100)
                     }}
-                    className="rounded text-red-600 focus:ring-red-500 h-4 w-4"
+                    className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                   />
                   <span>Apply MSG Certified True Copy Stamp</span>
                 </label>

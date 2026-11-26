@@ -252,25 +252,18 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+    <div className="space-y-5">
+      {/* Zoho Page Header */}
+      <div className="bg-white px-5 py-4 rounded-lg border border-slate-200 flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <Layers className="h-5 w-5 text-red-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Stock Allocation Engine</h1>
-            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-              Section 8 & 9 Standard
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            By default allocates all available heats across all order lines in 1 click, or customize individual heat numbers with Certificate & YOM details.
+          <h1 className="text-lg font-semibold text-slate-900">Stock Allocation</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Allocate available heat lots via FIFO or manual selection with YOM and certificate traceability.
           </p>
         </div>
 
-        {/* Order Selector */}
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-semibold text-slate-600">Active Sales Order:</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-600">Sales Order:</span>
           <select
             value={selectedOrderId}
             onChange={(e) => {
@@ -280,7 +273,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
               const ord = orders.find(o => o.id === newId)
               if (ord && ord.items[0]) setSelectedLineId(ord.items[0].id)
             }}
-            className="border border-slate-300 rounded-lg px-3 py-2 text-xs bg-white font-bold text-[#0B2545] shadow-sm"
+            className="border border-slate-300 rounded-md px-3 py-1.5 text-xs bg-white font-semibold text-slate-900"
           >
             {allocatableOrders.length === 0 ? (
               <option value="">No active orders</option>
@@ -331,30 +324,30 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                   <div
                     key={item.id}
                     onClick={() => setSelectedLineId(item.id)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                       isSelected
-                        ? 'border-red-500 bg-red-50/40 ring-1 ring-red-400'
+                        ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500/30'
                         : 'border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex justify-between items-start">
-                      <span className="font-mono font-bold text-xs text-slate-900">{item.item_code}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        isComplete ? 'bg-emerald-100 text-emerald-800' :
-                        isPartial ? 'bg-amber-100 text-amber-800' :
-                        'bg-red-100 text-red-800'
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-mono font-semibold text-xs text-slate-900">{item.item_code}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                        isComplete ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        isPartial ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        'bg-rose-50 text-rose-700 border-rose-200'
                       }`}>
                         {isComplete ? 'Fully Allocated' : isPartial ? `Partial: ${realAllocated}/${item.required_qty}` : `Unallocated (${unalloc} Needed)`}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1 line-clamp-1">{item.item_description}</div>
-                    <div className="mt-2 text-xs flex justify-between text-slate-600">
-                      <span>Required: <strong>{item.required_qty} PCS</strong></span>
+                    <div className="mt-2 text-xs flex justify-between text-slate-600 tabular-nums">
+                      <span>Required: <strong className="text-slate-900">{item.required_qty} PCS</strong></span>
                       <span>Allocated: <strong className={realAllocated > 0 ? 'text-emerald-700' : 'text-slate-400'}>{realAllocated} PCS</strong></span>
                     </div>
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-500 flex justify-between">
                       <span>{availItemLots.length} Free / {allItemLots.length} Heat(s)</span>
-                      {itemYoms.length > 0 && <span className="font-semibold text-blue-700">YOM: {itemYoms.join(', ')}</span>}
+                      {itemYoms.length > 0 && <span className="font-medium text-blue-700">YOM: {itemYoms.join(', ')}</span>}
                     </div>
                   </div>
                 )
@@ -363,18 +356,18 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
             {/* Current Allocations summary for this order */}
             <div className="pt-3 border-t border-slate-100">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Committed Heat Reservations</div>
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Committed Heat Reservations</div>
               {currentOrder.allocations.length === 0 ? (
-                <div className="text-[11px] text-slate-400 italic">No heats reserved yet for this order.</div>
+                <div className="text-[11px] text-slate-400">No heats reserved yet for this order.</div>
               ) : (
                 <div className="space-y-1.5">
                   {currentOrder.allocations.map(a => {
                     const lotInfo = masterStock.find(s => s.id === a.stock_lot_id)
                     return (
-                      <div key={a.id} className="p-2 bg-slate-50 border border-slate-200 rounded text-xs space-y-0.5">
-                        <div className="flex justify-between items-center">
-                          <span className="font-mono font-bold text-slate-800">🔥 Heat {a.heat_number}</span>
-                          <span className="font-bold text-emerald-700">{a.allocated_qty} PCS</span>
+                      <div key={a.id} className="p-2 bg-slate-50 border border-slate-200 rounded-md text-xs space-y-0.5">
+                        <div className="flex justify-between items-center tabular-nums">
+                          <span className="font-mono font-semibold text-slate-800">Heat {a.heat_number}</span>
+                          <span className="font-semibold text-emerald-700">{a.allocated_qty} PCS</span>
                         </div>
                         {lotInfo && (
                           <div className="text-[10px] text-slate-500 flex justify-between">
@@ -393,20 +386,20 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
           {/* Right Column (2 cols): Allocation Mode Tabs & Simulator */}
           <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-5">
             {/* Mode Switcher */}
-            <div className="flex flex-wrap rounded-lg bg-slate-100 p-1 gap-1">
+            <div className="flex flex-wrap rounded-md bg-slate-100 p-1 gap-1">
               <button
                 onClick={() => setAllocationMode('batch_all')}
-                className={`flex-1 py-2 px-2 text-xs font-bold rounded-md transition-all flex items-center justify-center space-x-1.5 ${
-                  allocationMode === 'batch_all' ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:text-slate-900'
+                className={`flex-1 py-2 px-2 text-xs font-semibold rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  allocationMode === 'batch_all' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <ListChecks className="h-3.5 w-3.5" />
-                <span>All Lines (All Heats Default)</span>
+                <span>All Lines (Auto FIFO)</span>
               </button>
               <button
                 onClick={() => setAllocationMode('fifo')}
-                className={`flex-1 py-2 px-2 text-xs font-bold rounded-md transition-all flex items-center justify-center space-x-1.5 ${
-                  allocationMode === 'fifo' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'
+                className={`flex-1 py-2 px-2 text-xs font-semibold rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  allocationMode === 'fifo' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Zap className="h-3.5 w-3.5" />
@@ -414,12 +407,12 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
               </button>
               <button
                 onClick={() => setAllocationMode('manual')}
-                className={`flex-1 py-2 px-2 text-xs font-bold rounded-md transition-all flex items-center justify-center space-x-1.5 ${
-                  allocationMode === 'manual' ? 'bg-[#0B2545] text-white shadow' : 'text-slate-600 hover:text-slate-900'
+                className={`flex-1 py-2 px-2 text-xs font-semibold rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  allocationMode === 'manual' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Flame className="h-3.5 w-3.5" />
-                <span>Manual Heat Dropdown</span>
+                <span>Manual Heat Selection</span>
               </button>
             </div>
 
@@ -430,9 +423,9 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                   <div className="flex items-start space-x-2.5">
                     <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
                     <div>
-                      <div className="font-bold">Bulk Order Allocation — All Heats Selected by Default</div>
-                      <p className="text-[11px] text-emerald-800 mt-0.5">
-                        Saves time by pre-selecting all available heats for every order line automatically. Use the dropdowns below to switch any line&apos;s heat (Certificate # &amp; YOM update live).
+                      <div className="font-semibold text-slate-900">Bulk Order Allocation — All Heats Selected by Default</div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Pre-selects available heats across order lines automatically. Use the dropdowns below to switch any line&apos;s heat (Certificate # &amp; YOM update live).
                       </p>
                     </div>
                   </div>
@@ -474,18 +467,18 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                         setBatchChoices(updated)
                       }
                     }}
-                    className="shrink-0 border border-emerald-300 bg-white text-emerald-950 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm"
+                    className="shrink-0 border border-slate-300 bg-white text-slate-800 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-xs"
                   >
-                    <option value="AUTO_FIFO">⚡ All Lines: All Heats (Default FIFO)</option>
-                    <option value="KEEP_ALLOCATED">✓ Keep Current Allocations</option>
-                    <option value="CUSTOM">🎛️ Custom Per-Line Heat Selection</option>
+                    <option value="AUTO_FIFO">All Lines: All Heats (Default FIFO)</option>
+                    <option value="KEEP_ALLOCATED">Keep Current Allocations</option>
+                    <option value="CUSTOM">Custom Per-Line Heat Selection</option>
                   </select>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100 text-slate-600 text-[10px] uppercase border-b border-slate-200">
+                      <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                         <tr>
                           <th className="p-2.5">Item &amp; Heats Available</th>
                           <th className="p-2.5">Select Heat Number</th>
@@ -515,24 +508,24 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                           const autoPlan = getFIFOPreview(line, rem)
 
                           return (
-                            <tr key={line.id} className={isFullyAllocated ? 'bg-emerald-50/20 hover:bg-slate-50' : 'hover:bg-slate-50'}>
+                            <tr key={line.id} className="hover:bg-slate-50/80 transition-colors">
                               <td className="p-2.5 align-top">
-                                <div className="font-mono font-bold text-slate-900">{line.item_code}</div>
-                                <div className="text-[10px] text-slate-500 line-clamp-1 max-w-[200px]" title={line.item_description}>
+                                <div className="font-mono font-semibold text-slate-900">{line.item_code}</div>
+                                <div className="text-[11px] text-slate-500 line-clamp-1 max-w-[200px]" title={line.item_description}>
                                   {line.item_description}
                                 </div>
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                                  <span className={`px-1.5 py-0.5 rounded font-bold ${
-                                    isFullyAllocated ? 'bg-emerald-100 text-emerald-800' :
-                                    realAllocated > 0 ? 'bg-amber-100 text-amber-800' :
-                                    'bg-red-100 text-red-800'
+                                  <span className={`px-1.5 py-0.5 rounded font-semibold border ${
+                                    isFullyAllocated ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    realAllocated > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    'bg-rose-50 text-rose-700 border-rose-200'
                                   }`}>
-                                    {isFullyAllocated ? '✓ Fully Allocated' : realAllocated > 0 ? `Partial: ${realAllocated}/${line.required_qty}` : '⭕ Unallocated'}
+                                    {isFullyAllocated ? 'Fully Allocated' : realAllocated > 0 ? `Partial: ${realAllocated}/${line.required_qty}` : 'Unallocated'}
                                   </span>
-                                  <span className="bg-slate-100 px-1.5 py-0.5 rounded font-semibold text-slate-700">
+                                  <span className="bg-slate-100 px-1.5 py-0.5 rounded font-medium text-slate-700 tabular-nums">
                                     Req: {line.required_qty} | Need: {rem}
                                   </span>
-                                  <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-semibold">
+                                  <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
                                     {availItemLots.length} Avail / {allItemLots.length} Heat(s){itemYoms.length > 0 ? ` • YOM: ${itemYoms.join(', ')}` : ''}
                                   </span>
                                 </div>
@@ -552,27 +545,27 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                       },
                                     }))
                                   }}
-                                  className={`w-full max-w-[250px] border rounded-lg px-2 py-1.5 text-xs font-semibold ${
+                                  className={`w-full max-w-[250px] border rounded-md px-2 py-1.5 text-xs font-medium ${
                                     isFullyAllocated && choice.lotId === 'ALLOCATED'
-                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                                      ? 'border-emerald-300 bg-emerald-50/50 text-emerald-900'
                                       : 'border-slate-300 bg-white text-slate-800'
                                   }`}
                                 >
                                   {isFullyAllocated ? (
                                     <option value="ALLOCATED">
-                                      ✓ Fully Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
+                                      Allocated: {lineAllocs.map(a => a.heat_number).join(', ') || 'Committed'}
                                     </option>
                                   ) : realAllocated > 0 ? (
                                     <option value="ALLOCATED">
-                                      ⚠️ Partially Allocated: {lineAllocs.map(a => a.heat_number).join(', ')} ({realAllocated}/{line.required_qty} PCS)
+                                      Partial: {lineAllocs.map(a => a.heat_number).join(', ')} ({realAllocated}/{line.required_qty} PCS)
                                     </option>
                                   ) : null}
                                   <option value="AUTO_FIFO">
-                                    ⚡ All Heats (Auto FIFO — {availItemLots.length} avail)
+                                    All Heats (Auto FIFO — {availItemLots.length} avail)
                                   </option>
                                   {selectableLots.map(lot => (
                                     <option key={lot.id} value={lot.id}>
-                                      🔥 Heat {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
+                                      Heat {lot.heat_number} ({lot.available_qty} avail • YOM {lot.yom || 'N/A'})
                                     </option>
                                   ))}
                                 </select>
@@ -580,17 +573,17 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
                               <td className="p-2.5 align-top text-[11px]">
                                 {chosenLot ? (
-                                  <div className="bg-blue-50/70 border border-blue-200 rounded px-2 py-1 space-y-0.5">
-                                    <div className="font-mono font-bold text-slate-800">
-                                      🔥 Heat {chosenLot.heat_number}
+                                  <div className="bg-slate-50 border border-slate-200 rounded px-2 py-1 space-y-0.5">
+                                    <div className="font-mono font-semibold text-slate-800">
+                                      Heat {chosenLot.heat_number}
                                     </div>
-                                    <div className="text-blue-950">
+                                    <div className="text-slate-700">
                                       Cert #: <strong className="font-mono">{chosenLot.certificate_number || 'Pending'}</strong>
                                     </div>
-                                    <div className="text-blue-900">
+                                    <div className="text-slate-600">
                                       YOM: <strong>{chosenLot.yom || 'N/A'}</strong> &bull; Avail: <strong>{chosenLot.available_qty} PCS</strong>
                                     </div>
-                                    <div className="text-[10px] text-blue-700">Loc: {chosenLot.warehouse_location}</div>
+                                    <div className="text-[10px] text-slate-500">Loc: {chosenLot.warehouse_location}</div>
                                   </div>
                                 ) : (isFullyAllocated || realAllocated > 0) && choice.lotId === 'ALLOCATED' ? (
                                   lineAllocs.length > 0 ? (
@@ -598,11 +591,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                       {lineAllocs.map(a => {
                                         const lotInfo = masterStock.find(s => s.id === a.stock_lot_id)
                                         return (
-                                          <div key={a.id} className="bg-emerald-50/70 border border-emerald-200 rounded px-2 py-1 space-y-0.5">
-                                            <div className="font-mono font-bold text-emerald-950">
-                                              🔥 Heat {a.heat_number} ({a.allocated_qty} PCS)
+                                          <div key={a.id} className="bg-emerald-50/50 border border-emerald-200 rounded px-2 py-1 space-y-0.5">
+                                            <div className="font-mono font-semibold text-emerald-900">
+                                              Heat {a.heat_number} ({a.allocated_qty} PCS)
                                             </div>
-                                            <div className="text-[10px] text-emerald-900">
+                                            <div className="text-[10px] text-emerald-800">
                                               Cert #: <strong className="font-mono">{lotInfo?.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{lotInfo?.yom || 'N/A'}</strong>
                                             </div>
                                           </div>
@@ -614,11 +607,11 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                   )
                                 ) : autoPlan.length > 0 ? (
                                   <div className="space-y-1">
-                                    <div className="text-[10px] text-slate-500 font-semibold mb-0.5">Proposed FIFO Heats:</div>
+                                    <div className="text-[10px] text-slate-500 font-medium mb-0.5">Proposed FIFO Heats:</div>
                                     {autoPlan.map((p, i) => (
                                       <div key={i} className="bg-slate-50 border border-slate-200 rounded px-2 py-1">
-                                        <div className="font-mono font-bold text-slate-800">
-                                          🔥 Heat {p.lot.heat_number} ({p.take} PCS)
+                                        <div className="font-mono font-semibold text-slate-800">
+                                          Heat {p.lot.heat_number} ({p.take} PCS)
                                         </div>
                                         <div className="text-[10px] text-slate-600">
                                           Cert: <strong>{p.lot.certificate_number || 'Pending'}</strong> &bull; YOM: <strong>{p.lot.yom || 'N/A'}</strong>
@@ -627,15 +620,15 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                     ))}
                                   </div>
                                 ) : (
-                                  <span className="text-red-600 font-bold bg-red-50 border border-red-200 px-2 py-1 rounded inline-block text-[11px]">
-                                    ⚠️ No warehouse stock available
+                                  <span className="text-rose-700 font-medium bg-rose-50 border border-rose-200 px-2 py-1 rounded inline-block text-[11px]">
+                                    No warehouse stock available
                                   </span>
                                 )}
                               </td>
 
                               <td className="p-2.5 align-top text-center">
                                 {isFullyAllocated && choice.lotId === 'ALLOCATED' ? (
-                                  <span className="font-bold text-emerald-700">{realAllocated}</span>
+                                  <span className="font-semibold text-emerald-700 tabular-nums">{realAllocated}</span>
                                 ) : (
                                   <input
                                     type="number"
@@ -649,7 +642,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                                         [line.id]: { ...choice, qty: val },
                                       }))
                                     }}
-                                    className="w-16 border border-slate-300 rounded-lg p-1 text-center font-bold text-xs"
+                                    className="w-16 border border-slate-300 rounded-md p-1 text-center font-semibold text-xs tabular-nums"
                                   />
                                 )}
                               </td>
@@ -673,10 +666,10 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                         }
                       )
                     }
-                    className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-sm transition-colors flex items-center space-x-2"
                   >
-                    <span>Commit All Line Allocations (All Selected Heats)</span>
-                    <ArrowRight className="h-4 w-4" />
+                    <span>Commit All Line Allocations</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -684,14 +677,14 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
             {/* Selected item status (for Single Line Modes) */}
             {allocationMode !== 'batch_all' && (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md flex justify-between items-center text-xs">
                 <div>
                   <span className="text-slate-500">Allocating for: </span>
-                  <span className="font-mono font-bold text-slate-900">{currentLine?.item_code}</span>
+                  <span className="font-mono font-semibold text-slate-900">{currentLine?.item_code}</span>
                 </div>
-                <div>
+                <div className="tabular-nums">
                   <span className="text-slate-500">Unallocated Balance Needed: </span>
-                  <span className="font-extrabold text-red-700 text-sm">{remainingNeeded} PCS</span>
+                  <span className="font-semibold text-rose-700 text-sm">{remainingNeeded} PCS</span>
                 </div>
               </div>
             )}
@@ -699,28 +692,29 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
             {/* MODE A: FIFO Allocation Plan */}
             {allocationMode === 'fifo' && (
               <div className="space-y-4">
-                <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl text-xs text-blue-900">
-                  <div className="font-bold flex items-center space-x-1 mb-1">
-                    <ShieldCheck className="h-4 w-4 text-blue-700" />
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+                  <div className="font-semibold text-slate-900 flex items-center space-x-1.5 mb-1">
+                    <ShieldCheck className="h-4 w-4 text-blue-600" />
                     <span>FIFO Logic (First-In, First-Out by Receipt Date &amp; YOM)</span>
                   </div>
-                  <p className="text-[11px] text-blue-800">
+                  <p className="text-[11px] text-slate-600">
                     The system sequentially reserves stock from the oldest registered lots first. If a lot contains fewer units than requested, it drains that lot and automatically pulls the balance from the next oldest heat.
                   </p>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700">
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 font-semibold text-[11px] uppercase tracking-wider text-slate-600">
                     Calculated FIFO Allocation Simulation
                   </div>
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                       <tr>
                         <th className="p-2.5">Heat Number</th>
                         <th className="p-2.5">Certificate #</th>
                         <th className="p-2.5">YOM</th>
                         <th className="p-2.5 text-center">Available Before</th>
-                        <th className="p-2.5 text-center font-bold text-red-700">To Allocate</th>
+                        <th className="p-2.5 text-center">To Allocate</th>
                         <th className="p-2.5 text-center">Available After</th>
                       </tr>
                     </thead>
@@ -735,18 +729,18 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                         </tr>
                       ) : (
                         fifoPlan.map(p => (
-                          <tr key={p.lot.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 font-mono font-bold text-slate-900">
-                              🔥 {p.lot.heat_number}
-                              {p.lot.l_code && <span className="ml-1 text-[10px] text-amber-700">({p.lot.l_code})</span>}
+                          <tr key={p.lot.id} className="hover:bg-slate-50/80">
+                            <td className="p-2.5 font-mono font-semibold text-slate-900">
+                              {p.lot.heat_number}
+                              {p.lot.l_code && <span className="ml-1 text-[10px] text-slate-500">({p.lot.l_code})</span>}
                             </td>
                             <td className="p-2.5 font-mono text-slate-600">{p.lot.certificate_number || 'Pending'}</td>
-                            <td className="p-2.5 text-slate-600 font-semibold">{p.lot.yom}</td>
-                            <td className="p-2.5 text-center font-medium text-slate-600">{p.lot.available_qty} PCS</td>
-                            <td className="p-2.5 text-center font-extrabold text-red-600 bg-red-50/50">
+                            <td className="p-2.5 text-slate-600 font-medium">{p.lot.yom}</td>
+                            <td className="p-2.5 text-center font-medium text-slate-600 tabular-nums">{p.lot.available_qty} PCS</td>
+                            <td className="p-2.5 text-center font-semibold text-blue-700 bg-blue-50/40 tabular-nums">
                               {p.take} PCS
                             </td>
-                            <td className="p-2.5 text-center font-bold text-emerald-700">
+                            <td className="p-2.5 text-center font-semibold text-emerald-700 tabular-nums">
                               {p.remainingAvail} PCS
                             </td>
                           </tr>
@@ -754,16 +748,17 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
 
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleExecuteFIFO}
                     disabled={remainingNeeded <= 0 || fifoPlan.length === 0}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-sm transition-colors flex items-center space-x-2"
                   >
                     <span>Commit FIFO Allocation &amp; Lock Reservation</span>
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -772,24 +767,24 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
             {/* MODE B: Manual Heat Selection Dropdown */}
             {allocationMode === 'manual' && (
               <div className="space-y-4">
-                <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-wrap justify-between items-center gap-2">
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 flex flex-wrap justify-between items-center gap-2">
                   <div>
-                    <div className="font-bold flex items-center space-x-1 mb-0.5">
-                      <Flame className="h-4 w-4 text-amber-700" />
+                    <div className="font-semibold text-slate-900 flex items-center space-x-1.5 mb-0.5">
+                      <Flame className="h-4 w-4 text-blue-600" />
                       <span>Manual Specific Heat Selection</span>
                     </div>
-                    <p className="text-[11px] text-amber-800">
+                    <p className="text-[11px] text-slate-600">
                       Select any heat number from the dropdown below to inspect its Certificate Number and Year of Manufacturing (YOM).
                     </p>
                   </div>
-                  <div className="bg-white border border-amber-300 px-3 py-1.5 rounded-lg text-[11px] font-bold text-amber-950">
+                  <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-md text-[11px] font-medium text-slate-700">
                     {matchingLots.length} Heat Number(s) Available
                     {uniqueYoms.length > 0 && ` • YOMs: ${uniqueYoms.join(', ')}`}
                   </div>
                 </div>
 
                 {matchingLots.length === 0 ? (
-                  <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                  <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500">
                     <AlertTriangle className="h-5 w-5 text-amber-500 mx-auto mb-1" />
                     No available heat lots found in stock for {currentLine?.item_code}.
                   </div>
@@ -797,7 +792,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                   <div className="space-y-4">
                     {/* Heat Number Dropdown */}
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1.5 text-xs">
+                      <label className="block font-semibold text-slate-700 mb-1.5 text-xs">
                         Select Heat Number (Dropdown):
                       </label>
                       <select
@@ -810,12 +805,12 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                             setManualQty(Math.min(remainingNeeded || chosen.available_qty, chosen.available_qty))
                           }
                         }}
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs bg-white font-bold text-slate-900 shadow-sm focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-slate-300 rounded-md px-3 py-2 text-xs bg-white font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                       >
                         <option value="">-- Click to Choose Heat Number --</option>
                         {matchingLots.map(lot => (
                           <option key={lot.id} value={lot.id}>
-                            🔥 Heat: {lot.heat_number} | {lot.available_qty} PCS Avail | YOM: {lot.yom || 'N/A'} | Cert: {lot.certificate_number || 'Pending'} | Loc: {lot.warehouse_location}
+                            Heat: {lot.heat_number} | {lot.available_qty} PCS Avail | YOM: {lot.yom || 'N/A'} | Cert: {lot.certificate_number || 'Pending'} | Loc: {lot.warehouse_location}
                           </option>
                         ))}
                       </select>
@@ -823,34 +818,34 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
                     {/* Auto-Populated Certificate # & Year of Manufacturing Detail Card */}
                     {selectedManualLot && (
-                      <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                         <div>
-                          <span className="text-[10px] font-bold uppercase text-blue-700 block">Selected Heat #</span>
-                          <span className="font-mono font-extrabold text-slate-900 text-sm">
-                            🔥 {selectedManualLot.heat_number}
+                          <span className="text-[10px] font-semibold uppercase text-slate-500 block">Selected Heat #</span>
+                          <span className="font-mono font-semibold text-slate-900 text-sm">
+                            {selectedManualLot.heat_number}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase text-blue-700 flex items-center space-x-1">
+                          <span className="text-[10px] font-semibold uppercase text-slate-500 flex items-center space-x-1">
                             <FileCheck2 className="h-3 w-3" />
                             <span>Certificate Number</span>
                           </span>
-                          <span className="font-mono font-extrabold text-blue-950 text-sm">
+                          <span className="font-mono font-semibold text-slate-900 text-sm">
                             {selectedManualLot.certificate_number || 'Pending Upload'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase text-blue-700 flex items-center space-x-1">
+                          <span className="text-[10px] font-semibold uppercase text-slate-500 flex items-center space-x-1">
                             <Calendar className="h-3 w-3" />
                             <span>Year of Mfg (YOM)</span>
                           </span>
-                          <span className="font-extrabold text-blue-950 text-sm">
+                          <span className="font-semibold text-slate-900 text-sm">
                             {selectedManualLot.yom || 'N/A'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase text-blue-700 block">Stock &amp; Location</span>
-                          <span className="font-bold text-emerald-700">
+                          <span className="text-[10px] font-semibold uppercase text-slate-500 block">Stock &amp; Location</span>
+                          <span className="font-semibold text-emerald-700 tabular-nums">
                             {selectedManualLot.available_qty} PCS
                           </span>
                           <span className="text-[11px] text-slate-600 block">
@@ -862,7 +857,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
 
                     {/* Quantity Input */}
                     {selectedManualLot && (
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center space-x-3 text-xs">
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-md flex items-center space-x-3 text-xs">
                         <div>
                           <label className="font-semibold text-slate-700 block mb-1">Quantity to Allocate (PCS):</label>
                           <input
@@ -871,7 +866,7 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                             max={selectedManualLot.available_qty || 1}
                             value={manualQty}
                             onChange={(e) => setManualQty(Number(e.target.value))}
-                            className="border border-slate-300 rounded-lg p-1.5 w-32 font-bold text-center"
+                            className="border border-slate-300 rounded-md p-1.5 w-32 font-semibold text-center tabular-nums"
                           />
                         </div>
                         <div className="text-slate-500 text-[11px] pt-4">
@@ -884,10 +879,10 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
                       <button
                         onClick={handleExecuteManual}
                         disabled={!manualLotId || manualQty <= 0}
-                        className="bg-[#0B2545] hover:bg-[#133C55] disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-2"
+                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-4 py-2 rounded-md shadow-sm transition-colors flex items-center space-x-2"
                       >
                         <span>Commit Manual Heat Allocation</span>
-                        <ArrowRight className="h-4 w-4" />
+                        <ArrowRight className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>

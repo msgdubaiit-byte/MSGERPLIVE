@@ -741,31 +741,28 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const totalGrossWt = items.reduce((sum, i) => sum + i.total_gross_weight_kg, 0)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Header Card */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-6 rounded-2xl shadow-xl border border-slate-700">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-3 mb-2">
-              <span className="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center space-x-1.5 shadow-sm">
-                <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
-                <span>Fully Automated Sync</span>
+            <div className="flex items-center space-x-2.5 mb-1">
+              <h1 className="text-lg font-semibold text-slate-900">
+                Technical Sourcing, PO Split &amp; CIPL Portal
+              </h1>
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                Automated Sync
               </span>
-              <span className="text-slate-400 text-xs font-mono">Dual Excel &amp; CIPL Engine</span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Technical Sourcing, PO Split &amp; CIPL Portal
-            </h1>
-            <p className="text-sm text-slate-300 mt-1 max-w-3xl">
-              Line items are automatically populated from the uploaded Sales Order in exact position order without repeats.
-              Manage multi-heat splits, auto-detect HS codes &amp; weights, and export publication-quality Client Summary, Internal Stores Excel, CIPL Logistics, and Supplier PO packages.
+            <p className="text-xs text-slate-500 max-w-3xl">
+              Manage multi-heat splits, auto-detect HS codes &amp; weights, and export Client Summary, Internal Stores Excel, CIPL Logistics, and Supplier PO packages.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Unified Active Sales Order Selector */}
-            <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-3 py-1.5 flex items-center space-x-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Active SO:</span>
+            <div className="bg-slate-50 border border-slate-300 rounded-md px-3 py-1.5 flex items-center space-x-2">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase shrink-0">Active SO:</span>
               <select
                 value={selectedOrderId}
                 onChange={e => {
@@ -775,10 +772,10 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   localStorage.setItem('msg_sourcing_active_so_id', newId)
                   handleLoadFromOrder(newId)
                 }}
-                className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[220px] truncate"
+                className="bg-transparent text-slate-900 text-xs font-semibold focus:outline-none cursor-pointer max-w-[220px] truncate"
               >
                 {uniqueOrders.map(o => (
-                  <option key={o.id} value={o.id} className="bg-slate-900 text-white">
+                  <option key={o.id} value={o.id}>
                     {o.so_number} - {o.po_number} ({o.customer_name})
                   </option>
                 ))}
@@ -795,51 +792,51 @@ export const TechnicalSourcingPortal: React.FC = () => {
             <button
               onClick={() => pdfInputRef.current?.click()}
               disabled={isUploading}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-md transition-all active:scale-95 disabled:opacity-50"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-2 rounded-md flex items-center space-x-1.5 transition-colors disabled:opacity-50"
               title="Upload Customer PO PDF directly into this worksheet"
             >
-              <Upload className="h-4 w-4" />
+              <Upload className="h-3.5 w-3.5 text-slate-500" />
               <span>{isUploading ? 'Parsing PO...' : 'Upload PO (PDF)'}</span>
             </button>
 
             <button
-              onClick={handleSaveToSalesOrder}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-md transition-all active:scale-95"
-              title="Save worksheet directly as a Sales Order in local database & Supabase Cloud"
-            >
-              <UploadCloud className="h-4 w-4" />
-              <span>Save to Sales Order</span>
-            </button>
-
-            <button
               onClick={handleSaveDraft}
-              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs px-3 py-2 rounded-lg flex items-center space-x-1.5 transition-colors"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-2 rounded-md flex items-center space-x-1.5 transition-colors"
               title="Save worksheet draft"
             >
-              <Save className="h-4 w-4" />
+              <Save className="h-3.5 w-3.5 text-slate-500" />
               <span>Save Draft</span>
             </button>
 
             <button
               onClick={() => setIsDraftsModalOpen(true)}
-              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs px-3 py-2 rounded-lg flex items-center space-x-1.5 transition-colors"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-2 rounded-md flex items-center space-x-1.5 transition-colors"
             >
-              <Clock className="h-4 w-4" />
+              <Clock className="h-3.5 w-3.5 text-slate-500" />
               <span>Drafts ({draftsList.length})</span>
+            </button>
+
+            <button
+              onClick={handleSaveToSalesOrder}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors"
+              title="Save worksheet directly as a Sales Order in local database & Supabase Cloud"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              <span>Save to Sales Order</span>
             </button>
           </div>
         </div>
 
         {statusNotice && (
-          <div className="mt-4 p-3 bg-emerald-900/60 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs flex items-center space-x-2 animate-fade-in">
-            <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-400" />
+          <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs flex items-center space-x-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
             <span>{statusNotice}</span>
           </div>
         )}
       </div>
 
       {/* Header Metadata Controls */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="bg-white p-4 rounded-lg shadow-xs border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Client / Customer</label>
           <input
@@ -931,38 +928,38 @@ export const TechnicalSourcingPortal: React.FC = () => {
       </div>
 
       {/* Portal In-Page Tab Navigation Bar */}
-      <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-2">
+      <div className="bg-white p-2 rounded-lg shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setActivePortalTab('worksheet')}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
               activePortalTab === 'worksheet'
-                ? 'bg-slate-900 text-white shadow-sm'
+                ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            <LayoutGrid className="h-4 w-4" />
+            <LayoutGrid className="h-3.5 w-3.5" />
             <span>Sourcing Worksheet</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full ${activePortalTab === 'worksheet' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700 font-mono'}`}>
-              {items.length} lines
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full tabular-nums ${activePortalTab === 'worksheet' ? 'bg-blue-500 text-white' : 'bg-white text-slate-700 font-mono'}`}>
+              {items.length}
             </span>
           </button>
 
           <button
             type="button"
             onClick={handleConvertToPO}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
               activePortalTab === 'purchase_order'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
             }`}
           >
-            <ShoppingCart className="h-4 w-4" />
+            <ShoppingCart className="h-3.5 w-3.5" />
             <span>Purchase Order / Local PO</span>
             {selectedItemIds.size > 0 && (
-              <span className="bg-amber-500 text-white text-[10px] font-mono px-2 py-0.5 rounded-full">
-                {selectedItemIds.size} selected
+              <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono px-1.5 py-0.5 rounded-full">
+                {selectedItemIds.size}
               </span>
             )}
           </button>
@@ -970,22 +967,22 @@ export const TechnicalSourcingPortal: React.FC = () => {
           <button
             type="button"
             onClick={() => handleOpenCreateCertificate()}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
               activePortalTab === 'create_certificate'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
             }`}
           >
-            <FileCheck2 className="h-4 w-4" />
-            <span>MTC Certificates (Upload &amp; Download)</span>
+            <FileCheck2 className="h-3.5 w-3.5" />
+            <span>MTC Certificates</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenPreview('client')}
-            className="px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 transition-all cursor-pointer"
+            className="px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
           >
-            <Eye className="h-4 w-4" />
+            <Eye className="h-3.5 w-3.5 text-slate-500" />
             <span>Preview Deliverables</span>
           </button>
         </div>
@@ -994,14 +991,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
         {activePortalTab === 'worksheet' && (
           <div className="flex items-center space-x-2">
             {selectedItemIds.size > 0 ? (
-              <div className="flex items-center space-x-2 animate-fade-in bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
-                <span className="text-xs font-bold text-amber-900">
-                  {selectedItemIds.size} item(s) selected
+              <div className="flex items-center space-x-2 bg-blue-50 px-3 py-1 rounded-md border border-blue-200">
+                <span className="text-xs font-semibold text-blue-800 tabular-nums">
+                  {selectedItemIds.size} selected
                 </span>
                 <button
                   type="button"
                   onClick={handleConvertToPO}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
                 >
                   <ShoppingCart className="h-3 w-3" />
                   <span>Convert to PO</span>
@@ -1009,7 +1006,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleOpenCreateCertificate()}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
                 >
                   <FileCheck2 className="h-3 w-3" />
                   <span>MTC Hub</span>
@@ -1020,19 +1017,19 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConvertToPO}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                   title="Create Purchase Order for lines"
                 >
-                  <ShoppingCart className="h-3.5 w-3.5" />
+                  <ShoppingCart className="h-3.5 w-3.5 text-slate-500" />
                   <span>Purchase Order</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOpenCreateCertificate()}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                   title="Upload, Preview & Download MTC Certificates"
                 >
-                  <FileCheck2 className="h-3.5 w-3.5" />
+                  <FileCheck2 className="h-3.5 w-3.5 text-slate-500" />
                   <span>MTC Certificates</span>
                 </button>
               </div>
@@ -1135,39 +1132,39 @@ export const TechnicalSourcingPortal: React.FC = () => {
       {activePortalTab === 'worksheet' && (
         <>
 
-      {/* 4 Action Export Buttons Banner */}
-      <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* Action Export Buttons Banner */}
+      <div className="bg-white p-3.5 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex items-center space-x-2">
           <button
             onClick={handleAutoDetectAll}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1.5 shadow-xs transition-colors"
           >
-            <Sparkles className="h-4 w-4 text-amber-300" />
+            <Sparkles className="h-3.5 w-3.5" />
             <span>Auto-Detect All (COO, HS, Wt)</span>
           </button>
 
-          <label className="inline-flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer ml-3 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+          <label className="inline-flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer ml-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
             <input
               type="checkbox"
               checked={filterMachinedOnly}
               onChange={e => setFilterMachinedOnly(e.target.checked)}
-              className="rounded text-orange-600 focus:ring-orange-500 h-4 w-4"
+              className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
             />
             <span>Filter Machined / Fab Items Only</span>
           </label>
         </div>
 
-        {/* 4 Preview & Download Deliverable Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Deliverable Buttons */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* 1. Client Summary: Opens Preview & Download Modal */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-emerald-800">
+          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
             <button
               onClick={() => handleOpenPreview('client')}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Open Client Summary Preview & Download Modal"
             >
-              <Eye className="h-4 w-4" />
-              <span>Download Client Summary</span>
+              <Eye className="h-3.5 w-3.5 text-slate-500" />
+              <span>Client Summary</span>
             </button>
             <button
               onClick={async () => {
@@ -1182,7 +1179,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-emerald-800 hover:bg-emerald-900 text-emerald-100 hover:text-white px-2.5 py-2 border-l border-emerald-600/70 transition-colors cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
               title="Direct 1-Click Instant Download (.xlsx)"
             >
               <Download className="h-3.5 w-3.5" />
@@ -1190,14 +1187,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
           </div>
 
           {/* 2. Stores Internal Excel: Opens Preview & Download Modal */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-blue-800">
+          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
             <button
               onClick={() => handleOpenPreview('stores')}
-              className="bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Open Stores Sheet Preview & Download Modal"
             >
-              <Eye className="h-4 w-4" />
-              <span>Download Stores Sheet</span>
+              <Eye className="h-3.5 w-3.5 text-slate-500" />
+              <span>Stores Sheet</span>
             </button>
             <button
               onClick={async () => {
@@ -1212,22 +1209,22 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-blue-800 hover:bg-blue-900 text-blue-100 hover:text-white px-2.5 py-2 border-l border-blue-600/70 transition-colors cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
               title="Direct 1-Click Instant Download (.xlsx)"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* Local Purchase Sheet: Opens Dedicated Allocation Modal */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-amber-800">
+          {/* Local Purchase Sheet */}
+          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
             <button
               onClick={() => setIsLocalPurchaseModalOpen(true)}
-              className="bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Open Local Purchase Modal (Select Local Supplier, Items & PCS)"
             >
-              <Wrench className="h-4 w-4" />
-              <span>Download Local Purchase</span>
+              <Wrench className="h-3.5 w-3.5 text-slate-500" />
+              <span>Local Purchase</span>
             </button>
             <button
               onClick={async () => {
@@ -1244,21 +1241,21 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-amber-800 hover:bg-amber-900 text-amber-100 hover:text-white px-2.5 py-2 border-l border-amber-600/70 transition-colors cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
               title="Direct 1-Click Instant Download (.xlsx)"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* 3. Sticker Summary Sheet: Opens Preview & Download Modal */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-teal-800">
+          {/* 3. Sticker Summary Sheet */}
+          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
             <button
               onClick={() => handleOpenPreview('summary')}
-              className="bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Open Sticker Summary Preview & Download Modal"
             >
-              <Eye className="h-4 w-4" />
+              <Eye className="h-3.5 w-3.5 text-slate-500" />
               <span>Sticker Summary</span>
             </button>
             <button
@@ -1274,22 +1271,22 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-teal-800 hover:bg-teal-900 text-teal-100 hover:text-white px-2.5 py-2 border-l border-teal-600/70 transition-colors cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
               title="Direct 1-Click Instant Download (.xlsx)"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* 4. CIPL Logistics: Opens Modal Popup Directly */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-purple-800">
+          {/* 4. CIPL Logistics */}
+          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
             <button
               onClick={() => handleOpenPreview('cipl_invoice')}
-              className="bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Open CIPL Logistics Builder & Preview Modal"
             >
-              <Eye className="h-4 w-4" />
-              <span>Download CIPL (.xlsx)</span>
+              <Eye className="h-3.5 w-3.5 text-slate-500" />
+              <span>CIPL (.xlsx)</span>
             </button>
             <button
               onClick={async () => {
@@ -1304,7 +1301,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }
               }}
               disabled={isExporting}
-              className="bg-purple-800 hover:bg-purple-900 text-purple-100 hover:text-white px-2.5 py-2 border-l border-purple-600/70 transition-colors cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
               title="Direct 1-Click Instant Download (.xlsx)"
             >
               <Download className="h-3.5 w-3.5" />
@@ -1325,10 +1322,10 @@ export const TechnicalSourcingPortal: React.FC = () => {
               }
             }}
             disabled={isExporting}
-            className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors"
+            className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors"
             title="Generate & download official Supplier PO PDFs in ZIP bundle"
           >
-            <Archive className="h-4 w-4" />
+            <Archive className="h-3.5 w-3.5 text-slate-500" />
             <span>{isExporting ? 'Generating ZIP...' : 'Supplier POs (.zip)'}</span>
           </button>
 
@@ -1438,42 +1435,42 @@ export const TechnicalSourcingPortal: React.FC = () => {
       </div>
 
       {/* Interactive Line Items Grid */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+      <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="flex items-center space-x-2">
-            <h2 className="font-bold text-sm text-slate-800">
-              Live Sourcing &amp; Allocation Worksheet
+            <h2 className="font-semibold text-sm text-slate-900">
+              Sourcing &amp; Allocation Worksheet
             </h2>
-            <span className="text-xs bg-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full">
+            <span className="text-[11px] bg-slate-100 border border-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full tabular-nums">
               {items.length} lines
             </span>
           </div>
 
-          <div className="flex items-center space-x-3 text-xs flex-wrap gap-y-2">
-            <span className="text-slate-600">
-              Total Value: <strong className="text-slate-900">{currency} {totalAmount.toLocaleString()}</strong>
+          <div className="flex items-center space-x-2 text-xs flex-wrap gap-y-2">
+            <span className="text-slate-600 tabular-nums">
+              Total: <strong className="text-slate-900">{currency} {totalAmount.toLocaleString()}</strong>
             </span>
             <span className="text-slate-300">|</span>
-            <span className="text-slate-600">
+            <span className="text-slate-600 tabular-nums">
               Net Wt: <strong className="text-slate-900">{Math.round(totalNetWt * 100) / 100} kg</strong>
             </span>
-            <div className="flex items-center space-x-1.5 pl-2 border-l border-slate-300">
+            <div className="flex flex-wrap items-center gap-1.5 pl-2 border-l border-slate-200">
               <button
                 type="button"
                 onClick={handleConvertToPO}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                 title="Convert selected items into a Purchase Order"
               >
-                <ShoppingCart className="h-3 w-3" />
+                <ShoppingCart className="h-3 w-3 text-slate-500" />
                 <span>Purchase Order</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleOpenCreateCertificate()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                 title="Create EN 10204 3.1 Mill Certificate"
               >
-                <FileCheck2 className="h-3 w-3" />
+                <FileCheck2 className="h-3 w-3 text-slate-500" />
                 <span>Create Cert</span>
               </button>
               <button
@@ -1486,28 +1483,28 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     setStatusNotice(`Applied Supplier PO #${trimmed} to all items!`)
                   }
                 }}
-                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                 title="Bulk apply Supplier PO to all items outside"
               >
-                <Plus className="h-3 w-3 text-amber-700" />
+                <Plus className="h-3 w-3 text-slate-500" />
                 <span>Supplier PO</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsLocalPurchaseModalOpen(true)}
-                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                 title="Select Local Supplier, which items and how many PCS"
               >
-                <Wrench className="h-3 w-3 text-amber-700" />
+                <Wrench className="h-3 w-3 text-slate-500" />
                 <span>Local Purchase</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleOpenPreview('cipl_invoice')}
-                className="bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
                 title="Open CIPL Builder & Preview"
               >
-                <Eye className="h-3 w-3 text-purple-700" />
+                <Eye className="h-3 w-3 text-slate-500" />
                 <span>CIPL Builder</span>
               </button>
               <button
@@ -1516,7 +1513,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   setItems(prev => prev.map(item => ({ ...item, package_type: 'Pallet' })))
                   setStatusNotice('Set packaging to Pallet for all items!')
                 }}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs px-2 py-1.5 rounded-md transition-colors cursor-pointer"
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors cursor-pointer"
                 title="Set All Pallet"
               >
                 All Pallet
@@ -1524,7 +1521,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
             </div>
             <button
               onClick={handleAddItem}
-              className="bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Item</span>
@@ -1534,14 +1531,14 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-200">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="p-2.5 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={items.length > 0 && items.every(it => selectedItemIds.has(it.id))}
                     onChange={e => toggleSelectAll(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
                     title="Select all items"
                   />
                 </th>
@@ -1549,17 +1546,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 <th className="p-2.5 w-20">PO Item</th>
                 <th className="p-2.5 min-w-[260px]">Description &amp; Machining Spec</th>
                 <th className="p-2.5 w-24 text-center">Qty / UOM</th>
-                <th className="p-2.5 w-32 bg-sky-50 text-sky-900 border-b-2 border-sky-400 text-center">
+                <th className="p-2.5 w-32 text-center">
                   Packaging (CIPL)
-                  <span className="block text-[9px] text-sky-600 font-normal">Pallet / Box / #</span>
+                  <span className="block text-[9px] text-slate-400 font-normal normal-case">Pallet / Box / #</span>
                 </th>
                 <th className="p-2.5 w-32">Heat Number</th>
                 <th className="p-2.5 w-32">MTC Cert Ref</th>
                 <th className="p-2.5 w-36">MAKE / Mfr</th>
                 <th className="p-2.5 w-36">Supplier Name</th>
-                <th className="p-2.5 w-36 bg-amber-50 text-amber-900 border-b-2 border-amber-400">
+                <th className="p-2.5 w-36">
                   Supplier PO #
-                  <span className="block text-[9px] text-amber-700 font-normal">Stores / CIPL</span>
+                  <span className="block text-[9px] text-slate-400 font-normal normal-case">Stores / CIPL</span>
                 </th>
                 <th className="p-2.5 w-28">HS Tariff</th>
                 <th className="p-2.5 w-24">COO</th>
@@ -1814,37 +1811,37 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
       {/* Drafts Modal */}
       {isDraftsModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-scale-up">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-200 mb-4">
-              <h3 className="text-base font-bold text-slate-800 flex items-center space-x-2">
-                <Clock className="h-5 w-5 text-indigo-600" />
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-6 shadow-xl border border-slate-200 overflow-hidden">
+            <div className="flex justify-between items-center gap-2 pb-3 border-b border-slate-200 mb-4 shrink-0">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center space-x-2">
+                <Clock className="h-4 w-4 text-blue-600" />
                 <span>Saved Sourcing Drafts &amp; Worksheets</span>
               </h3>
               <button
                 onClick={() => setIsDraftsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+                className="text-slate-400 hover:text-slate-600 text-base"
               >
                 ✕
               </button>
             </div>
 
             {draftsList.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-sm">
+              <div className="text-center py-8 text-slate-400 text-xs">
                 No saved drafts found. Click &quot;Save Draft&quot; on any worksheet to preserve your progress.
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 overflow-y-auto flex-1 pr-1">
                 {draftsList.map(draft => (
                   <div
                     key={draft.id}
-                    className="p-3 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center justify-between"
+                    className="p-3 border border-slate-200 rounded-md hover:bg-slate-50 flex items-center justify-between"
                   >
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800">
+                      <h4 className="font-semibold text-xs text-slate-800">
                         {draft.msg_ref} — {draft.client}
                       </h4>
-                      <p className="text-xs text-slate-500 font-mono">
+                      <p className="text-[11px] text-slate-500 font-mono">
                         PO: {draft.po_number} | {draft.items.length} items | Saved: {new Date(draft.saved_at || '').toLocaleString()}
                       </p>
                     </div>
@@ -1852,7 +1849,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => handleRestoreDraft(draft)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md"
                       >
                         Restore
                       </button>

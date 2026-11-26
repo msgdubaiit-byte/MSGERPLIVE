@@ -71,9 +71,9 @@ export const SettingsView: React.FC = () => {
     setIsTestingCloudinary(false)
   }
 
-  const handleResetFactoryData = () => {
+  const handleResetFactoryData = async () => {
     if (confirm('Are you sure you want to reset the database to the clean factory dataset? All test records will be restored to original MSG Oilfield baseline.')) {
-      db.resetToDefault()
+      await db.resetToDefault()
       alert('Database reset to official MSG Oilfield baseline dataset.')
       window.location.reload()
     }
@@ -186,14 +186,14 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <Database className="h-5 w-5 text-emerald-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Supabase PostgreSQL & Cloud Configuration</h1>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <Database className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Supabase PostgreSQL &amp; Cloud Configuration</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Production Database Layer
             </span>
           </div>
@@ -204,17 +204,17 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
 
         <button
           onClick={handleResetFactoryData}
-          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-lg border border-slate-300 transition-colors flex items-center space-x-1.5"
+          className="bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-md border border-slate-300 transition-colors flex items-center space-x-1.5"
         >
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
           <span>Reset Factory Demo Data</span>
         </button>
       </div>
 
       {/* Supabase Connection Setup */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4 text-xs">
-          <h2 className="font-bold uppercase tracking-wider text-slate-800 pb-2 border-b border-slate-100 flex items-center space-x-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-5 space-y-4 text-xs">
+          <h2 className="font-semibold uppercase tracking-wider text-slate-700 pb-2 border-b border-slate-100 flex items-center space-x-2">
             <KeyRound className="h-4 w-4 text-blue-600" />
             <span>Supabase Connection Settings</span>
           </h2>
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
                 value={supabaseUrl}
                 onChange={(e) => setSupabaseUrl(e.target.value)}
                 placeholder="https://your-project.supabase.co"
-                className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                className="w-full border border-slate-300 rounded-md p-2 font-mono text-slate-900"
               />
             </div>
 
@@ -240,9 +240,9 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
                 value={supabaseKey}
                 onChange={(e) => setSupabaseKey(e.target.value)}
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                className="w-full border border-slate-300 rounded-md p-2 font-mono text-slate-900"
               />
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 Never expose your service_role key. Use only the public anon key for frontend clients.
               </p>
             </div>
@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
             <div className="flex items-center space-x-2 pt-2">
               <button
                 type="submit"
-                className="bg-[#0B2545] hover:bg-[#133C55] text-white font-bold py-2 px-4 rounded-lg shadow"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-xs transition-colors"
               >
                 Save Configuration
               </button>
@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
                 type="button"
                 onClick={handleTestConnection}
                 disabled={isTesting}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center space-x-1.5"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold py-2 px-4 rounded-md flex items-center space-x-1.5 transition-colors"
               >
                 <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
               </button>

@@ -44,12 +44,11 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
     try {
       let rawPdfBytes: Uint8Array | null = null
 
-      // 1. Get raw PDF from real uploaded file
+      // 1. Get raw PDF from real uploaded file or vault
       if (pdfFile) {
         const buffer = await pdfFile.arrayBuffer()
         rawPdfBytes = new Uint8Array(buffer)
       } else {
-        // Check if there is an existing uploaded certificate in the MTC vault
         rawPdfBytes = getUploadedCertificateBytes(selectedLP.l_code) || getUploadedCertificateBytes(certRef.trim())
       }
 
@@ -59,31 +58,52 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
         return
       }
 
-      // 2. Apply Dynamic MSG Oilfield Stamp to Page 1 and Circular Stamp to Page 2+
-      const stampedPdfBytes = await stampMTCDocument(rawPdfBytes, {
-        poNo: selectedLP.purchase_reference.split(' ')[0] || 'PO-LOCAL',
-        itemNo: selectedLP.l_code,
-        qty: selectedLP.received_qty,
-        sign: 'MSG/QC-04',
-        dateStr: new Date().toISOString().substring(0, 10).toUpperCase()
-      }, true)
+      // 2. Upload and stamp via production backend if authenticated, else client fallback
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+      let stampedFileName = `${selectedLP.l_code}_STAMPED_VERIFIED_COPY.pdf`
+      let stampedPdfBytes: Uint8Array | null = null
 
-      const stampedFileName = `${selectedLP.l_code}_STAMPED_VERIFIED_COPY.pdf`
+      if (token && pdfFile) {
+        const form = new FormData()
+        form.append('cert_ref', certRef.trim())
+        form.append('file', pdfFile, pdfFile.name)
+        const resp = await fetch(`/api/local-purchases/${encodeURIComponent(selectedLP.id)}/stamp-mtc`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        })
+        if (resp.ok) {
+          const data = await resp.json()
+          if (data.stampedUrl) {
+            const pdfResp = await fetch(data.stampedUrl)
+            if (pdfResp.ok) {
+              stampedPdfBytes = new Uint8Array(await pdfResp.arrayBuffer())
+            }
+          }
+          await db.refreshFromBackend()
+        }
+      }
 
-      // 3. Register stamped copy in certificate vault cache
+      if (!stampedPdfBytes) {
+        stampedPdfBytes = await stampMTCDocument(rawPdfBytes, {
+          poNo: selectedLP.purchase_reference.split(' ')[0] || 'PO-LOCAL',
+          itemNo: selectedLP.l_code,
+          qty: selectedLP.received_qty,
+          sign: 'MSG/QC-04',
+          dateStr: new Date().toISOString().substring(0, 10).toUpperCase()
+        }, true)
+        db.uploadAndStampSupplierMTC(
+          selectedLP.id,
+          certRef.trim(),
+          stampedFileName,
+          currentUser?.email || 'mtc@msgoilfield.ae'
+        )
+      }
+
+      // 3. Register stamped copy in certificate vault cache & trigger download
       registerUploadedCertificate(selectedLP.l_code, stampedPdfBytes, stampedFileName)
       registerUploadedCertificate(certRef.trim(), stampedPdfBytes, stampedFileName)
-
-      // 4. Trigger immediate download of stamped copy
       downloadPDFBlob(stampedPdfBytes, stampedFileName)
-
-      // 5. Save to Database
-      db.uploadAndStampSupplierMTC(
-        selectedLP.id,
-        certRef.trim(),
-        stampedFileName,
-        currentUser?.email || 'mtc@msgoilfield.ae'
-      )
 
       alert(`Supplier Certificate for L-Code ${selectedLP.l_code} successfully stamped, verified, and linked!`)
       setSelectedLP(null)
@@ -98,14 +118,14 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <ShoppingBag className="h-5 w-5 text-purple-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Local Purchases & L-Codes Workflow</h1>
-            <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <ShoppingBag className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Local Purchases &amp; L-Codes Workflow</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 14 Standard
             </span>
           </div>
@@ -117,7 +137,7 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
         <div className="flex items-center space-x-2">
           <button
             onClick={() => exportLocalPurchases()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md shadow-xs transition-colors flex items-center space-x-1.5"
           >
             <Download className="h-3.5 w-3.5" />
             <span>Export L-Codes (.xlsx)</span>
@@ -126,28 +146,28 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
       </div>
 
       {/* Info Card on Stamping Policy */}
-      <div className="p-4 bg-gradient-to-r from-purple-900 to-indigo-900 rounded-xl text-white shadow text-xs">
+      <div className="p-4 bg-white rounded-lg border border-l-4 border-slate-200 border-l-blue-600 shadow-xs text-xs">
         <div className="flex items-start space-x-3">
-          <Shield className="h-6 w-6 text-amber-400 shrink-0 mt-0.5" />
+          <Shield className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
           <div>
-            <div className="font-bold text-sm">MSG Oilfield Local Purchase Stamping Protocol</div>
-            <p className="text-purple-200 text-[11px] mt-1 leading-relaxed">
-              When materials are purchased locally within the UAE, original supplier certificates must remain pristine.
-              The system automatically renders the approved MSG Oilfield high-resolution rectangular stamp (with PO#, Item#, Qty, QC sign, and date) on Page 1, followed by circular verification stamps on subsequent pages.
+            <div className="font-semibold text-sm text-slate-900">MSG Oilfield Local Purchase Stamping Protocol</div>
+            <p className="text-slate-600 text-[11px] mt-1 leading-relaxed">
+              When materials are purchased locally within the UAE, original supplier certificates remain pristine.
+              The system renders the approved MSG Oilfield rectangular stamp (with PO#, Item#, Qty, QC sign, and date) on Page 1, followed by circular verification stamps on subsequent pages.
             </p>
           </div>
         </div>
       </div>
 
       {/* Local Purchases Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+        <div className="px-4 py-2.5 bg-slate-50 font-semibold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-200">
           Active Local Purchase (L-Code) Inventory Records
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="p-3">L-Code</th>
                 <th className="p-3">Item Code</th>
@@ -161,26 +181,26 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
             </thead>
             <tbody className="divide-y divide-slate-100">
               {localPurchases.map(lp => (
-                <tr key={lp.id} className="hover:bg-slate-50">
+                <tr key={lp.id} className="hover:bg-slate-50/80">
                   <td className="p-3">
-                    <span className="font-mono font-bold text-amber-900 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded text-xs">
+                    <span className="font-mono font-semibold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-xs">
                       {lp.l_code}
                     </span>
                   </td>
-                  <td className="p-3 font-mono font-bold text-slate-800">{lp.item_code}</td>
+                  <td className="p-3 font-mono font-semibold text-slate-900">{lp.item_code}</td>
                   <td className="p-3 font-medium text-slate-700">{lp.supplier_name}</td>
                   <td className="p-3 font-mono text-[11px] text-slate-500">{lp.purchase_reference}</td>
-                  <td className="p-3 text-center font-extrabold text-slate-900">{lp.received_qty} PCS</td>
-                  <td className="p-3 text-center font-bold text-slate-700">{lp.yom}</td>
+                  <td className="p-3 text-center font-semibold text-slate-900 tabular-nums">{lp.received_qty} PCS</td>
+                  <td className="p-3 text-center font-medium text-slate-700 tabular-nums">{lp.yom}</td>
                   <td className="p-3">
                     {lp.supplier_mtc_uploaded ? (
-                      <span className="text-emerald-700 font-bold text-[11px] flex items-center space-x-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-medium text-[11px] inline-flex items-center space-x-1">
+                        <CheckCircle2 className="h-3 w-3" />
                         <span>Stamped & Verified</span>
                       </span>
                     ) : (
-                      <span className="text-rose-700 font-bold text-[11px] flex items-center space-x-1">
-                        <AlertTriangle className="h-3.5 w-3.5" />
+                      <span className="text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full font-medium text-[11px] inline-flex items-center space-x-1">
+                        <AlertTriangle className="h-3 w-3" />
                         <span>Pending Supplier MTC</span>
                       </span>
                     )}
@@ -193,7 +213,7 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
                             setSelectedLP(lp)
                             setCertRef(`SUPPLIER-${lp.l_code}-MTC`)
                           }}
-                          className="bg-purple-700 hover:bg-purple-800 text-white font-semibold text-[11px] px-2.5 py-1 rounded shadow"
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] px-2.5 py-1 rounded-md shadow-xs transition-colors"
                         >
                           {lp.supplier_mtc_uploaded ? 'Re-Stamp MTC' : 'Upload & Stamp MTC'}
                         </button>
@@ -202,7 +222,7 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
                       {lp.supplier_mtc_uploaded && (
                         <button
                           onClick={() => onPreviewMTC('/sample-mtc.pdf', lp.item_code, lp.l_code)}
-                          className="text-slate-600 hover:text-purple-700 p-1"
+                          className="text-slate-600 hover:text-blue-600 p-1"
                           title="Preview Stamped PDF"
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -219,20 +239,20 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
 
       {/* Upload and Stamp Modal */}
       {selectedLP && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-5 py-3.5 text-slate-900 border-b border-slate-200 flex justify-between items-center gap-2 shrink-0">
               <div className="flex items-center space-x-2">
-                <FileUp className="h-4 w-4 text-amber-400" />
-                <h3 className="font-bold text-sm uppercase">Supplier MTC Upload & Automatic Stamping</h3>
+                <FileUp className="h-4 w-4 text-blue-600" />
+                <h3 className="font-semibold text-sm">Supplier MTC Upload &amp; Automatic Stamping</h3>
               </div>
-              <button onClick={() => setSelectedLP(null)} className="text-slate-300 hover:text-white">✕</button>
+              <button onClick={() => setSelectedLP(null)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
 
-            <form onSubmit={handleUploadAndStamp} className="p-5 space-y-4 text-xs">
-              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="font-bold text-purple-900">Local Purchase: {selectedLP.l_code}</div>
-                <div className="text-[11px] text-purple-700 mt-0.5">
+            <form onSubmit={handleUploadAndStamp} className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
+              <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
+                <div className="font-semibold text-slate-900">Local Purchase: {selectedLP.l_code}</div>
+                <div className="text-[11px] text-slate-600 mt-0.5">
                   Item: {selectedLP.item_code} | Supplier: {selectedLP.supplier_name} | Qty: {selectedLP.received_qty} PCS | YOM: {selectedLP.yom}
                 </div>
               </div>
@@ -245,11 +265,11 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
                   placeholder="e.g. SHREE-2026-MTC-9941"
                   value={certRef}
                   onChange={(e) => setCertRef(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase"
+                  className="w-full border border-slate-300 rounded-md p-2 font-mono uppercase"
                 />
               </div>
 
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100/60 transition-colors relative">
+              <div className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center bg-slate-50 transition-colors relative">
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
@@ -262,43 +282,43 @@ export const LocalPurchaseManager: React.FC<LocalPurchaseManagerProps> = ({ onPr
                   }}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                <FileUp className="h-8 w-8 text-purple-600 mx-auto mb-1" />
+                <FileUp className="h-7 w-7 text-blue-600 mx-auto mb-1" />
                 <div className="font-semibold text-slate-700">
                   {pdfFile ? pdfFile.name : 'Select Supplier Original MTC (PDF)'}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   {pdfFile ? `${(pdfFile.size / 1024).toFixed(1)} KB — Ready to stamp` : 'Click or drag & drop real supplier certificate (PDF only)'}
                 </p>
                 {getUploadedCertificateBytes(selectedLP.l_code) && !pdfFile && (
-                  <div className="mt-2 text-[10px] text-emerald-700 font-semibold bg-emerald-50 py-1 px-2 rounded border border-emerald-200 inline-block">
-                    ✓ Existing MTC found in vault for this L-Code. You can click Apply Stamp or upload a new PDF.
+                  <div className="mt-2 text-[11px] text-emerald-700 font-medium bg-emerald-50 py-1 px-2 rounded border border-emerald-200 inline-block">
+                    Existing MTC found in vault for this L-Code. Click Apply Stamp or upload a new PDF.
                   </div>
                 )}
               </div>
 
               {/* Stamp Placement Config Preview */}
-              <div className="p-3 bg-red-50/50 border border-red-200 rounded-lg text-[11px] text-red-900 space-y-1">
-                <div className="font-bold flex items-center space-x-1">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-[11px] text-slate-700 space-y-1">
+                <div className="font-semibold flex items-center space-x-1">
                   <span>Stamp Injector: </span>
                   <span className="font-mono">P.O. {selectedLP.purchase_reference.split(' ')[0]} | Item: {selectedLP.l_code} | Qty: {selectedLP.received_qty} PCS</span>
                 </div>
-                <div>Position: Page 1 Bottom-Right (Large Rectangular) & Page 2+ (Circular QC)</div>
+                <div>Position: Page 1 Bottom-Right (Large Rectangular) &amp; Page 2+ (Circular QC)</div>
               </div>
 
               <div className="pt-2 flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setSelectedLP(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-5 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-400 text-white rounded-lg font-bold shadow flex items-center space-x-1.5"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-md font-semibold shadow-xs flex items-center space-x-1.5"
                 >
-                  <span>{isProcessing ? 'Applying Stamp...' : 'Apply Stamp & Save to Storage'}</span>
+                  <span>{isProcessing ? 'Applying Stamp...' : 'Apply Stamp & Save'}</span>
                 </button>
               </div>
             </form>

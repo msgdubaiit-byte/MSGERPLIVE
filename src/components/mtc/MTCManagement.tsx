@@ -475,7 +475,26 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     try {
       const arrayBuf = await singleMtcFile.arrayBuffer()
       const fileData = new Uint8Array(arrayBuf)
-      const blobUrl = URL.createObjectURL(singleMtcFile)
+      let persistentUrl = URL.createObjectURL(singleMtcFile)
+
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+      if (token) {
+        try {
+          const form = new FormData()
+          form.append('file', singleMtcFile, singleMtcFile.name)
+          form.append('category', 'mtc')
+          form.append('heat_number', cleanHeat)
+          const upResp = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          })
+          if (upResp.ok) {
+            const upJson = await upResp.json()
+            persistentUrl = upJson.file?.cloudUrl || upJson.file?.url || persistentUrl
+          }
+        } catch {}
+      }
 
       registerUploadedCertificate(singleMtcFile.name, fileData, singleMtcFile.name, cleanHeat)
       registerUploadedCertificate(cleanHeat, fileData, singleMtcFile.name, cleanHeat)
@@ -484,7 +503,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
         cleanHeat,
         {
           fileName: singleMtcFile.name,
-          fileDataUrl: blobUrl,
+          fileDataUrl: persistentUrl,
           itemCode: singleItemCode.trim() || undefined,
           supplierName: singleSupplier.trim() || undefined,
           pages: 2
@@ -510,15 +529,15 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       {/* Top Banner */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <FileCheck2 className="h-5 w-5 text-red-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Material Test Certificates (MTC) Management</h1>
-            <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <FileCheck2 className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Material Test Certificates (MTC) Vault</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               EN 10204 3.1 Certified
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Search single or multiple heat numbers, tick certificates, and download them all at once as a merged PDF or ZIP archive.
+            Search single or multiple heat numbers, select certificates, and export as merged PDF or ZIP archive.
           </p>
         </div>
 
@@ -527,27 +546,27 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <>
               <button
                 onClick={() => setShowSingleUploadModal(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-2 rounded-md transition-colors flex items-center space-x-1.5"
                 title="Upload an individual MTC PDF certificate"
               >
-                <Plus className="h-4 w-4 text-emerald-200" />
+                <Plus className="h-3.5 w-3.5 text-slate-500" />
                 <span>Upload Single MTC</span>
               </button>
 
               <button
                 onClick={() => setShowBulkUpload(true)}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-3.5 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md shadow-xs transition-colors flex items-center space-x-1.5"
               >
-                <FolderArchive className="h-4 w-4 text-purple-200" />
-                <span>Bulk Upload Certificates (.ZIP / PDFs)</span>
+                <FolderArchive className="h-3.5 w-3.5" />
+                <span>Bulk Upload (.ZIP / PDFs)</span>
               </button>
             </>
           )}
 
-          <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
-            <Building className="h-4 w-4 text-slate-500" />
-            <span className="font-semibold text-slate-700">Total in Vault:</span>
-            <span className="font-mono font-bold text-red-700">{mtcs.length} MTCs</span>
+          <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-md text-xs">
+            <Building className="h-3.5 w-3.5 text-slate-500" />
+            <span className="font-medium text-slate-600">Vault:</span>
+            <span className="font-mono font-semibold text-slate-900 tabular-nums">{mtcs.length} MTCs</span>
           </div>
         </div>
       </div>
@@ -561,20 +580,20 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
 
       {/* Upload Single MTC Modal */}
       {showSingleUploadModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-5 py-3.5 text-slate-900 border-b border-slate-200 flex justify-between items-center gap-2 shrink-0">
               <div className="flex items-center space-x-2">
-                <FileCheck2 className="h-4 w-4 text-emerald-400" />
-                <h3 className="font-bold text-sm uppercase">Upload Single MTC Certificate</h3>
+                <FileCheck2 className="h-4 w-4 text-blue-600" />
+                <h3 className="font-semibold text-sm">Upload Single MTC Certificate</h3>
               </div>
-              <button onClick={() => setShowSingleUploadModal(false)} className="text-slate-300 hover:text-white">✕</button>
+              <button onClick={() => setShowSingleUploadModal(false)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
 
-            <form onSubmit={handleCommitSingleMtc} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleCommitSingleMtc} className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Select MTC Document (.PDF) *</label>
-                <div className="relative border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-4 text-center bg-slate-50 cursor-pointer">
+                <div className="relative border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center bg-slate-50 cursor-pointer">
                   <input
                     type="file"
                     accept=".pdf"
@@ -582,11 +601,11 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                     onChange={handleSingleMtcFileChange}
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                   />
-                  <FileUp className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
+                  <FileUp className="h-6 w-6 text-blue-600 mx-auto mb-1" />
                   <span className="font-medium text-slate-700 block">
                     {singleMtcFile ? singleMtcFile.name : 'Click to select MTC (.pdf)'}
                   </span>
-                  <span className="text-[10px] text-slate-400">EN 10204 3.1 Mill Test Certificate</span>
+                  <span className="text-[11px] text-slate-500">EN 10204 3.1 Mill Test Certificate</span>
                 </div>
               </div>
 
@@ -639,7 +658,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                 <button
                   type="submit"
                   disabled={isUploadingSingle || !singleMtcFile}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg font-bold shadow flex items-center space-x-1.5"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-md font-semibold text-xs shadow-sm flex items-center space-x-1.5"
                 >
                   <span>{isUploadingSingle ? 'Saving...' : 'Upload & Save to Vault'}</span>
                 </button>
@@ -650,7 +669,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       )}
 
       {statusMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center justify-between">
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 font-medium flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
             <span>{statusMessage}</span>
@@ -662,28 +681,28 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       )}
 
       {/* Auto-Package Merging Box for Approved Sales Orders */}
-      <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg border border-slate-800 space-y-4">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200 space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center space-x-2">
-            <Layers className="h-4 w-4 text-amber-400" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            <Layers className="h-4 w-4 text-blue-600" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-800">
               1-Click Sales Order MTC Package Compiler
             </h2>
           </div>
-          <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-2 py-0.5 rounded border border-amber-500/30">
+          <span className="text-[11px] bg-amber-50 text-amber-700 font-medium px-2.5 py-0.5 rounded-full border border-amber-200">
             Storekeeper Approval Mandatory
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div className="md:col-span-2">
-            <label className="block text-[11px] text-slate-300 font-medium mb-1">
+            <label className="block text-[11px] text-slate-600 font-medium mb-1">
               Select Sales Order to Retrieve / Compile MTC Dossier:
             </label>
             <select
               value={selectedOrderId}
               onChange={(e) => setSelectedOrderId(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs font-mono"
+              className="w-full bg-white border border-slate-300 text-slate-900 rounded-md p-2 text-xs font-mono"
             >
               <option value="">-- Choose Sales Order ({approvedOrders.length} orders with heats) --</option>
               {approvedOrders.map(o => (
@@ -698,9 +717,9 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <button
               onClick={() => handleGeneratePackage(selectedOrderId)}
               disabled={!selectedOrderId || isGenerating}
-              className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center space-x-1.5"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-3 py-2 rounded-md shadow-xs transition-colors flex items-center justify-center space-x-1.5"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
               <span>{isGenerating ? 'Compiling...' : 'Stamped MTC (.pdf)'}</span>
             </button>
           </div>
@@ -709,18 +728,18 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <button
               onClick={() => handleDownloadOrderCertificatesZip(selectedOrderId)}
               disabled={!selectedOrderId || isGenerating}
-              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center space-x-1.5"
+              className="w-full bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 text-slate-700 font-semibold text-xs px-3 py-2 rounded-md transition-colors flex items-center justify-center space-x-1.5"
               title="Download all authentic MTC certificates for this Sales Order as a ZIP file"
             >
-              <FolderArchive className="h-4 w-4 text-amber-200" />
+              <FolderArchive className="h-3.5 w-3.5 text-slate-500" />
               <span>{isGenerating ? 'Packaging...' : 'All Certs (.zip)'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* MULTI-SEARCH BAR (Supports multiple comma-separated heats) */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
+      {/* MULTI-SEARCH BAR */}
+      <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="relative flex-1 min-w-[280px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -729,7 +748,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
               placeholder="Search multiple Heat# (e.g. 889, A-2212, 106480), Item Code, Ref, Supplier..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono"
+              className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs font-mono"
             />
             {searchTerm && (
               <button
@@ -742,28 +761,28 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
           </div>
 
           {searchTokens.length > 1 && (
-            <div className="flex items-center space-x-1 text-[11px] bg-blue-50 text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 font-semibold">
+            <div className="flex items-center space-x-1 text-[11px] bg-blue-50 text-blue-700 px-3 py-1.5 rounded-md border border-blue-200 font-medium">
               <Sparkles className="h-3.5 w-3.5 text-blue-600" />
               <span>Multi-Search Active: {searchTokens.length} terms matched</span>
             </div>
           )}
         </div>
 
-        <p className="text-[10px] text-slate-400">
-          💡 <strong>Tip:</strong> Paste multiple Heat Numbers separated by commas (e.g., <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded">889, A-2212, 106480, S22408</code>) to find all of them together, tick the boxes, and download at once.
+        <p className="text-[11px] text-slate-500">
+          Tip: Paste multiple Heat Numbers separated by commas (e.g., <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded">889, A-2212, 106480, S22408</code>) to filter together and export in batch.
         </p>
       </div>
 
-      {/* BATCH DOWNLOAD ACTION BAR (Appears when 1 or more certificates are ticked) */}
+      {/* BATCH DOWNLOAD ACTION BAR */}
       {selectedCertIds.size > 0 && (
-        <div className="sticky top-2 z-20 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-4 rounded-xl shadow-xl border border-indigo-400/30 flex flex-wrap justify-between items-center gap-3 animate-in fade-in slide-in-from-top-2">
+        <div className="sticky top-2 z-20 bg-white text-slate-900 p-3.5 rounded-lg shadow-md border border-blue-300 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center space-x-3">
-            <span className="bg-emerald-500 text-white font-bold text-xs px-2.5 py-1 rounded-full flex items-center space-x-1 shadow-sm">
+            <span className="bg-blue-50 text-blue-700 border border-blue-200 font-semibold text-xs px-2.5 py-1 rounded-full flex items-center space-x-1 tabular-nums">
               <CheckSquare className="h-3.5 w-3.5" />
-              <span>{selectedCertIds.size} Ticked / Selected</span>
+              <span>{selectedCertIds.size} Selected</span>
             </span>
-            <span className="text-xs text-slate-200 hidden sm:inline">
-              Download authentic original documents together in 1 click:
+            <span className="text-xs text-slate-600 hidden sm:inline">
+              Export selected certificates together:
             </span>
           </div>
 
@@ -771,12 +790,12 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <button
               onClick={handleDownloadSelectedMerged}
               disabled={isBatchDownloading}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-slate-600 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md shadow-xs transition-colors flex items-center space-x-1.5"
             >
-              <FileDown className="h-4 w-4" />
+              <FileDown className="h-3.5 w-3.5" />
               <span>
                 {isBatchDownloading && batchActionType === 'merged'
-                  ? 'Compiling Combined PDF...'
+                  ? 'Compiling...'
                   : `Download Merged PDF (${selectedCertIds.size})`}
               </span>
             </button>
@@ -784,21 +803,21 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             <button
               onClick={handleDownloadSelectedZip}
               disabled={isBatchDownloading}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+              className="bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 text-slate-700 font-semibold text-xs px-3.5 py-1.5 rounded-md transition-colors flex items-center space-x-1.5"
             >
-              <FolderArchive className="h-4 w-4" />
+              <FolderArchive className="h-3.5 w-3.5 text-slate-500" />
               <span>
                 {isBatchDownloading && batchActionType === 'zip'
-                  ? 'Bundling ZIP...'
-                  : `Download as ZIP (${selectedCertIds.size})`}
+                  ? 'Bundling...'
+                  : `Download ZIP (${selectedCertIds.size})`}
               </span>
             </button>
 
             <button
               onClick={() => setSelectedCertIds(new Set())}
-              className="bg-white/10 hover:bg-white/20 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors font-medium"
+              className="text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium"
             >
-              Clear Selection
+              Clear
             </button>
           </div>
         </div>
@@ -884,25 +903,25 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                           className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
                         />
                       </td>
-                      <td className="p-2.5 font-bold font-mono text-slate-900">{m.certificate_reference}</td>
+                      <td className="p-2.5 font-semibold font-mono text-slate-900">{m.certificate_reference}</td>
                       <td className="p-2.5 font-mono text-slate-700">{m.item_code}</td>
-                      <td className="p-2.5 font-mono font-bold text-red-700">🔥 {m.heat_number}</td>
-                      <td className="p-2.5 font-semibold text-slate-700">{m.yom}</td>
+                      <td className="p-2.5 font-mono font-semibold text-slate-800">{m.heat_number}</td>
+                      <td className="p-2.5 font-medium text-slate-700 tabular-nums">{m.yom}</td>
                       <td className="p-2.5">
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
                             m.purchase_type === 'local_purchase'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-blue-100 text-blue-800'
+                              ? 'bg-slate-100 text-slate-700 border-slate-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
                           }`}
                         >
                           {m.purchase_type === 'local_purchase' ? 'Local Purchase' : 'Mill Stock'}
                         </span>
                       </td>
-                      <td className="p-2.5 font-mono text-amber-800 font-semibold">{m.l_code || '-'}</td>
+                      <td className="p-2.5 font-mono text-slate-600">{m.l_code || '-'}</td>
                       <td className="p-2.5 text-slate-600">{m.supplier_name}</td>
                       <td className="p-2.5">
-                        <span className="text-emerald-700 font-bold flex items-center space-x-1 text-[11px]">
+                        <span className="text-emerald-700 font-medium flex items-center space-x-1 text-[11px]">
                           <CheckCircle2 className="h-3 w-3" />
                           <span>{m.verification_status}</span>
                         </span>
@@ -911,7 +930,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                         <div className="flex items-center justify-center space-x-2">
                           <button
                             onClick={() => onPreviewMTC(m.original_file_path, m.item_code, m.heat_number)}
-                            className="text-blue-700 hover:text-blue-900 font-semibold flex items-center space-x-1 hover:underline"
+                            className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 hover:underline"
                             title="Preview Certificate"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -920,7 +939,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                           <span className="text-slate-300">|</span>
                           <button
                             onClick={() => handleDownloadSingle(m)}
-                            className="text-emerald-700 hover:text-emerald-900 font-semibold flex items-center space-x-1 hover:underline"
+                            className="text-slate-700 hover:text-slate-900 font-medium flex items-center space-x-1 hover:underline"
                             title="Download Certificate PDF"
                           >
                             <Download className="h-3.5 w-3.5" />
@@ -929,10 +948,10 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                           <span className="text-slate-300">|</span>
                           <button
                             onClick={() => handleDownloadStamped(m)}
-                            className="text-red-700 hover:text-red-900 font-bold flex items-center space-x-1 hover:underline"
+                            className="text-blue-600 hover:text-blue-800 font-semibold flex items-center space-x-1 hover:underline"
                             title="Download with Transparent Verified True Copy Seal & Autofilled Details"
                           >
-                            <Sparkles className="h-3.5 w-3.5 text-red-600" />
+                            <Sparkles className="h-3.5 w-3.5" />
                             <span>Stamp Seal</span>
                           </button>
                         </div>

@@ -260,47 +260,46 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
 
   return (
     <div className="space-y-4">
-      {/* Top Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      {/* Zoho Page Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-5 py-4 rounded-lg border border-slate-200">
         <div>
-          <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Master Stock Inventory</h1>
-          <p className="text-xs text-slate-500">
-            Traceable physical inventory with verified Heat Numbers, YOM, L-Codes, and live balances.
+          <h1 className="text-lg font-semibold text-slate-900">Master Stock Inventory</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Heat-traceable physical inventory, YOM, L-Codes, and live warehouse balances.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {canAddStock && (
-            <button
-              onClick={() => setIsAddLotModalOpen(true)}
-              className="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Register Stock Lot</span>
-            </button>
-          )}
-
+        <div className="flex items-center gap-2">
           <button
             onClick={onOpenImport}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3 py-2 rounded-lg border border-slate-300 transition-colors flex items-center space-x-1.5"
+            className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-2 rounded-md border border-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <Upload className="h-3.5 w-3.5 text-slate-600" />
+            <Upload className="h-3.5 w-3.5 text-slate-500" />
             <span>Import Excel</span>
           </button>
 
           <button
             onClick={() => exportMasterStock()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+            className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-2 rounded-md border border-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export Stock (.xlsx)</span>
+            <Download className="h-3.5 w-3.5 text-slate-500" />
+            <span>Export (.xlsx)</span>
           </button>
+
+          {canAddStock && (
+            <button
+              onClick={() => setIsAddLotModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Stock Lot</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Filters & Search Toolbar */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
-        {/* Search */}
+      <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="relative flex-1 min-w-[240px] max-w-md">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
           <input
@@ -308,19 +307,18 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
             placeholder="Search by Item Code, Heat#, L-Code, Warehouse..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-slate-800"
+            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
           />
         </div>
 
-        {/* Filter Controls */}
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-1.5">
-            <Filter className="h-3.5 w-3.5 text-slate-500" />
-            <span className="font-semibold text-slate-600">Purchase Type:</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-slate-400" />
+            <span className="font-medium text-slate-600">Type:</span>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 font-medium focus:ring-red-500"
+              className="border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-800 font-medium"
             >
               <option value="all">All Types</option>
               <option value="regular">Regular Mill Stock</option>
@@ -328,45 +326,45 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
             </select>
           </div>
 
-          <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700 font-medium">
+          <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 font-medium">
             <input
               type="checkbox"
               checked={missingMTCOnly}
               onChange={(e) => setMissingMTCOnly(e.target.checked)}
-              className="rounded text-red-600 focus:ring-red-500"
+              className="rounded text-blue-600 focus:ring-blue-500"
             />
-            <span>Missing MTC Warning Only</span>
+            <span>Missing MTC Only</span>
           </label>
         </div>
       </div>
 
       {/* Master Stock Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#0B2545] text-white uppercase text-[10px] tracking-wider">
+            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[11px] font-semibold tracking-wider">
               <tr>
                 <th className="py-3 px-3 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={filteredStock.length > 0 && filteredStock.every(s => selectedLotIds.has(s.id))}
                     onChange={handleToggleSelectAllVisible}
-                    className="h-4 w-4 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer"
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     title="Select/Deselect All Visible Lots"
                   />
                 </th>
-                <th className="py-3 px-3">Item Code & Description</th>
+                <th className="py-3 px-3">Item Code &amp; Description</th>
                 <th className="py-3 px-3">Heat Number</th>
                 <th className="py-3 px-3">YOM</th>
-                <th className="py-3 px-3">Purchase Type</th>
+                <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3">L-Code</th>
-                <th className="py-3 px-3 text-center">Physical</th>
-                <th className="py-3 px-3 text-center">Reserved</th>
-                <th className="py-3 px-3 text-center">Available</th>
-                <th className="py-3 px-3 text-center">Dispatched</th>
+                <th className="py-3 px-3 text-right">Physical</th>
+                <th className="py-3 px-3 text-right">Reserved</th>
+                <th className="py-3 px-3 text-right">Available</th>
+                <th className="py-3 px-3 text-right">Dispatched</th>
                 <th className="py-3 px-3">Warehouse</th>
-                <th className="py-3 px-3">MTC Certificate</th>
-                <th className="py-3 px-3 text-center">Actions</th>
+                <th className="py-3 px-3">MTC</th>
+                <th className="py-3 px-3 text-center">Trace</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -374,32 +372,32 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                 <tr>
                   <td colSpan={13} className="py-12 text-center">
                     <div className="max-w-md mx-auto space-y-3">
-                      <div className="bg-slate-100 h-12 w-12 rounded-full flex items-center justify-center mx-auto text-slate-400">
-                        <FolderArchive className="h-6 w-6" />
+                      <div className="bg-slate-100 h-11 w-11 rounded-full flex items-center justify-center mx-auto text-slate-400">
+                        <FolderArchive className="h-5 w-5" />
                       </div>
-                      <div className="text-sm font-bold text-slate-800">
-                        {stockView.length === 0 ? 'Inventory is Currently Clean (Test Mode)' : 'No stock lots match the filter criteria'}
+                      <div className="text-sm font-semibold text-slate-800">
+                        {stockView.length === 0 ? 'No Stock Lots Registered' : 'No stock lots match the filter criteria'}
                       </div>
                       <p className="text-xs text-slate-500">
-                        {stockView.length === 0 
-                          ? 'All inventory has been cleared so you can test uploading your 6-column Excel file and ZIP certificate archive from scratch.' 
-                          : 'Try clearing your search terms or filters to see all available stock lots.'}
+                        {stockView.length === 0
+                          ? 'Upload your 6-column inventory spreadsheet or add a stock lot to get started.'
+                          : 'Try clearing your search terms or filters.'}
                       </p>
                       {stockView.length === 0 && (
                         <div className="flex justify-center items-center gap-2 pt-1">
                           <button
                             onClick={onOpenImport}
-                            className="bg-[#0B2545] hover:bg-[#133C55] text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow flex items-center space-x-1.5"
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2 rounded-md flex items-center gap-1.5 cursor-pointer"
                           >
                             <Upload className="h-3.5 w-3.5" />
-                            <span>Upload 6-Column Excel File</span>
+                            <span>Import Excel</span>
                           </button>
                           <button
                             onClick={() => db.resetToDemoData()}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-lg border border-slate-300 flex items-center space-x-1.5"
+                            className="bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium px-3.5 py-2 rounded-md border border-slate-300 flex items-center gap-1.5 cursor-pointer"
                           >
                             <RefreshCw className="h-3.5 w-3.5" />
-                            <span>Restore Demo Data</span>
+                            <span>Restore Sample</span>
                           </button>
                         </div>
                       )}
@@ -407,7 +405,7 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                   </td>
                 </tr>
               ) : (
-                filteredStock.map((s, idx) => {
+                filteredStock.map((s) => {
                   const isLowStock = s.available_qty <= 10
                   const isMissingMTC = s.mtc_status === 'Missing MTC'
                   const isMissingYOM = !s.yom
@@ -415,122 +413,93 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                   return (
                     <tr
                       key={s.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${
-                        selectedLotIds.has(s.id) ? 'bg-red-50/40' : idx % 2 === 1 ? 'bg-slate-50/30' : ''
+                      className={`hover:bg-slate-50 transition-colors ${
+                        selectedLotIds.has(s.id) ? 'bg-blue-50/40' : ''
                       }`}
                     >
-                      {/* Checkbox for Client Review Basket */}
                       <td className="py-2.5 px-3 text-center">
                         <input
                           type="checkbox"
                           checked={selectedLotIds.has(s.id)}
                           onChange={() => handleToggleSelectLot(s.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                          title={`Select Heat ${s.heat_number} for client review MTC compilation`}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                       </td>
 
-                      {/* Item Code & Description */}
                       <td className="py-2.5 px-3 max-w-xs">
-                        <div className="font-mono font-bold text-slate-900">{s.item_code}</div>
+                        <div className="font-mono font-semibold text-slate-900">{s.item_code}</div>
                         <div className="text-[11px] text-slate-500 line-clamp-1">{s.item_description}</div>
                         <div className="text-[10px] text-slate-400">{s.material_grade} &bull; {s.size}</div>
                       </td>
 
-                      {/* Clickable Heat Number */}
                       <td className="py-2.5 px-3">
                         <button
                           onClick={() => onSelectHeat(s.heat_number)}
-                          className="font-mono font-bold text-red-700 hover:text-red-800 hover:underline flex items-center space-x-1"
-                          title="Click to view 360° Material Traceability & Order History"
+                          className="font-mono font-semibold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          <Flame className="h-3.5 w-3.5 text-red-500 shrink-0" />
                           <span>{s.heat_number}</span>
                         </button>
-                        <div className="text-[10px] text-slate-400">{s.supplier_name}</div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-[140px]">{s.supplier_name}</div>
                       </td>
 
-                      {/* YOM */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         {isMissingYOM ? (
-                          <span className="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] flex items-center space-x-1 w-max">
-                            <AlertTriangle className="h-3 w-3" />
-                            <span>YOM Missing</span>
+                          <span className="bg-rose-50 text-rose-700 border border-rose-200 font-medium px-2 py-0.5 rounded text-[10px]">
+                            Missing
                           </span>
                         ) : (
-                          <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                            {s.yom}
-                          </span>
+                          <span className="font-mono text-slate-700 text-[11px]">{s.yom}</span>
                         )}
                       </td>
 
-                      {/* Purchase Type */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        {s.purchase_type === 'local_purchase' ? (
-                          <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
-                            Local Purchase
-                          </span>
-                        ) : (
-                          <span className="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
-                            Regular Mill
-                          </span>
-                        )}
+                        <span className="bg-slate-100 text-slate-700 border border-slate-200 font-medium px-2 py-0.5 rounded text-[10px]">
+                          {s.purchase_type === 'local_purchase' ? 'Local' : 'Mill Stock'}
+                        </span>
                       </td>
 
-                      {/* L Code */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         {s.l_code ? (
-                          <span className="font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px]">
+                          <span className="font-mono text-slate-800 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[11px]">
                             {s.l_code}
                           </span>
                         ) : (
-                          <span className="text-slate-400">-</span>
+                          <span className="text-slate-400">—</span>
                         )}
                       </td>
 
-                      {/* Physical */}
-                      <td className="py-2.5 px-3 text-center font-bold text-slate-900">
-                        {s.physical_qty}
-                      </td>
-
-                      {/* Reserved */}
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`font-bold ${s.reserved_qty > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+                      <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{s.physical_qty}</td>
+                      <td className="py-2.5 px-3 text-right">
+                        <span className={s.reserved_qty > 0 ? 'font-semibold text-amber-700' : 'text-slate-400'}>
                           {s.reserved_qty}
                         </span>
                       </td>
-
-                      {/* Available */}
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`font-extrabold text-[13px] px-2 py-0.5 rounded ${
-                          s.available_qty === 0 ? 'bg-red-100 text-red-800' :
-                          isLowStock ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
+                      <td className="py-2.5 px-3 text-right">
+                        <span
+                          className={`font-semibold text-xs px-2 py-0.5 rounded border ${
+                            s.available_qty === 0
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : isLowStock
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
                           {s.available_qty} {s.uom}
                         </span>
                       </td>
+                      <td className="py-2.5 px-3 text-right text-slate-600">{s.dispatched_qty}</td>
 
-                      {/* Dispatched */}
-                      <td className="py-2.5 px-3 text-center font-medium text-slate-600">
-                        {s.dispatched_qty}
-                      </td>
-
-                      {/* Warehouse Location */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span className="bg-slate-100 font-mono text-slate-700 px-1.5 py-0.5 rounded text-[11px]">
-                          {s.warehouse_location}
-                        </span>
+                        <span className="font-mono text-slate-600 text-[11px]">{s.warehouse_location}</span>
                       </td>
 
-                      {/* MTC Status */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         {isMissingMTC ? (
-                          <div className="flex items-center space-x-1.5">
-                            <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded text-[10px] flex items-center space-x-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              <span>Missing MTC</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="bg-rose-50 text-rose-700 border border-rose-200 font-medium px-1.5 py-0.5 rounded text-[10px]">
+                              Missing
                             </span>
-                            <label className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-2 py-0.5 rounded text-[10px] cursor-pointer shadow-sm flex items-center space-x-1 transition-colors">
+                            <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium px-2 py-0.5 rounded text-[10px] cursor-pointer flex items-center gap-1">
                               <UploadCloud className="h-2.5 w-2.5" />
                               <span>Upload</span>
                               <input
@@ -544,22 +513,21 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                         ) : (
                           <button
                             onClick={() => onPreviewMTC(s.mtc_ref || 'sample-mtc.pdf', s.item_code, s.heat_number)}
-                            className="text-emerald-700 hover:text-emerald-800 hover:underline flex items-center space-x-1 font-semibold"
+                            className="text-emerald-700 hover:underline flex items-center gap-1 font-medium cursor-pointer"
                           >
-                            <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" />
+                            <FileCheck2 className="h-3.5 w-3.5" />
                             <span>{s.mtc_status}</span>
                           </button>
                         )}
                       </td>
 
-                      {/* Actions */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <button
                           onClick={() => onSelectHeat(s.heat_number)}
-                          className="text-slate-600 hover:text-red-700 p-1 rounded hover:bg-slate-100 transition-colors"
+                          className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-slate-100 cursor-pointer"
                           title="View 360 Traceability"
                         >
-                          <ExternalLink className="h-4 w-4" />
+                          <ExternalLink className="h-3.5 w-3.5" />
                         </button>
                       </td>
                     </tr>
@@ -586,14 +554,14 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
 
       {/* Register Stock Lot Modal */}
       {isAddLotModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
-              <h3 className="font-bold text-sm uppercase">Register New Stock Lot</h3>
-              <button onClick={() => setIsAddLotModalOpen(false)} className="text-slate-300 hover:text-white">✕</button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex justify-between items-center gap-2 shrink-0">
+              <h3 className="font-semibold text-sm text-slate-900">Register New Stock Lot</h3>
+              <button onClick={() => setIsAddLotModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
             </div>
 
-            <form onSubmit={handleAddLotSubmit} className="p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleAddLotSubmit} className="p-5 space-y-3.5 text-xs overflow-y-auto flex-1">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Select Item Code *</label>
                 <select
@@ -701,15 +669,15 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
                 <button
                   type="button"
                   onClick={() => setIsAddLotModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
                 >
-                  Commit Stock Lot to Supabase
+                  Save Stock Lot
                 </button>
               </div>
             </form>
@@ -719,33 +687,33 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
 
       {/* Floating Client Review MTC Basket Toolbar */}
       {selectedLotIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 max-w-4xl w-[94vw] flex flex-wrap items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-4">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-white text-slate-900 px-5 py-3.5 rounded-lg shadow-xl border border-slate-200 max-w-4xl w-[calc(100vw-2rem)] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <span className="bg-red-600 text-white font-extrabold text-xs px-2.5 py-1 rounded-full shadow">
+            <span className="bg-blue-50 text-blue-700 border border-blue-200 font-semibold text-xs px-2.5 py-1 rounded-full tabular-nums">
               {selectedLotIds.size} Selected
             </span>
             <div>
-              <div className="text-xs font-bold text-white flex items-center space-x-1.5">
-                <FileCheck2 className="h-4 w-4 text-amber-400" />
+              <div className="text-xs font-semibold text-slate-900 flex items-center space-x-1.5">
+                <FileCheck2 className="h-4 w-4 text-blue-600" />
                 <span>Client Review MTC Dossier Basket</span>
               </div>
-              <div className="text-[11px] text-slate-300">
+              <div className="text-[11px] text-slate-500">
                 Persistent across searches &bull; Select items, review heats, and export together
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Watermark checkbox */}
-            <label className="flex items-center space-x-2 text-xs bg-slate-800 border border-slate-600 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-slate-750 select-none">
+            <label className="flex items-center space-x-2 text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-100 select-none">
               <input
                 type="checkbox"
                 checked={sampleWatermark}
                 onChange={(e) => setSampleWatermark(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-500 text-red-500 focus:ring-red-500 cursor-pointer"
+                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
-              <span className="font-semibold text-slate-200">
-                Stamp <strong className="text-red-400 font-mono">'SAMPLE'</strong> Watermark
+              <span className="font-medium text-slate-700">
+                Stamp <strong className="text-slate-900 font-mono">'SAMPLE'</strong> Watermark
               </span>
             </label>
 
@@ -754,10 +722,10 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
               type="button"
               onClick={handleExportSelectedMerged}
               disabled={isExportingSelection}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center space-x-1.5 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-semibold px-3.5 py-1.5 rounded-md shadow-sm flex items-center space-x-1.5 transition-colors"
               title="Combine all selected MTC certificates into one PDF document with cover sheet"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
               <span>{isExportingSelection ? 'Generating...' : 'Combine & Download (.pdf)'}</span>
             </button>
 
@@ -766,10 +734,10 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
               type="button"
               onClick={handleExportSelectedZip}
               disabled={isExportingSelection}
-              className="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center space-x-1.5 transition-colors"
+              className="bg-white hover:bg-slate-50 disabled:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors"
               title="Download all selected MTC certificates as a bundled ZIP file"
             >
-              <FolderArchive className="h-4 w-4 text-amber-200" />
+              <FolderArchive className="h-3.5 w-3.5 text-slate-500" />
               <span>Download ZIP</span>
             </button>
 
@@ -777,7 +745,7 @@ export const MasterStock: React.FC<MasterStockProps> = ({ onSelectHeat, onOpenIm
             <button
               type="button"
               onClick={handleClearSelectedBasket}
-              className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-1"
+              className="text-slate-500 hover:text-slate-800 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-slate-100 transition-colors"
             >
               Clear
             </button>

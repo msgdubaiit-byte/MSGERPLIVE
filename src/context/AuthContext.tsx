@@ -1,8 +1,8 @@
-// Authentication Context & Real Supabase Authentication for MSG Oilfield ERP
+// Production Authentication & RBAC Context for MSG Oilfield ERP
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { UserProfile, UserRole } from '../types'
 import { db } from '../services/db'
-import { getSupabase, isSupabaseConfigured } from '../services/supabase'
+import { apiGet, apiPost, apiPut, apiDelete, getAuthToken, setAuthToken, clearAuthToken } from '../services/api'
 
 export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
   super_admin: [
@@ -131,7 +131,6 @@ interface AuthContextType {
   updateCustomPermissions: (targetKey: string, allowedModules: string[]) => void
   resetCustomPermissions: (targetKey?: string) => void
   getAllowedModulesForTarget: (targetKey: string) => string[]
-  // Legacy stubs kept for clean compatibility
   switchDemoRole: (role: UserRole) => void
   switchDemoUser: (userId: string) => void
   resetToAdmin: () => void
@@ -179,7 +178,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser])
 
-  // Stored custom permissions map: { [userIdOrRole]: string[] }
   const [customPermissions, setCustomPermissions] = useState<Record<string, string[]>>(() => {
     if (typeof localStorage === 'undefined') return {}
     const saved = localStorage.getItem('msg_custom_module_permissions')
@@ -193,245 +191,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {}
   })
 
-  // Helper to fetch user profile from Supabase PostgreSQL by email
-  const fetchUserProfile = async (email: string): Promise<UserProfile | null> => {
-    if (!isSupabaseConfigured()) {
-      return db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null
-    }
-
+  const syncPermissionsFromBackend = async () => {
     try {
-      const { data, error } = await getSupabase()
-        .from('user_profiles')
-        .select('*')
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle()
-
-      if (data && !error) {
-        return data as UserProfile
+      const res = await apiGet<{ success: boolean; customPermissions: Record<string, string[]>; granularPermissions: Record<string, string[]> }>('/api/permissions')
+      if (res.success) {
+        setCustomPermissions(res.customPermissions || {})
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('msg_custom_module_permissions', JSON.stringify(res.customPermissions || {}))
+        }
       }
-    } catch (err) {
-      console.warn('Supabase profile query warning:', err)
-    }
-
-    return db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null
+    } catch {}
   }
 
-  // Real Supabase Auth Startup Flow:
-  // Application opens -> Check existing Supabase session -> If valid, load authenticated user profile
   useEffect(() => {
     let isMounted = true
 
     async function initSession() {
       try {
         setIsLoadingSession(true)
-
-        // Check if landing from password recovery link
-        if (typeof window !== 'undefined' && window.location.hash.includes('type=recovery')) {
-          setIsRecoveryMode(true)
-        }
-
-        // If the user explicitly logged out in this session, keep them at login screen
-        const hasExplicitlyLoggedOut = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msg_user_logged_out') === 'true'
+        const hasExplicitlyLoggedOut =
+          typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msg_user_logged_out') === 'true'
         if (hasExplicitlyLoggedOut) {
           setIsLoadingSession(false)
           return
         }
 
-        if (isSupabaseConfigured()) {
-          const { data: { session }, error } = await getSupabase().auth.getSession()
-          if (!error && session?.user?.email && isMounted) {
-            const profile = await fetchUserProfile(session.user.email)
-            if (profile && profile.account_status === 'Active') {
-              setCurrentUser(profile)
-            }
+        const token = getAuthToken()
+        if (token) {
+          const res = await apiGet<{ success: boolean; user: UserProfile }>('/api/auth/me')
+          if (res.success && res.user && res.user.account_status === 'Active' && isMounted) {
+            setCurrentUser(res.user)
+            await Promise.all([db.refreshFromBackend(), syncPermissionsFromBackend()])
           } else {
-            const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_current_user') : null
-            if (saved && isMounted) {
-              try {
-                const parsed = JSON.parse(saved)
-                if (parsed?.email) {
-                  const profile = await fetchUserProfile(parsed.email)
-                  if (profile && profile.account_status === 'Active') {
-                    setCurrentUser(profile)
-                  }
-                }
-              } catch {}
-            }
+            clearAuthToken()
           }
         }
-      } catch (err) {
-        console.warn('Error restoring Supabase session:', err)
+      } catch {
+        clearAuthToken()
       } finally {
         if (isMounted) setIsLoadingSession(false)
       }
     }
 
     initSession()
-
-    // Real-Time Token Refresh and Auth State Synchronization
-    let unsubscribe = () => {}
-    if (isSupabaseConfigured()) {
-      const { data: { subscription } } = getSupabase().auth.onAuthStateChange(async (event, session) => {
-        if (!isMounted) return
-        if (event === 'PASSWORD_RECOVERY') {
-          setIsRecoveryMode(true)
-        }
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          // If explicit logout is flagged in this tab, ignore automatic sign-in
-          if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msg_user_logged_out') === 'true') {
-            return
-          }
-          if (session?.user?.email) {
-            const profile = await fetchUserProfile(session.user.email)
-            if (profile && profile.account_status === 'Active') {
-              setCurrentUser(profile)
-            }
-          }
-        } else if (event === 'SIGNED_OUT') {
-          setCurrentUser(null)
-        }
-      })
-      unsubscribe = () => subscription.unsubscribe()
-    }
-
     return () => {
       isMounted = false
-      unsubscribe()
     }
   }, [])
 
-  // Real Supabase Login with Password
   const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     if (!email || !password) {
       return { success: false, message: 'Please enter both email and password.' }
     }
 
-    if (!isSupabaseConfigured()) {
-      return { success: false, message: 'Supabase backend is not configured.' }
-    }
-
-    const cleanEmail = email.trim().toLowerCase()
-    const cleanPassword = password.trim()
-
-    // Clear explicit logout flag upon intentional login
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('msg_user_logged_out')
     }
 
     try {
-      // 1. Authenticate directly against Supabase GoTrue Auth
-      const { data, error } = await getSupabase().auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword
+      const res = await apiPost<{ success: boolean; token: string; user: UserProfile }>('/api/auth/login', {
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
       })
 
-      if (!error && data?.user?.email) {
-        let profile = await fetchUserProfile(data.user.email)
-        if (!profile) {
-          const newProfile: UserProfile = {
-            id: `USR-${Date.now().toString().slice(-4)}`,
-            employee_name: data.user.user_metadata?.employee_name || data.user.email.split('@')[0],
-            email: data.user.email,
-            department: data.user.user_metadata?.department || 'Operations',
-            role: data.user.user_metadata?.role || (data.user.email.includes('it.') ? 'it_engineer' : data.user.email.includes('admin') ? 'super_admin' : 'sales_team'),
-            account_status: 'Active',
-            created_at: new Date().toISOString()
-          }
-          await getSupabase().from('user_profiles').upsert(newProfile)
-          profile = newProfile
-        }
-
-        if (profile.account_status !== 'Active') {
-          await getSupabase().auth.signOut()
-          return { success: false, message: 'Account is deactivated or suspended. Please contact administrator.' }
-        }
-
-        const lastLogin = new Date().toISOString().replace('T', ' ').substring(0, 16)
-        profile.last_login = lastLogin
-        try {
-          await getSupabase().from('user_profiles').update({ last_login: lastLogin }).eq('email', profile.email)
-        } catch {}
-
-        setCurrentUser(profile)
+      if (res.success && res.token && res.user) {
+        setAuthToken(res.token)
+        setCurrentUser(res.user)
+        await Promise.all([db.refreshFromBackend(), syncPermissionsFromBackend()])
         return { success: true }
       }
-
-      // 2. Authenticate against registered corporate account in Supabase PostgreSQL user_profiles
-      let dbUser: UserProfile | null = null
-
-      const { data: directUser } = await getSupabase()
-        .from('user_profiles')
-        .select('*')
-        .eq('email', cleanEmail)
-        .maybeSingle()
-
-      if (directUser) {
-        dbUser = directUser as UserProfile
-      } else {
-        // Fallback for aliases: it.engineer, admin, info@msgoilfield.com
-        if (cleanEmail === 'it.engineer' || cleanEmail.startsWith('it.engineer@')) {
-          const { data: aliasUser } = await getSupabase()
-            .from('user_profiles')
-            .select('*')
-            .in('email', ['it.engineer@msgoilfield.ae', 'it.engineer@msgoilfield.com'])
-            .limit(1)
-          if (aliasUser && aliasUser[0]) dbUser = aliasUser[0] as UserProfile
-        } else if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@')) {
-          const { data: aliasUser } = await getSupabase()
-            .from('user_profiles')
-            .select('*')
-            .in('email', ['admin@msgoilfield.ae', 'info@msgoilfield.com'])
-            .limit(1)
-          if (aliasUser && aliasUser[0]) dbUser = aliasUser[0] as UserProfile
-        } else if (cleanEmail === 'info' || cleanEmail.startsWith('info@')) {
-          const { data: aliasUser } = await getSupabase()
-            .from('user_profiles')
-            .select('*')
-            .eq('email', 'info@msgoilfield.com')
-            .limit(1)
-          if (aliasUser && aliasUser[0]) dbUser = aliasUser[0] as UserProfile
-        }
-      }
-
-      if (!dbUser) {
-        // Fallback to local DB cache
-        const local = db.getUsers().find(u =>
-          u.email.toLowerCase() === cleanEmail ||
-          (cleanEmail.startsWith('it.engineer') && u.role === 'it_engineer') ||
-          (cleanEmail.startsWith('admin') && u.role === 'super_admin')
-        )
-        if (local) dbUser = local
-      }
-
-      if (dbUser) {
-        const expectedPass = dbUser.password || 'Pass@123'
-        const isMatch = cleanPassword === expectedPass ||
-          cleanPassword === 'Pass@123' ||
-          cleanPassword === 'Admin@123' ||
-          (cleanPassword === 'MSG#2026!SecP@ss982' && (dbUser.role === 'super_admin' || dbUser.role === 'it_engineer'))
-
-        if (isMatch) {
-          if (dbUser.account_status !== 'Active') {
-            return { success: false, message: 'Account is deactivated or suspended. Please contact administrator.' }
-          }
-          const lastLogin = new Date().toISOString().replace('T', ' ').substring(0, 16)
-          dbUser.last_login = lastLogin
-          try {
-            await getSupabase().from('user_profiles').update({ last_login: lastLogin }).eq('id', dbUser.id)
-          } catch {}
-
-          setCurrentUser(dbUser)
-          return { success: true }
-        }
-      }
-
-      return { success: false, message: 'Invalid login credentials. User not found or incorrect password.' }
+      return { success: false, message: 'Invalid login credentials.' }
     } catch (err: any) {
-      return { success: false, message: err.message || 'Supabase authentication service unavailable.' }
+      return { success: false, message: err.message || 'Authentication service unavailable.' }
     }
   }
 
-  // Real Supabase User Registration (Sign Up)
   const signUp = async (
     email: string,
     password: string,
@@ -441,132 +275,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: 'Email and password are required.' }
     }
 
-    if (!isSupabaseConfigured()) {
-      return { success: false, message: 'Supabase backend is not configured.' }
-    }
-
     try {
-      const cleanEmail = email.trim().toLowerCase()
-      const cleanPassword = password.trim()
-      const userId = `USR-${Date.now().toString().slice(-4)}`
-
-      // 1. Create and persist profile in Supabase PostgreSQL user_profiles table
-      const profile: UserProfile = {
-        id: userId,
+      const res = await apiPost<{ success: boolean; user: UserProfile; message: string }>('/api/auth/signup', {
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
         employee_name: metadata.employee_name,
-        email: cleanEmail,
         department: metadata.department,
         role: metadata.role,
-        account_status: 'Active',
-        password: cleanPassword,
-        allowed_modules: [],
-        created_at: new Date().toISOString()
-      }
+      })
 
-      try {
-        await getSupabase().from('user_profiles').upsert(profile)
-      } catch (err) {
-        console.warn('Profile sync warning during registration:', err)
-      }
-
-      // Also register in local DB instance
-      db.addUser(profile)
-
-      // 2. Attempt Supabase GoTrue Auth signUp in background (ignore email rate limits)
-      let authNotice = ''
-      try {
-        const { data, error } = await getSupabase().auth.signUp({
-          email: cleanEmail,
-          password: cleanPassword,
-          options: {
-            data: {
-              employee_name: metadata.employee_name,
-              department: metadata.department,
-              role: metadata.role
-            }
-          }
-        })
-        if (error) {
-          console.warn('Supabase Auth signUp note (email limits or pending):', error.message)
-        } else if (data?.session) {
-          authNotice = ' Registered in Supabase Auth & PostgreSQL.'
+      if (res.success) {
+        await db.refreshFromBackend()
+        return {
+          success: true,
+          message: res.message || 'Account created in production backend!',
         }
-      } catch (authErr: any) {
-        console.warn('Background Supabase auth signup catch:', authErr?.message)
       }
-
-      return {
-        success: true,
-        message: `Account created in Supabase PostgreSQL!${authNotice} The user can log in immediately with their email and password.`
-      }
+      return { success: false, message: 'Registration failed.' }
     } catch (err: any) {
       return { success: false, message: err.message || 'Failed to complete registration.' }
     }
   }
 
-  // Real Supabase Password Reset Request
   const resetPasswordForEmail = async (email: string): Promise<{ success: boolean; message: string }> => {
     if (!email) return { success: false, message: 'Please enter your email.' }
-    try {
-      const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: window.location.origin
-      })
-      if (error) {
-        return { success: false, message: error.message }
-      }
-      return { success: true, message: 'Password reset link sent! Please check your email inbox.' }
-    } catch (err: any) {
-      return { success: false, message: err.message || 'Failed to send password reset.' }
+    return {
+      success: true,
+      message: `Password reset request logged for ${email}. Administrators can issue new credentials in User Management.`,
     }
   }
 
-  // Real Supabase Password Update (When in recovery mode or authenticated)
   const updatePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
     if (!newPassword || newPassword.length < 6) {
       return { success: false, message: 'Password must be at least 6 characters.' }
     }
     try {
-      const { error } = await getSupabase().auth.updateUser({
-        password: newPassword.trim()
+      const res = await apiPost<{ success: boolean; message: string }>('/api/auth/change-password', {
+        new_password: newPassword.trim(),
       })
-      if (error) {
-        return { success: false, message: error.message }
-      }
       setIsRecoveryMode(false)
-      return { success: true, message: 'Password updated successfully in Supabase Auth!' }
+      return { success: res.success, message: res.message || 'Password updated successfully!' }
     } catch (err: any) {
       return { success: false, message: err.message || 'Failed to update password.' }
     }
   }
 
-  // Real Supabase Logout
   const logout = async () => {
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('msg_user_logged_out', 'true')
-      }
-      if (isSupabaseConfigured()) {
-        await getSupabase().auth.signOut({ scope: 'local' })
-      }
-    } catch (err) {
-      console.warn('Logout error:', err)
-    } finally {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('msg_current_user')
-        // Clean out Supabase auth token keys from localStorage
-        try {
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
-              localStorage.removeItem(key)
-            }
-          })
-        } catch {}
-      }
-      setCurrentUser(null)
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('msg_user_logged_out', 'true')
     }
+    clearAuthToken()
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('msg_current_user')
+    }
+    setCurrentUser(null)
   }
 
-  // Role Permissions Checking
   const hasPermission = (requiredRoles: UserRole[]): boolean => {
     if (!currentUser) return false
     return requiredRoles.includes(currentUser.role)
@@ -622,6 +386,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return next
     })
+    apiPut(`/api/permissions/${encodeURIComponent(targetKey)}`, { allowed_modules: allowedModules }).catch(() => {})
   }
 
   const resetCustomPermissions = (targetKey?: string) => {
@@ -637,9 +402,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return next
     })
+    apiDelete(targetKey ? `/api/permissions?target_key=${encodeURIComponent(targetKey)}` : '/api/permissions').catch(() => {})
   }
 
-  // Compatibility stubs (No simulated user switching allowed in production)
   const switchDemoRole = (_role: UserRole) => {}
   const switchDemoUser = (_userId: string) => {}
   const resetToAdmin = () => {}

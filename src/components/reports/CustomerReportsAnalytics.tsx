@@ -245,65 +245,62 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Zoho-Style Executive Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-700">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
-            <div className="flex items-center space-x-2.5 mb-2">
-              <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center space-x-1.5 shadow-sm">
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Zoho-Style Customer 360 &amp; Analytics</span>
+            <div className="flex items-center space-x-2.5 mb-1">
+              <h1 className="text-lg font-semibold text-slate-900">
+                Customer Intelligence &amp; Document Hub
+              </h1>
+              <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                Customer 360 &amp; Analytics
               </span>
-              <span className="text-slate-400 text-xs font-mono">End-to-End Traceability</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center space-x-3">
-              <span>Customer Intelligence &amp; Document Hub</span>
-              <Sparkles className="h-6 w-6 text-amber-400" />
-            </h1>
-            <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-              Unified 360° repository for all customer data. Drill down into every client's complete journey from Sales Order to Technical Sourcing, Heat Traceability, Stickers, and Logistics.
+            <p className="text-slate-500 text-xs max-w-2xl">
+              Unified repository for customer orders, spend intelligence, heat traceability, stickers, and logistics documents.
             </p>
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-            <div className="text-center px-3 border-r border-white/10">
-              <div className="text-[11px] font-semibold text-slate-300 uppercase">Customers</div>
-              <div className="text-xl font-black text-white">{customers.length}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+            <div className="text-center px-3 border-r border-slate-200 tabular-nums">
+              <div className="text-[11px] font-medium text-slate-500 uppercase">Customers</div>
+              <div className="text-lg font-semibold text-slate-900">{customers.length}</div>
             </div>
-            <div className="text-center px-3 border-r border-white/10">
-              <div className="text-[11px] font-semibold text-slate-300 uppercase">Total Spend</div>
-              <div className="text-xl font-black text-emerald-400">${(totalSpend / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="text-center px-3 border-r border-slate-200 tabular-nums">
+              <div className="text-[11px] font-medium text-slate-500 uppercase">Total Spend</div>
+              <div className="text-lg font-semibold text-emerald-700">${(totalSpend / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             </div>
-            <div className="text-center px-3 border-r border-white/10">
-              <div className="text-[11px] font-semibold text-slate-300 uppercase">Total SOs</div>
-              <div className="text-xl font-black text-blue-300">{totalOrdersCount}</div>
+            <div className="text-center px-3 border-r border-slate-200 tabular-nums">
+              <div className="text-[11px] font-medium text-slate-500 uppercase">Total SOs</div>
+              <div className="text-lg font-semibold text-blue-700">{totalOrdersCount}</div>
             </div>
-            <div className="text-center px-3">
-              <div className="text-[11px] font-semibold text-slate-300 uppercase">Material Lines</div>
-              <div className="text-xl font-black text-purple-300">{totalLineItems}</div>
+            <div className="text-center px-3 tabular-nums">
+              <div className="text-[11px] font-medium text-slate-500 uppercase">Material Lines</div>
+              <div className="text-lg font-semibold text-slate-900">{totalLineItems}</div>
             </div>
           </div>
         </div>
 
         {/* Global Action Notice */}
         {actionNotice && (
-          <div className="mt-4 p-3.5 bg-emerald-950/80 border border-emerald-500/50 rounded-2xl text-emerald-200 text-sm flex items-center justify-between">
+          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs flex items-center justify-between">
             <span>{actionNotice}</span>
-            <button onClick={() => setActionNotice(null)} className="text-emerald-400 hover:text-white font-bold ml-2">✕</button>
+            <button onClick={() => setActionNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-semibold ml-2">✕</button>
           </div>
         )}
       </div>
 
       {/* Primary Navigation Tabs */}
-      <div className="flex border-b border-slate-200 bg-white px-6 rounded-2xl shadow-sm gap-2">
+      <div className="flex border-b border-slate-200 bg-white px-5 rounded-lg shadow-xs gap-2 overflow-x-auto">
         <button
           onClick={() => {
             setActiveTab('customers')
             setSelectedCustomerId(null)
           }}
-          className={`py-4 px-4 font-bold text-sm flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+          className={`py-3.5 px-4 font-semibold text-xs flex items-center space-x-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
             activeTab === 'customers'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -311,26 +308,26 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
         >
           <Building2 className="w-4 h-4" />
           <span>Customer 360 Directory</span>
-          <span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded-full font-mono">
+          <span className="bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 rounded-full font-mono tabular-nums">
             {customers.length}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`py-4 px-4 font-bold text-sm flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+          className={`py-3.5 px-4 font-semibold text-xs flex items-center space-x-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
             activeTab === 'analytics'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          <span>Zoho Spend &amp; Order Analytics</span>
+          <span>Spend &amp; Order Analytics</span>
         </button>
 
         <button
           onClick={() => setActiveTab('documents')}
-          className={`py-4 px-4 font-bold text-sm flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+          className={`py-3.5 px-4 font-semibold text-xs flex items-center space-x-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
             activeTab === 'documents'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -342,7 +339,7 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
 
         <button
           onClick={() => setActiveTab('exports')}
-          className={`py-4 px-4 font-bold text-sm flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+          className={`py-3.5 px-4 font-semibold text-xs flex items-center space-x-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
             activeTab === 'exports'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -362,42 +359,42 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
             /* All Customers Directory */
             <div className="space-y-4">
               {/* Search & Filter Bar */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     placeholder="Search by customer name, code, or country..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs bg-white border border-slate-300 rounded-md pl-9 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
 
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setStatusFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
-                      statusFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    className={`px-3 py-1.5 rounded-md font-medium text-xs transition-colors cursor-pointer ${
+                      statusFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
                     All Clients ({customerStats.length})
                   </button>
                   <button
                     onClick={() => setStatusFilter('ACTIVE')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
-                      statusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    className={`px-3 py-1.5 rounded-md font-medium text-xs transition-colors cursor-pointer ${
+                      statusFilter === 'ACTIVE' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
                     Active Pipeline ({customerStats.filter(c => c.openOrders > 0).length})
                   </button>
                   <button
                     onClick={() => setStatusFilter('HIGH_VALUE')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
-                      statusFilter === 'HIGH_VALUE' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    className={`px-3 py-1.5 rounded-md font-medium text-xs transition-colors cursor-pointer ${
+                      statusFilter === 'HIGH_VALUE' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    Key Accounts &gt;$50k
+                    Key Accounts &gt;\$50k
                   </button>
                 </div>
               </div>
@@ -408,19 +405,19 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                   <div
                     key={stat.customer.id}
                     onClick={() => setSelectedCustomerId(stat.customer.id)}
-                    className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between group"
+                    className="bg-white rounded-lg p-5 border border-slate-200 hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between group"
                   >
                     <div>
                       <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                        <span className="text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
                           {stat.customer.customer_code}
                         </span>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full tabular-nums">
                           {stat.fulfillmentRate}% Fulfilled
                         </span>
                       </div>
 
-                      <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors line-clamp-2">
+                      <h3 className="font-semibold text-slate-900 text-sm group-hover:text-blue-600 transition-colors line-clamp-2">
                         {stat.customer.customer_name}
                       </h3>
 
@@ -430,18 +427,18 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                       </div>
 
                       {/* Orders & Lines Breakdown */}
-                      <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-400 uppercase font-semibold">Orders</div>
-                          <div className="font-black text-slate-800 text-sm">{stat.orderCount}</div>
+                      <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center tabular-nums">
+                        <div className="bg-slate-50 p-2 rounded-md">
+                          <div className="text-[10px] text-slate-500 uppercase font-medium">Orders</div>
+                          <div className="font-semibold text-slate-900 text-sm">{stat.orderCount}</div>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-400 uppercase font-semibold">Items</div>
-                          <div className="font-black text-slate-800 text-sm">{stat.lineCount}</div>
+                        <div className="bg-slate-50 p-2 rounded-md">
+                          <div className="text-[10px] text-slate-500 uppercase font-medium">Items</div>
+                          <div className="font-semibold text-slate-900 text-sm">{stat.lineCount}</div>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-400 uppercase font-semibold">Est Value</div>
-                          <div className="font-black text-blue-600 text-sm">${(stat.totalEstValue / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                        <div className="bg-slate-50 p-2 rounded-md">
+                          <div className="text-[10px] text-slate-500 uppercase font-medium">Est Value</div>
+                          <div className="font-semibold text-blue-600 text-sm">${(stat.totalEstValue / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                         </div>
                       </div>
                     </div>
@@ -459,14 +456,14 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
             /* DRILLDOWN: SINGLE CUSTOMER 360 VIEW                             */
             /* =============================================================== */
             selectedCustomerStat && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {/* Back Navigation Bar */}
-                <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs">
                   <button
                     onClick={() => setSelectedCustomerId(null)}
-                    className="flex items-center space-x-2 text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                    className="flex items-center space-x-2 text-xs font-semibold text-slate-700 hover:text-blue-600 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Customer Directory</span>
                   </button>
 
@@ -475,18 +472,18 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                     <button
                       onClick={() => handleBatchDownloadCustomerStickers(selectedCustomerStat)}
                       disabled={isProcessing}
-                      className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                      className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
                       title="Download a single combined PDF with all 58mm x 39mm stickers for this customer"
                     >
-                      <Tag className="w-3.5 h-3.5" />
-                      <span>Batch Export All Stickers (.pdf)</span>
+                      <Tag className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Batch Export Stickers (.pdf)</span>
                     </button>
 
                     {/* Open Sourcing Worksheet */}
                     {onNavigateToSourcing && (
                       <button
                         onClick={() => onNavigateToSourcing(selectedCustomerStat.customer.customer_name, selectedCustomerStat.orders[0]?.po_number)}
-                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         <span>Open Sourcing Worksheet</span>
@@ -496,21 +493,21 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                 </div>
 
                 {/* Customer Profile Banner */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                        <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                           {selectedCustomerStat.customer.customer_code}
                         </span>
-                        <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                        <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                           Active MSG Account
                         </span>
                       </div>
-                      <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                      <h2 className="text-lg font-semibold text-slate-900">
                         {selectedCustomerStat.customer.customer_name}
                       </h2>
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2">
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-1.5">
                         <span className="flex items-center space-x-1">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
                           <span>{selectedCustomerStat.customer.address}</span>
@@ -522,22 +519,22 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200 tabular-nums">
                       <div className="text-center px-2">
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Orders</div>
-                        <div className="text-lg font-black text-slate-900">{selectedCustomerStat.orderCount}</div>
+                        <div className="text-[10px] text-slate-500 uppercase font-medium">Orders</div>
+                        <div className="text-base font-semibold text-slate-900">{selectedCustomerStat.orderCount}</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Items</div>
-                        <div className="text-lg font-black text-slate-900">{selectedCustomerStat.lineCount}</div>
+                        <div className="text-[10px] text-slate-500 uppercase font-medium">Total Items</div>
+                        <div className="text-base font-semibold text-slate-900">{selectedCustomerStat.lineCount}</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Fulfillment</div>
-                        <div className="text-lg font-black text-emerald-600">{selectedCustomerStat.fulfillmentRate}%</div>
+                        <div className="text-[10px] text-slate-500 uppercase font-medium">Fulfillment</div>
+                        <div className="text-base font-semibold text-emerald-700">{selectedCustomerStat.fulfillmentRate}%</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Est Value</div>
-                        <div className="text-lg font-black text-blue-600">
+                        <div className="text-[10px] text-slate-500 uppercase font-medium">Est Value</div>
+                        <div className="text-base font-semibold text-blue-600">
                           ${(selectedCustomerStat.totalEstValue / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </div>
                       </div>
@@ -548,15 +545,15 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                 {/* Timeline / Lifecycles of Orders */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
-                      <Boxes className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-semibold text-slate-900 text-sm flex items-center space-x-2">
+                      <Boxes className="w-4 h-4 text-blue-600" />
                       <span>Sales Orders &amp; Full Lifecycle Documentation ({selectedCustomerStat.orders.length} SOs)</span>
                     </h3>
                     <span className="text-xs text-slate-500">Every linked document is ready for 1-click download</span>
                   </div>
 
                   {selectedCustomerStat.orders.length === 0 ? (
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500 text-sm">
+                    <div className="bg-white p-8 rounded-lg border border-slate-200 text-center text-slate-500 text-xs">
                       No sales orders currently recorded for this customer.
                     </div>
                   ) : (
@@ -566,16 +563,16 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                       return (
                         <div
                           key={ord.id || oIdx}
-                          className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+                          className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden"
                         >
                           {/* Order Header Bar */}
-                          <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                             <div>
                               <div className="flex items-center space-x-2.5 mb-1">
-                                <span className="font-mono font-bold text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded">
+                                <span className="font-mono font-semibold text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">
                                   {ord.so_number}
                                 </span>
-                                <span className="font-mono font-bold text-xs bg-slate-200 text-slate-800 px-2.5 py-0.5 rounded">
+                                <span className="font-mono font-semibold text-xs bg-white text-slate-700 border border-slate-200 px-2 py-0.5 rounded">
                                   PO: {ord.po_number || '-'}
                                 </span>
                                 <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
@@ -835,9 +832,9 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                           ${(stat.totalEstValue / 3.67).toLocaleString(undefined, { maximumFractionDigits: 0 })} ({pct}%)
                         </span>
                       </div>
-                      <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full"
+                          className="h-full bg-blue-600 rounded-full"
                           style={{ width: `${Math.max(pct, 5)}%` }}
                         />
                       </div>
@@ -853,13 +850,13 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
       {/* TAB 3: MASTER DOCUMENT VAULT                                              */}
       {/* ========================================================================= */}
       {activeTab === 'documents' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white rounded-lg p-5 border border-slate-200 shadow-xs space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base">Client Document Repository</h3>
+              <h3 className="font-semibold text-slate-900 text-sm">Client Document Repository</h3>
               <p className="text-xs text-slate-500">All customer packages indexed and ready for download</p>
             </div>
-            <span className="text-xs font-mono text-slate-400">{orders.length} Registered Orders</span>
+            <span className="text-xs font-mono text-slate-500">{orders.length} Registered Orders</span>
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -867,11 +864,11 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
               const worksheet = mapOrderToWorksheet(ord)
 
               return (
-                <div key={idx} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div key={idx} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
-                    <div className="font-bold text-sm text-slate-900">{ord.customer_name}</div>
+                    <div className="font-semibold text-xs text-slate-900">{ord.customer_name}</div>
                     <div className="text-xs text-slate-500 flex items-center space-x-2 mt-0.5">
-                      <span className="font-mono text-indigo-700 font-bold">{ord.so_number}</span>
+                      <span className="font-mono text-blue-700 font-semibold">{ord.so_number}</span>
                       <span>•</span>
                       <span>PO: {ord.po_number || '-'}</span>
                       <span>•</span>
@@ -879,36 +876,36 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       onClick={() => handleDownloadOrderStickers(ord)}
-                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors"
                     >
-                      <Tag className="w-3.5 h-3.5" />
+                      <Tag className="w-3.5 h-3.5 text-slate-500" />
                       <span>Stickers (.pdf)</span>
                     </button>
 
                     <button
                       onClick={() => generateStickerSummaryExcel(worksheet)}
-                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors"
                     >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
                       <span>Summary Sheet (.xlsx)</span>
                     </button>
 
                     <button
                       onClick={() => generateClientSummaryExcel(worksheet, false)}
-                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors"
                     >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
                       <span>Client Summary (.xlsx)</span>
                     </button>
 
                     <button
                       onClick={() => generateCIPLLogisticExcel(worksheet)}
-                      className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors"
                     >
-                      <Truck className="w-3.5 h-3.5" />
+                      <Truck className="w-3.5 h-3.5 text-slate-500" />
                       <span>CIPL (.xlsx)</span>
                     </button>
                   </div>
@@ -924,8 +921,8 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
       {/* ========================================================================= */}
       {activeTab === 'exports' && (
         <div className="space-y-4">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 text-base mb-1">Standard Section 22 Excel Registers</h3>
+          <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
+            <h3 className="font-semibold text-slate-900 text-sm mb-1">Standard Section 22 Excel Registers</h3>
             <p className="text-xs text-slate-500 mb-4">Export master inventory, heat registers, and transaction logs.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -937,14 +934,14 @@ export const CustomerReportsAnalytics: React.FC<CustomerReportsAnalyticsProps> =
                 { title: 'Stock Movements Ledger (.xlsx)', fn: exportStockMovements, desc: 'Immutable transaction ledger of all stock changes.' },
                 { title: 'Material Dispatch Register (.xlsx)', fn: exportDispatches, desc: 'Delivery notes and transport references.' },
               ].map((rep, idx) => (
-                <div key={idx} className="p-4 rounded-2xl border border-slate-200 hover:border-blue-400 bg-slate-50/50 hover:bg-white transition-all flex flex-col justify-between">
+                <div key={idx} className="p-4 rounded-lg border border-slate-200 hover:border-blue-400 bg-slate-50/50 hover:bg-white transition-all flex flex-col justify-between">
                   <div>
-                    <h4 className="font-bold text-xs text-slate-900">{rep.title}</h4>
+                    <h4 className="font-semibold text-xs text-slate-900">{rep.title}</h4>
                     <p className="text-[11px] text-slate-500 mt-1">{rep.desc}</p>
                   </div>
                   <button
                     onClick={() => rep.fn()}
-                    className="mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 px-3 rounded-xl flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 px-3 rounded-md flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Download Excel</span>

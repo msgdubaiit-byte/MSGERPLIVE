@@ -274,45 +274,45 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
   })
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs overflow-y-auto p-2 sm:p-4 flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* Modal Top Header */}
-        <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-700 shrink-0">
+        <div className="px-5 py-3.5 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200 shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-              <Wrench className="h-5 w-5" />
+            <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
+              <Wrench className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="font-bold text-base tracking-wide text-white">Local Purchase &amp; Supplier Allocation</h3>
-                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                <h3 className="font-semibold text-sm text-slate-900">Local Purchase &amp; Supplier Allocation</h3>
+                <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium px-2 py-0.5 rounded-full tabular-nums">
                   {selectedCount} Selected
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Choose Local Supplier, select which items to procure, and specify exact PCS to split or export separately.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
             title="Close"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50 space-y-4">
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/50 space-y-4">
           
           {/* Supplier & PO Header Configuration Card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs">
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
               <div className="sm:col-span-5">
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
-                  <Building className="h-3.5 w-3.5 text-amber-600 mr-1" />
+                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center">
+                  <Building className="h-3.5 w-3.5 text-slate-500 mr-1" />
                   Local Supplier Name
                 </label>
                 <div className="relative">
@@ -322,7 +322,7 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                     value={bulkSupplier}
                     onChange={e => setBulkSupplier(e.target.value)}
                     placeholder="Select or type Local Supplier..."
-                    className="w-full text-xs font-medium border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full text-xs font-medium border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                   <datalist id="lpSuppliersDatalist">
                     {COMMON_LOCAL_SUPPLIERS.map((s, idx) => (
@@ -333,8 +333,8 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
               </div>
 
               <div className="sm:col-span-4">
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
-                  <FileText className="h-3.5 w-3.5 text-blue-600 mr-1" />
+                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center">
+                  <FileText className="h-3.5 w-3.5 text-slate-500 mr-1" />
                   Local Supplier PO #
                 </label>
                 <input
@@ -342,7 +342,7 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                   value={bulkPO}
                   onChange={e => setBulkPO(e.target.value)}
                   placeholder="e.g. LP-PO-2026-001"
-                  className="w-full text-xs font-mono border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full text-xs font-mono border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
@@ -350,9 +350,9 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                 <button
                   type="button"
                   onClick={handleBulkApplySupplier}
-                  className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center justify-center space-x-1"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer flex items-center justify-center space-x-1"
                 >
-                  <Check className="h-3.5 w-3.5 text-amber-400" />
+                  <Check className="h-3.5 w-3.5" />
                   <span>Apply to Selected</span>
                 </button>
               </div>
@@ -365,9 +365,9 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
               <button
                 type="button"
                 onClick={handleSelectMachinedOnly}
-                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center space-x-1"
               >
-                <Wrench className="h-3.5 w-3.5 text-amber-700" />
+                <Wrench className="h-3.5 w-3.5 text-slate-500" />
                 <span>Select Machined / Local Items</span>
               </button>
               <button

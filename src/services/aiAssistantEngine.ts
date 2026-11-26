@@ -756,7 +756,23 @@ export async function processChatQuery(query: string): Promise<ChatMessage> {
     }
   }
 
-  // 7. General Help & Navigation
+  // 7. Query server-side live DB vetting assistant if authenticated
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+  if (token) {
+    try {
+      const resp = await fetch('/api/assistant/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ query: trimmed }),
+      })
+      if (resp.ok) {
+        const payload = await resp.json()
+        if (payload?.reply) return payload.reply as ChatMessage
+      }
+    } catch {}
+  }
+
+  // 8. General Help & Navigation Fallback
   return {
     id,
     sender: 'assistant',

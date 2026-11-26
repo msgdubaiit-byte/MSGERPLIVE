@@ -444,7 +444,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
   const attachedCount = displayItems.filter(it => hasCertificate(it)).length
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5">
       {/* Hidden File Upload Inputs */}
       <input
         ref={bulkFileInputRef}
@@ -463,23 +463,23 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
       />
 
       {/* Top Navigation & Status Bar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBack}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Return to Sourcing Worksheet"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Worksheet</span>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back</span>
           </button>
           <div>
-            <h1 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-              <FileCheck2 className="h-5 w-5 text-indigo-600" />
-              <span>MTC Certificates Hub (Attach, Preview &amp; Download)</span>
+            <h1 className="text-base font-semibold text-slate-900 flex items-center space-x-2">
+              <FileCheck2 className="h-4 w-4 text-blue-600" />
+              <span>MTC Certificates Hub</span>
             </h1>
             <p className="text-xs text-slate-500">
-              Attach genuine mill certificates received from suppliers, preview with MSG Certified True Copy stamp, and download individual or complete PO certificate packages.
+              Attach supplier mill certificates, preview with MSG Certified True Copy stamp, and download individual or PO packages.
             </p>
           </div>
         </div>
@@ -511,47 +511,47 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
               }
             }}
             disabled={isProcessingUpload}
-            className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Auto-match and link authentic Mill Test Certificates from the 338-certificate bulk ZIP vault"
           >
-            <Sparkles className="h-4 w-4 text-amber-200" />
-            <span>Auto-Link from Bulk ZIP</span>
+            <Sparkles className="h-3.5 w-3.5 text-slate-500" />
+            <span>Auto-Link Vault</span>
           </button>
 
           <button
             onClick={() => bulkFileInputRef.current?.click()}
             disabled={isProcessingUpload}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Upload multiple supplier MTC PDFs or a ZIP archive containing all certificates"
           >
-            <Upload className="h-4 w-4" />
-            <span>{isProcessingUpload ? 'Processing...' : 'Bulk Upload MTCs (PDF / ZIP)'}</span>
-          </button>
-
-          <button
-            onClick={handleDownloadAllMerged}
-            disabled={isPackaging || items.length === 0}
-            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-md transition-colors cursor-pointer"
-            title="Download all attached certificates for this PO merged into a single PDF document"
-          >
-            <Download className="h-4 w-4" />
-            <span>{isPackaging ? 'Packaging...' : 'Download Complete MTC Package (.pdf)'}</span>
+            <Upload className="h-3.5 w-3.5 text-slate-500" />
+            <span>{isProcessingUpload ? 'Processing...' : 'Bulk Upload (PDF/ZIP)'}</span>
           </button>
 
           <button
             onClick={handleDownloadAllZip}
             disabled={isPackaging || items.length === 0}
-            className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Download all attached certificates for this PO bundled in a .zip archive"
           >
-            <Archive className="h-4 w-4" />
+            <Archive className="h-3.5 w-3.5 text-slate-500" />
             <span>Download All (.zip)</span>
+          </button>
+
+          <button
+            onClick={handleDownloadAllMerged}
+            disabled={isPackaging || items.length === 0}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            title="Download all attached certificates for this PO merged into a single PDF document"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>{isPackaging ? 'Packaging...' : 'Download Complete MTC (.pdf)'}</span>
           </button>
         </div>
       </div>
 
       {/* PO Overview Banner */}
-      <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+      <div className="bg-white p-3.5 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
         <div className="flex items-center space-x-4 flex-wrap gap-y-1">
           <span className="text-slate-600">
             Customer: <strong className="text-slate-900">{worksheetData.client || 'N/A'}</strong>
@@ -562,14 +562,14 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           </span>
           <span className="text-slate-300">|</span>
           <span className="text-slate-600">
-            Order Ref: <strong className="text-indigo-900 font-mono">{worksheetData.msg_ref || 'N/A'}</strong>
+            Order Ref: <strong className="text-slate-900 font-mono">{worksheetData.msg_ref || 'N/A'}</strong>
           </span>
         </div>
 
         <div className="flex items-center space-x-3 flex-wrap gap-y-1">
           {/* PO Selector Filter */}
           <div className="flex items-center space-x-1.5">
-            <span className="font-bold text-slate-700">Select PO:</span>
+            <span className="font-medium text-slate-600">Select PO:</span>
             <select
               value={selectedPOFilter}
               onChange={e => {
@@ -578,7 +578,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 const firstIt = (val === 'ALL' ? items : items.filter(it => (it.supplier_po_number || 'Main Stock') === val))[0]
                 if (firstIt) setSelectedId(firstIt.id)
               }}
-              className="border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold bg-white text-indigo-900 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+              className="border border-slate-300 rounded-md px-2.5 py-1 text-xs font-mono font-medium bg-white text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
             >
               <option value="ALL">All POs / Full Order ({items.length} lines)</option>
               {distinctPOs.map(po => {
@@ -591,11 +591,11 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <span className="text-slate-600">Status:</span>
-            <span className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+            <span className="text-slate-500">Status:</span>
+            <span className={`px-2.5 py-0.5 rounded-full font-medium text-[11px] border tabular-nums ${
               attachedCount === displayItems.length
-                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}>
               {attachedCount} of {displayItems.length} Attached
             </span>
@@ -604,23 +604,23 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
       </div>
 
       {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left Column: Line Items Table with Direct Upload & Preview Buttons */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center space-x-2">
-                <Package className="h-4 w-4 text-indigo-600" />
+          <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-white border-b border-slate-200 flex justify-between items-center">
+              <h2 className="font-semibold text-xs uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+                <Package className="h-4 w-4 text-blue-600" />
                 <span>PO Line Items &amp; Attached MTC Certificates</span>
               </h2>
               <span className="text-xs text-slate-500">
-                Click any line to preview with True-Copy stamp
+                Click any line to preview stamp
               </span>
             </div>
 
             <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 w-12 text-center">SL</th>
                     <th className="p-2.5 w-16">Item #</th>
@@ -642,7 +642,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                         key={it.id}
                         onClick={() => setSelectedId(it.id)}
                         className={`transition-colors cursor-pointer ${
-                          isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
+                          isSelected ? 'bg-blue-50/60 border-l-4 border-blue-600' : 'hover:bg-slate-50'
                         }`}
                       >
                         {/* SL */}
@@ -755,18 +755,18 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           </div>
 
           {/* Stamping Settings Card */}
-          <div className="bg-red-50/60 p-4 rounded-2xl border border-red-200 space-y-3">
+          <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="inline-flex items-center space-x-2 text-xs font-bold text-red-950 cursor-pointer">
+              <label className="inline-flex items-center space-x-2 text-xs font-semibold text-slate-900 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyStamp}
                   onChange={e => setApplyStamp(e.target.checked)}
-                  className="rounded text-red-600 focus:ring-red-500 h-4 w-4"
+                  className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                 />
                 <span>Apply Official MSG Oilfield &quot;CERTIFIED TRUE COPY&quot; Stamp</span>
               </label>
-              <span className="text-[10px] font-mono font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded-full border border-red-200">
+              <span className="text-[10px] font-mono font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
                 Verification Stamp
               </span>
             </div>
@@ -774,21 +774,21 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
             {applyStamp && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">QA Inspector Name</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-1">QA Inspector Name</label>
                   <input
                     type="text"
                     value={inspectorName}
                     onChange={e => setInspectorName(e.target.value)}
-                    className="w-full border border-red-200 rounded px-2 py-1 text-xs font-semibold text-red-900 bg-white"
+                    className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-900 bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-red-900 uppercase mb-0.5">Verification Date</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-1">Verification Date</label>
                   <input
                     type="date"
                     value={stampDate}
                     onChange={e => setStampDate(e.target.value)}
-                    className="w-full border border-red-200 rounded px-2 py-1 text-xs text-red-900 bg-white"
+                    className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-xs text-slate-900 bg-white"
                   />
                 </div>
               </div>
@@ -798,11 +798,11 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
         {/* Right Column: Live Embedded PDF Preview of Active Item */}
         <div className="lg:col-span-5 sticky top-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[750px]">
-            <div className="p-3 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+          <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden flex flex-col h-[750px]">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                <Eye className="h-4 w-4 text-indigo-600" />
-                <span className="font-bold text-xs text-slate-800">
+                <Eye className="h-4 w-4 text-blue-600" />
+                <span className="font-semibold text-xs text-slate-800">
                   Live Stamped Certificate Preview
                 </span>
               </div>
@@ -810,7 +810,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 type="button"
                 onClick={handleRenderPreview}
                 disabled={isGenerating}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center space-x-1 cursor-pointer"
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1 cursor-pointer"
                 title="Refresh preview"
               >
                 <RefreshCw className={`h-3 w-3 ${isGenerating ? 'animate-spin' : ''}`} />
@@ -820,13 +820,13 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
             {/* Selected item metadata bar */}
             {currentItem && (
-              <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 text-xs flex justify-between items-center">
+              <div className="px-3.5 py-2 bg-white border-b border-slate-200 text-xs flex justify-between items-center">
                 <div>
-                  <span className="font-bold text-slate-800">
+                  <span className="font-semibold text-slate-800">
                     Item #{currentItem.client_po_item_no || currentItem.sl_no}:
                   </span>
                   <span className="text-slate-600 ml-1.5 font-mono">
-                    Heat: <strong className="text-red-700">{currentItem.heat_number || 'N/A'}</strong>
+                    Heat: <strong className="text-slate-900">{currentItem.heat_number || 'N/A'}</strong>
                   </span>
                 </div>
                 <div className="flex items-center space-x-1.5">
@@ -836,7 +836,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                       setTargetUploadItemId(currentItem.id)
                       itemFileInputRef.current?.click()
                     }}
-                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-semibold px-2 py-0.5 rounded cursor-pointer"
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-medium px-2 py-0.5 rounded cursor-pointer"
                   >
                     Upload PDF
                   </button>
@@ -845,7 +845,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
             )}
 
             {/* Embedded Iframe */}
-            <div className="flex-1 bg-slate-200 relative flex items-center justify-center overflow-hidden">
+            <div className="flex-1 bg-slate-100 relative flex items-center justify-center overflow-hidden">
               {isGenerating ? (
                 <div className="text-center p-6 text-slate-500 text-xs">
                   <RefreshCw className="h-6 w-6 mx-auto mb-2 animate-spin text-slate-400" />
@@ -860,9 +860,9 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
               ) : (
                 <div className="text-center p-6 text-slate-500 text-xs flex flex-col items-center">
                   <FileCheck2 className="h-10 w-10 text-slate-400 mb-2" />
-                  <p className="font-bold text-slate-700">No Authentic Certificate Attached</p>
+                  <p className="font-semibold text-slate-700">No Authentic Certificate Attached</p>
                   <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-                    No certificate found for this item in the bulk ZIP vault. Upload the authentic supplier PDF or click &quot;Auto-Link from Bulk ZIP&quot;.
+                    No certificate found for this item in the bulk ZIP vault. Upload the authentic supplier PDF or click &quot;Auto-Link Vault&quot;.
                   </p>
                   <button
                     type="button"
@@ -870,7 +870,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                       setTargetUploadItemId(currentItem?.id || null)
                       itemFileInputRef.current?.click()
                     }}
-                    className="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1 cursor-pointer"
                   >
                     <Upload className="h-3 w-3" />
                     <span>Upload Authentic PDF</span>
@@ -880,14 +880,14 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
             </div>
 
             {/* Footer with Direct Download */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+            <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
               <span className="text-[11px] text-slate-500 font-mono truncate max-w-[220px]" title={currentItem?.certificate_number}>
                 {currentItem?.certificate_number || 'No file attached'}
               </span>
               <button
                 onClick={() => currentItem && handleDownloadSingle(currentItem)}
                 disabled={isGenerating || !currentItem}
-                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
                 <span>Download Stamped MTC</span>

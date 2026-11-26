@@ -54,26 +54,26 @@ export const HeatTraceabilityModal: React.FC<HeatTraceabilityModalProps> = ({ he
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-6">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[92vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
         {/* Modal Header */}
-        <div className="bg-[#0B2545] p-5 text-white flex justify-between items-start">
+        <div className="bg-slate-50 px-5 py-4 text-slate-900 border-b border-slate-200 flex justify-between items-start gap-2 shrink-0">
           <div>
             <div className="flex items-center space-x-2">
-              <Flame className="h-5 w-5 text-red-500" />
-              <h2 className="text-base font-extrabold uppercase tracking-wide">360° Material Traceability Register</h2>
-              <span className="bg-red-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+              <Flame className="h-4 w-4 text-blue-600" />
+              <h2 className="text-sm font-semibold">360° Material Traceability Register</h2>
+              <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
                 Heat: {lot.heat_number}
               </span>
             </div>
-            <p className="text-xs text-slate-300 mt-1">
-              End-to-end lifecycle traceability from mill manufacturing receipt to client dispatches & historical order records.
+            <p className="text-xs text-slate-500 mt-1">
+              End-to-end lifecycle traceability from mill manufacturing receipt to client dispatches &amp; historical order records.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-300 hover:text-white text-lg p-1">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg p-1 shrink-0">✕</button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Section 1: Stock & Manufacturing Lot Overview */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center space-x-1.5">
@@ -118,7 +118,7 @@ export const HeatTraceabilityModal: React.FC<HeatTraceabilityModalProps> = ({ he
             </div>
 
             {/* Inventory Balance Breakdown */}
-            <div className="grid grid-cols-4 gap-3 mt-3 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-center">
               <div className="p-2.5 rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="text-[10px] uppercase font-bold text-slate-500">Physical Stock</div>
                 <div className="text-lg font-extrabold text-slate-900">{lot.physical_qty} PCS</div>
@@ -182,7 +182,7 @@ export const HeatTraceabilityModal: React.FC<HeatTraceabilityModalProps> = ({ he
               <span className="text-[11px] text-slate-500 font-medium">{associatedOrders.length} Order Records</span>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px]">
                   <tr>
@@ -278,7 +278,7 @@ export const HeatTraceabilityModal: React.FC<HeatTraceabilityModalProps> = ({ he
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-100 p-4 border-t border-slate-200 flex justify-between items-center text-xs">
+        <div className="bg-slate-100 p-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 text-xs shrink-0">
           <span className="text-slate-500">
             Registered on {lot.created_at} &bull; MSG Oilfield Equipment Trading LLC Traceability Engine
           </span>

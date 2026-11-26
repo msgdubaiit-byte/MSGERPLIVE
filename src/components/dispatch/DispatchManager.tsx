@@ -79,12 +79,12 @@ export const DispatchManager: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <Truck className="h-5 w-5 text-indigo-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Material Dispatch & Logistics</h1>
-            <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+          <div className="flex items-center space-x-2.5">
+            <Truck className="h-5 w-5 text-blue-600" />
+            <h1 className="text-lg font-semibold text-slate-900">Material Dispatch &amp; Logistics</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 20 Protocol
             </span>
           </div>
@@ -96,19 +96,19 @@ export const DispatchManager: React.FC = () => {
         <div className="flex items-center space-x-2">
           <button
             onClick={() => exportDispatches()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+            className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-md transition-colors flex items-center space-x-1.5"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3.5 w-3.5 text-slate-500" />
             <span>Export Dispatch Register (.xlsx)</span>
           </button>
         </div>
       </div>
 
       {/* Dispatch Preparation Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left Column: Orders Awaiting Dispatch */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 pb-2 border-b border-slate-100">
+        <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-4 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-600 pb-2 border-b border-slate-100">
             Eligible Approved Orders ({eligibleOrders.length})
           </h2>
 
@@ -125,24 +125,24 @@ export const DispatchManager: React.FC = () => {
                   <div
                     key={ord.id}
                     onClick={() => handleSelectOrder(ord.id)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                       isSelected
-                        ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-400'
+                        ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500/30'
                         : 'border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex justify-between items-start">
-                      <span className="font-mono font-bold text-xs text-[#0B2545]">{ord.so_number}</span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      <span className="font-mono font-semibold text-xs text-slate-900">{ord.so_number}</span>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium px-2 py-0.5 rounded-full">
                         {ord.status}
                       </span>
                     </div>
-                    <div className="text-xs font-semibold text-slate-800 mt-1">{ord.customer_name}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">PO: {ord.po_number}</div>
+                    <div className="text-xs font-medium text-slate-800 mt-1">{ord.customer_name}</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5 font-mono">PO: {ord.po_number}</div>
 
                     <div className="mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600 flex justify-between">
                       <span>Heats: {ord.allocations.length}</span>
-                      <span className="text-indigo-700 font-bold">Ready to Ship</span>
+                      <span className="text-blue-700 font-medium">Ready to Ship</span>
                     </div>
                   </div>
                 )
@@ -152,7 +152,7 @@ export const DispatchManager: React.FC = () => {
         </div>
 
         {/* Right Column: Execution Form (2 Cols) */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-5">
+        <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 shadow-xs p-5 space-y-5">
           {!selectedOrder ? (
             <div className="p-12 text-center text-slate-400 text-xs">
               Select an approved Sales Order from the queue on the left to prepare the dispatch record.
@@ -160,35 +160,36 @@ export const DispatchManager: React.FC = () => {
           ) : (
             <form onSubmit={handleConfirmDispatch} className="space-y-5 text-xs">
               {/* Order Banner */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
                 <div>
-                  <span className="font-mono font-bold text-sm text-[#0B2545]">{selectedOrder.so_number}</span>
-                  <span className="ml-2 font-bold text-slate-800">&bull; {selectedOrder.customer_name}</span>
+                  <span className="font-mono font-semibold text-sm text-slate-900">{selectedOrder.so_number}</span>
+                  <span className="ml-2 font-medium text-slate-800">&bull; {selectedOrder.customer_name}</span>
                   <div className="text-[11px] text-slate-500 mt-0.5">
                     PO Ref: {selectedOrder.po_number} | Storekeeper Approved: {selectedOrder.approved_by || 'Yes'}
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium px-2.5 py-0.5 rounded-full">
                     Verification Complete
                   </span>
                 </div>
               </div>
 
               {/* Items Allocation & Dispatch Quantity Input */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700">
-                  Allocated Heats & Dispatch Quantities (Support Partial Shipment)
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 font-semibold text-[11px] uppercase tracking-wider text-slate-600">
+                  Allocated Heats &amp; Dispatch Quantities
                 </div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                  <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                     <tr>
                       <th className="p-2.5">Item Code</th>
                       <th className="p-2.5">Heat Number</th>
                       <th className="p-2.5 text-center">Allocated</th>
                       <th className="p-2.5 text-center">Dispatched Prior</th>
                       <th className="p-2.5 text-center">Remaining Balance</th>
-                      <th className="p-2.5 text-center font-bold text-indigo-700">This Dispatch (PCS)</th>
+                      <th className="p-2.5 text-center">This Dispatch (PCS)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -198,19 +199,19 @@ export const DispatchManager: React.FC = () => {
 
                       return (
                         <tr key={alloc.id} className="hover:bg-slate-50">
-                          <td className="p-2.5 font-mono text-slate-800 font-bold">
+                          <td className="p-2.5 font-mono text-slate-900 font-semibold">
                             {selectedOrder.items.find(i => i.id === alloc.sales_order_item_id)?.item_code}
                           </td>
-                          <td className="p-2.5 font-mono font-bold text-red-700">
-                            🔥 {alloc.heat_number}
+                          <td className="p-2.5 font-mono font-semibold text-slate-800">
+                            {alloc.heat_number}
                           </td>
-                          <td className="p-2.5 text-center font-semibold text-slate-700">
+                          <td className="p-2.5 text-center font-medium text-slate-700 tabular-nums">
                             {alloc.allocated_qty} PCS
                           </td>
-                          <td className="p-2.5 text-center text-slate-500">
+                          <td className="p-2.5 text-center text-slate-500 tabular-nums">
                             {alloc.dispatched_qty} PCS
                           </td>
-                          <td className="p-2.5 text-center font-bold text-amber-700">
+                          <td className="p-2.5 text-center font-semibold text-amber-700 tabular-nums">
                             {remainingAlloc} PCS
                           </td>
                           <td className="p-2.5 text-center">
@@ -225,7 +226,7 @@ export const DispatchManager: React.FC = () => {
                                   [alloc.id]: Math.min(remainingAlloc, Number(e.target.value))
                                 })
                               }}
-                              className="border border-indigo-300 bg-indigo-50/40 rounded-lg p-1.5 w-24 text-center font-extrabold text-indigo-900"
+                              className="border border-slate-300 bg-white rounded-md p-1.5 w-24 text-center font-semibold text-slate-900 tabular-nums"
                             />
                           </td>
                         </tr>
@@ -233,10 +234,11 @@ export const DispatchManager: React.FC = () => {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Delivery Details Inputs */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Delivery Note Number *</label>
                   <input
@@ -244,7 +246,7 @@ export const DispatchManager: React.FC = () => {
                     required
                     value={deliveryNote}
                     onChange={(e) => setDeliveryNote(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase bg-white"
+                    className="w-full border border-slate-300 rounded-md p-2 font-mono uppercase bg-white"
                   />
                 </div>
                 <div>
@@ -253,7 +255,7 @@ export const DispatchManager: React.FC = () => {
                     type="text"
                     value={deliveryRef}
                     onChange={(e) => setDeliveryRef(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 font-mono uppercase bg-white"
+                    className="w-full border border-slate-300 rounded-md p-2 font-mono uppercase bg-white"
                   />
                 </div>
 
@@ -263,7 +265,7 @@ export const DispatchManager: React.FC = () => {
                     rows={2}
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 bg-white"
+                    className="w-full border border-slate-300 rounded-md p-2 bg-white"
                   />
                 </div>
               </div>
@@ -272,10 +274,10 @@ export const DispatchManager: React.FC = () => {
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-6 py-2.5 rounded-lg shadow-md transition-colors flex items-center space-x-2"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-5 py-2.5 rounded-md shadow-sm transition-colors flex items-center space-x-2"
                 >
                   <PackageCheck className="h-4 w-4" />
-                  <span>Confirm Dispatch & Update Physical Inventory</span>
+                  <span>Confirm Dispatch &amp; Update Inventory</span>
                 </button>
               </div>
             </form>
@@ -284,14 +286,14 @@ export const DispatchManager: React.FC = () => {
       </div>
 
       {/* Dispatches History Register */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+        <div className="px-4 py-2.5 bg-slate-50 font-semibold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-200">
           Historical Material Dispatch Log
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="p-2.5">Delivery Note</th>
                 <th className="p-2.5">Sales Order</th>

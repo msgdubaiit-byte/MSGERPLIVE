@@ -22,23 +22,23 @@ export const StockMovementsLedger: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <History className="h-5 w-5 text-blue-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Immutable Stock Movement Ledger</h1>
-            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+            <h1 className="text-lg font-semibold text-slate-900">Immutable Stock Movement Ledger</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 5.12 Standard
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Complete audit trail of every inventory-changing event (Receipts, Reservations, Releases, Dispatches, Returns & Adjustments).
+            Complete audit trail of every inventory-changing event (Receipts, Reservations, Releases, Dispatches, Returns &amp; Adjustments).
           </p>
         </div>
 
         <button
           onClick={() => exportStockMovements()}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md shadow-xs transition-colors flex items-center space-x-1.5"
         >
           <Download className="h-3.5 w-3.5" />
           <span>Export Ledger (.xlsx)</span>
@@ -46,7 +46,7 @@ export const StockMovementsLedger: React.FC = () => {
       </div>
 
       {/* Filter toolbar */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="relative flex-1 min-w-[240px] max-w-md">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
           <input
@@ -54,17 +54,17 @@ export const StockMovementsLedger: React.FC = () => {
             placeholder="Search Heat#, Item Code, Reference ID, Performed By..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-slate-800"
+            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-md text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
         </div>
 
         <div className="flex items-center space-x-2">
           <Filter className="h-3.5 w-3.5 text-slate-500" />
-          <span className="font-semibold text-slate-600">Movement Type:</span>
+          <span className="font-medium text-slate-600">Movement Type:</span>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 font-medium"
+            className="border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-800 font-medium"
           >
             <option value="all">All Movements ({movements.length})</option>
             <option value="Opening Stock">Opening Stock</option>
@@ -79,10 +79,10 @@ export const StockMovementsLedger: React.FC = () => {
       </div>
 
       {/* Ledger Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#0B2545] text-white uppercase text-[10px] tracking-wider">
+            <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] tracking-wider border-b border-slate-200">
               <tr>
                 <th className="py-3 px-3">Timestamp</th>
                 <th className="py-3 px-3">Movement Type</th>
@@ -102,21 +102,21 @@ export const StockMovementsLedger: React.FC = () => {
 
                 return (
                   <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{m.timestamp}</td>
+                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap font-mono text-[11px]">{m.timestamp}</td>
                     <td className="py-2.5 px-3 whitespace-nowrap">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                        m.movement_type === 'Reservation' ? 'bg-amber-100 text-amber-800' :
-                        m.movement_type === 'Reservation Release' ? 'bg-emerald-100 text-emerald-800 font-extrabold' :
-                        m.movement_type === 'Dispatch' ? 'bg-indigo-100 text-indigo-800' :
-                        m.movement_type === 'Stock Receipt' ? 'bg-blue-100 text-blue-800' :
-                        m.movement_type === 'Approved Customer Return' ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-700'
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
+                        m.movement_type === 'Reservation' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        m.movement_type === 'Reservation Release' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        m.movement_type === 'Dispatch' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        m.movement_type === 'Stock Receipt' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        m.movement_type === 'Approved Customer Return' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'
                       }`}>
                         {m.movement_type}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{m.item_code}</td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-red-700">🔥 {m.heat_number}</td>
-                    <td className="py-2.5 px-3 text-center font-extrabold">
+                    <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">{m.item_code}</td>
+                    <td className="py-2.5 px-3 font-mono font-semibold text-slate-800">{m.heat_number}</td>
+                    <td className="py-2.5 px-3 text-center font-semibold tabular-nums">
                       <span className={isAddition ? 'text-emerald-700' : 'text-slate-800'}>
                         {isAddition ? '+' : '-'}{m.quantity} PCS
                       </span>

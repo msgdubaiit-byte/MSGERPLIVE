@@ -132,14 +132,14 @@ export const UserManagement: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <Users className="h-5 w-5 text-blue-600" />
-            <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Enterprise User & Role Administration</h1>
-            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+            <h1 className="text-lg font-semibold text-slate-900">User &amp; Role Administration</h1>
+            <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
               Section 3.3 Standard
             </span>
           </div>
@@ -152,34 +152,34 @@ export const UserManagement: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsVipModalOpen(true)}
-              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-xs px-4 py-2.5 rounded-lg shadow-sm border border-amber-300 transition-all flex items-center space-x-1.5 cursor-pointer"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-md transition-colors flex items-center space-x-1.5 cursor-pointer"
             >
-              <Crown className="h-4 w-4" />
-              <span>VIP Customizer: Tailor Options for Team</span>
+              <Crown className="h-3.5 w-3.5 text-amber-500" />
+              <span>Module Access Customizer</span>
             </button>
             <button
               onClick={() => setIsAddUserModalOpen(true)}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow transition-colors flex items-center space-x-1.5 cursor-pointer"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
             >
-              <UserPlus className="h-4 w-4" />
-              <span>Create New User Account</span>
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>New User Account</span>
             </button>
           </div>
         )}
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 bg-slate-100 font-bold text-xs uppercase text-slate-700 border-b border-slate-200 flex justify-between items-center">
-          <span>Authorized Employees & Assigned Permissions</span>
-          <span className="text-[11px] text-amber-700 font-bold">
-            👑 Use VIP Customizer to simplify views for each employee
+      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+        <div className="px-4 py-3 bg-white font-semibold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-200 flex justify-between items-center">
+          <span>Authorized Employees &amp; Assigned Permissions</span>
+          <span className="text-[11px] text-slate-500 font-normal normal-case">
+            Customize sidebar visibility per employee using Module Access Customizer
           </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="p-3">Employee Name</th>
                 <th className="p-3">Email Address</th>
@@ -194,22 +194,22 @@ export const UserManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {users.map(u => (
                 <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-bold text-slate-900">{u.employee_name}</td>
+                  <td className="p-3 font-semibold text-slate-900">{u.employee_name}</td>
                   <td className="p-3 font-mono text-slate-600">{u.email}</td>
                   <td className="p-3">
-                    <span className="bg-slate-100 text-slate-800 font-bold px-2 py-0.5 rounded text-[11px] capitalize">
+                    <span className="bg-slate-100 text-slate-700 border border-slate-200 font-medium px-2 py-0.5 rounded text-[11px] capitalize">
                       {u.role.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="p-3">
-                    <span className="bg-amber-50 text-amber-900 border border-amber-200 font-bold px-2 py-0.5 rounded text-[11px] font-mono inline-block">
+                    <span className="bg-blue-50 text-blue-700 border border-blue-200 font-medium px-2 py-0.5 rounded text-[11px] font-mono inline-block tabular-nums">
                       {getAllowedModulesForTarget(u.id).length} of 20 options
                     </span>
                   </td>
                   <td className="p-3 text-slate-600">{u.department}</td>
                   <td className="p-3">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      u.account_status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                      u.account_status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                     }`}>
                       {u.account_status}
                     </span>
@@ -220,28 +220,28 @@ export const UserManagement: React.FC = () => {
                       <div className="flex items-center justify-center space-x-2.5">
                         <button
                           onClick={() => setIsVipModalOpen(true)}
-                          className="text-[11px] text-amber-700 hover:text-amber-900 font-bold flex items-center space-x-0.5 cursor-pointer"
+                          className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-0.5 cursor-pointer"
                           title="Customize what this employee sees"
                         >
-                          <Crown className="h-3.5 w-3.5" />
+                          <Crown className="h-3 w-3" />
                           <span>Customize</span>
                         </button>
                         <button
                           onClick={() => handleToggleStatus(u)}
-                          className="text-[11px] text-slate-600 hover:text-red-700 font-semibold cursor-pointer"
+                          className="text-[11px] text-slate-600 hover:text-slate-900 font-medium cursor-pointer"
                         >
                           {u.account_status === 'Active' ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           onClick={() => handleResetPassword(u)}
-                          className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                          className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
                         >
                           Reset Pass
                         </button>
                         {u.role !== 'super_admin' && u.role !== 'it_engineer' && (
                           <button
                             onClick={() => handleDeleteUser(u)}
-                            className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer"
+                            className="text-[11px] text-rose-600 hover:text-rose-800 font-medium cursor-pointer"
                           >
                             Delete
                           </button>
@@ -258,14 +258,14 @@ export const UserManagement: React.FC = () => {
 
       {/* Add User Modal */}
       {isAddUserModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center">
-              <h3 className="font-bold text-sm uppercase">Create Employee Account</h3>
-              <button onClick={() => setIsAddUserModalOpen(false)} className="text-slate-300 hover:text-white">✕</button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-5 py-3.5 text-slate-900 border-b border-slate-200 flex justify-between items-center gap-2 shrink-0">
+              <h3 className="font-semibold text-sm">Create Employee Account</h3>
+              <button onClick={() => setIsAddUserModalOpen(false)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleCreateUser} className="p-5 space-y-3.5 text-xs overflow-y-auto flex-1">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Employee Full Name *</label>
                 <input

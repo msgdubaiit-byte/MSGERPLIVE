@@ -107,37 +107,37 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col max-h-[94vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs overflow-y-auto p-2 sm:p-4 flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col max-h-[94vh]">
         
         {/* Modal Top Header with Sheet Tabs */}
-        <div className="px-5 py-3.5 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-700 shrink-0">
+        <div className="px-5 py-3.5 bg-white text-slate-900 flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
               <Eye className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-bold text-sm tracking-wide text-white">Excel Deliverable Preview &amp; Download</span>
-                <span className="bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                <span className="font-semibold text-sm text-slate-900">Excel Deliverable Preview &amp; Download</span>
+                <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-medium px-2 py-0.5 rounded-full tabular-nums">
                   {items.length} items
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Visual worksheet preview before downloading. Switch tabs to inspect all 4 Excel deliverables.
+              <p className="text-[11px] text-slate-500">
+                Visual worksheet preview before downloading. Switch tabs to inspect all deliverables.
               </p>
             </div>
           </div>
 
           {/* Interactive Sheet Switcher Tabs */}
-          <div className="flex flex-wrap items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+          <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
             <button
               type="button"
               onClick={() => setActiveTab('client')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'client'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
               <FileText className="h-3.5 w-3.5" />
@@ -147,10 +147,10 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
             <button
               type="button"
               onClick={() => setActiveTab('stores')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'stores'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
               <Layers className="h-3.5 w-3.5" />
@@ -160,10 +160,10 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
             <button
               type="button"
               onClick={() => setActiveTab('summary')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'summary'
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
@@ -173,10 +173,10 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
             <button
               type="button"
               onClick={() => setActiveTab('cipl_invoice')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'cipl_invoice'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
               <Truck className="h-3.5 w-3.5" />
@@ -186,10 +186,10 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
             <button
               type="button"
               onClick={() => setActiveTab('cipl_packing')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'cipl_packing'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
               <Package className="h-3.5 w-3.5" />
@@ -198,7 +198,7 @@ export const ExcelDeliverablesPreviewModal: React.FC<ExcelDeliverablesPreviewMod
 
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors ml-1 cursor-pointer"
+              className="text-slate-400 hover:text-slate-700 p-1.5 rounded hover:bg-white transition-colors ml-1 cursor-pointer"
               title="Close Preview"
             >
               <X className="h-4 w-4" />

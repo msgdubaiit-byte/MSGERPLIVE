@@ -2,39 +2,49 @@
 
 @layer base {
   :root {
-    --primary-navy: #0B2545;
-    --primary-navy-dark: #081C33;
-    --primary-red: #D32F2F;
-    --primary-red-dark: #B71C1C;
-    --oil-gold: #D4AF37;
+    --zoho-bg: #F7F8FA;
+    --zoho-surface: #FFFFFF;
+    --zoho-border: #E5E7EB;
+    --zoho-sidebar: #1F2437;
+    --zoho-sidebar-hover: #2B324B;
+    --zoho-primary: #2563EB;
+    --zoho-primary-hover: #1D4ED8;
+    --zoho-text: #111827;
+    --zoho-muted: #6B7280;
   }
 
   body {
-    background-color: #F8FAFC;
-    color: #1E293B;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #F7F8FA;
+    color: #111827;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-/* Custom scrollbars */
+/* Subtle commercial scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
-  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+  background: rgba(100, 116, 139, 0.65);
 }
 
 .stamp-box {
   transform: rotate(-1.5deg);
-  border: 3px solid #b91c1c;
+  border: 2px solid #b91c1c;
   color: #b91c1c;
-  box-shadow: 0 4px 10px rgba(185, 28, 28, 0.15);
+  box-shadow: 0 2px 6px rgba(185, 28, 28, 0.12);
 }

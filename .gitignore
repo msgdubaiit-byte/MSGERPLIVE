@@ -23,6 +23,25 @@ dist-ssr
 *.sln
 *.sw?
 
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python / Pytest / Coverage caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage/
+
+# Runtime local storage & legacy local DB artifacts
+server/storage/
+server/data/
+*.db
+*.db-wal
+*.db-shm
+
 # Test output binaries
 test_*.pdf
 test_*.png

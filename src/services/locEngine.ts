@@ -908,9 +908,15 @@ function dataUrlToBytes(dataUrl: string): Uint8Array | null {
 }
 
 // -------------------------------------------------------------
-// Draft History Persistence (localStorage)
+// Draft History Persistence (Backend PostgreSQL/SQLite + Cache)
 // -------------------------------------------------------------
 const LOC_DRAFTS_KEY = 'msg_loc_drafts_v1'
+
+export function setLOCDraftsCache(drafts: LOCDraft[]): void {
+  try {
+    localStorage.setItem(LOC_DRAFTS_KEY, JSON.stringify((drafts || []).slice(0, 30)))
+  } catch {}
+}
 
 export function saveLOCDraft(metadata: LOCMetadata, items: LOCItem[]): LOCDraft {
   const drafts = getLOCDrafts()
@@ -922,6 +928,15 @@ export function saveLOCDraft(metadata: LOCMetadata, items: LOCItem[]): LOCDraft 
   }
   const updated = [newDraft, ...drafts.slice(0, 19)]
   localStorage.setItem(LOC_DRAFTS_KEY, JSON.stringify(updated))
+
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+  if (token) {
+    fetch('/api/loc/drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(newDraft),
+    }).catch(() => {})
+  }
   return newDraft
 }
 
@@ -937,4 +952,11 @@ export function getLOCDrafts(): LOCDraft[] {
 export function deleteLOCDraft(id: string): void {
   const drafts = getLOCDrafts().filter(d => d.id !== id)
   localStorage.setItem(LOC_DRAFTS_KEY, JSON.stringify(drafts))
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+  if (token) {
+    fetch(`/api/loc/drafts/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {})
+  }
 }

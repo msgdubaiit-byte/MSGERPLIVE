@@ -199,19 +199,17 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
         <button
           onClick={() => setIsOpen(true)}
           title="Open MSG AI Assistant (Ctrl + Space)"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-full bg-gradient-to-r from-blue-700 via-indigo-700 to-cyan-600 text-white shadow-2xl hover:shadow-cyan-500/40 hover:scale-105 transition-all duration-200 border border-blue-400/30 group"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-colors border border-blue-500"
         >
           <div className="relative">
-            <Bot className="w-6 h-6 animate-pulse" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900 animate-ping" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900" />
+            <Bot className="w-5 h-5" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-blue-600" />
           </div>
           <div className="flex flex-col text-left">
-            <span className="text-xs font-bold tracking-wider uppercase flex items-center gap-1.5">
-              <span>ERP AI Assistant</span>
-              <Sparkles className="w-3 h-3 text-cyan-300" />
+            <span className="text-xs font-semibold">
+              ERP Assistant
             </span>
-            <span className="text-[10px] text-blue-200">Find, Vet & Download</span>
+            <span className="text-[10px] text-blue-100">Find, Vet &amp; Download</span>
           </div>
         </button>
       )}
@@ -219,24 +217,24 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
       {/* Floating Chat Drawer Window */}
       {isOpen && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex flex-col bg-slate-900 text-slate-100 rounded-2xl shadow-2xl border border-slate-700/80 overflow-hidden transition-all duration-300 ${
-            isWide ? 'w-[760px] h-[700px]' : 'w-[420px] sm:w-[460px] h-[640px]'
+          className={`fixed bottom-5 right-5 z-50 flex flex-col bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 overflow-hidden transition-all duration-200 ${
+            isWide ? 'w-[760px] h-[700px]' : 'w-[420px] sm:w-[460px] h-[620px]'
           } max-w-[calc(100vw-2rem)] max-h-[calc(100vh-3rem)]`}
         >
           {/* Top Header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 border-b border-slate-800 flex items-center justify-between select-none">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <Bot className="w-5 h-5 text-white" />
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between select-none">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-white" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white tracking-wide">MSG AI Co-Pilot</h3>
-                  <span className="px-1.5 py-0.5 text-[9px] font-semibold tracking-wider uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <h3 className="text-sm font-semibold text-slate-900">MSG ERP Co-Pilot</h3>
+                  <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                     Live ERP
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">Deep Search • Automated Vetting • Instant Downloads</p>
+                <p className="text-[11px] text-slate-500">Deep Search &bull; Automated Vetting &bull; Downloads</p>
               </div>
             </div>
 
@@ -244,14 +242,14 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
               <button
                 onClick={handleClearHistory}
                 title="Reset conversation"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setIsWide(!isWide)}
                 title={isWide ? 'Standard view' : 'Expand wide'}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition"
               >
                 {isWide ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>

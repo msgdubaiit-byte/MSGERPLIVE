@@ -33,6 +33,7 @@ import { db } from './services/db'
 const MainApp: React.FC = () => {
   const { isAuthenticated, currentUser, canAccessModule, isLoadingSession } = useAuth()
   const [activeTab, setActiveTab] = useState<NavTabId>('solo_hub')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [dbVersion, setDbVersion] = useState(0)
 
   // Reactive listener to DB changes across the app
@@ -76,10 +77,10 @@ const MainApp: React.FC = () => {
 
   if (isLoadingSession) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <div className="text-xs font-bold tracking-wide uppercase text-slate-300">
-          Connecting to Supabase PostgreSQL &amp; Auth...
+      <div className="min-h-screen bg-[#F7F8FA] flex flex-col items-center justify-center text-slate-700 p-4">
+        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <div className="text-xs font-medium text-slate-500">
+          Loading MSG Oilfield ERP workspace...
         </div>
       </div>
     )
@@ -102,21 +103,27 @@ const MainApp: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-sans">
-      {/* Top Navbar */}
-      <Navbar
-        onSearchSelect={handleGlobalSearchSelect}
-        onOpenSettings={() => setActiveTab('settings')}
-        onOpenGuide={() => setIsOnboardingModalOpen(true)}
+    <div className="h-screen flex overflow-hidden bg-[#F7F8FA] text-slate-900 font-sans">
+      {/* Left Zoho-style Navigation Rail */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        collapsed={sidebarCollapsed}
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Right Workspace Column */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Navbar
+          onSearchSelect={handleGlobalSearchSelect}
+          onOpenSettings={() => setActiveTab('settings')}
+          onOpenGuide={() => setIsOnboardingModalOpen(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+        />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 lg:p-6">
+          <div className="max-w-[1440px] mx-auto w-full min-w-0">
             {activeTab === 'solo_hub' && (
               <CentralizedSoloHub
                 onNavigateTab={(tab) => setActiveTab(tab)}

@@ -2,7 +2,7 @@ import os
 import io
 import base64
 import html
-import fitz # PyMuPDF
+from pypdf import PdfReader, PdfWriter
 
 
 def format_paragraph_text(val):
@@ -311,34 +311,26 @@ def apply_vector_letterhead_overlay(raw_pdf_bytes_or_path, output_target):
             output_target.write(raw_pdf_bytes_or_path if isinstance(raw_pdf_bytes_or_path, bytes) else raw_pdf_bytes_or_path.getvalue())
         return
 
-    # Load vector template and generated content
-    doc_template = fitz.open(template_pdf_path)
-    
+    # Load vector template and generated content via pypdf
+    template_reader = PdfReader(template_pdf_path)
     if isinstance(raw_pdf_bytes_or_path, bytes):
-        doc_content = fitz.open(stream=raw_pdf_bytes_or_path, filetype="pdf")
+        content_reader = PdfReader(io.BytesIO(raw_pdf_bytes_or_path))
     elif isinstance(raw_pdf_bytes_or_path, str):
-        doc_content = fitz.open(raw_pdf_bytes_or_path)
+        content_reader = PdfReader(raw_pdf_bytes_or_path)
     else:
-        doc_content = fitz.open(stream=raw_pdf_bytes_or_path.getvalue(), filetype="pdf")
+        content_reader = PdfReader(io.BytesIO(raw_pdf_bytes_or_path.getvalue()))
 
-    final_doc = fitz.open()
+    writer = PdfWriter()
+    for content_page in content_reader.pages:
+        tpl_page = PdfReader(template_pdf_path).pages[0]
+        tpl_page.merge_page(content_page)
+        writer.add_page(tpl_page)
 
-    for page_idx in range(len(doc_content)):
-        page_rect = fitz.Rect(0, 0, 595.27, 841.89) # A4 size in points
-        new_page = final_doc.new_page(width=595.27, height=841.89)
-        
-        # 1. Overlay original vector letterhead graphics
-        new_page.show_pdf_page(page_rect, doc_template, 0)
-        
-        # 2. Overlay document text content
-        new_page.show_pdf_page(page_rect, doc_content, page_idx)
-
-    # Save to output_target
     if isinstance(output_target, str):
-        final_doc.save(output_target)
+        with open(output_target, 'wb') as f:
+            writer.write(f)
     elif hasattr(output_target, 'write'):
-        final_bytes = final_doc.write()
-        output_target.write(final_bytes)
+        writer.write(output_target)
 
 
 def generate_loc_pdf(metadata, items, output_target, signature_data=None, stamp_data=None, include_signature=True, include_stamp=True):

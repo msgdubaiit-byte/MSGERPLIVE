@@ -209,7 +209,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     setOrderLines(orderLines.filter((_, i) => i !== idx))
   }
 
-  const handleCreateOrderSubmit = (e: React.FormEvent) => {
+  const handleCreateOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerId) {
       alert('Please select a customer.')
@@ -232,6 +232,23 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
     let docUrl: string | undefined = undefined
     if (poFile) {
       docUrl = URL.createObjectURL(poFile)
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('msg_auth_token') : null
+      if (token) {
+        try {
+          const form = new FormData()
+          form.append('file', poFile, poFile.name)
+          form.append('category', 'po_documents')
+          const upResp = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          })
+          if (upResp.ok) {
+            const upJson = await upResp.json()
+            docUrl = upJson.file?.cloudUrl || upJson.file?.url || docUrl
+          }
+        } catch {}
+      }
     }
 
     const res = db.createSalesOrder({
@@ -831,12 +848,12 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      {/* Zoho Page Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-5 py-4 rounded-lg border border-slate-200">
         <div>
-          <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Sales Orders Management</h1>
-          <p className="text-xs text-slate-500">
-            Create customer orders, allocate Heat Numbers via FIFO or manual selection, and track approval & dispatch status.
+          <h1 className="text-lg font-semibold text-slate-900">Sales Orders</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Create orders, import PO PDFs or spreadsheets, allocate heat lots, and manage fulfillment.
           </p>
         </div>
 
@@ -844,14 +861,21 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
           {canCreateOrder && (
             <>
               <button
-                onClick={() => {
-                  setCreateOrderType('regular')
-                  setIsCreateModalOpen(true)
-                }}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                onClick={() => setIsPdfModalOpen(true)}
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-3 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Upload Customer Sales Order / PO directly from PDF"
               >
-                <Plus className="h-4 w-4" />
-                <span>Create Sales Order</span>
+                <FileText className="h-3.5 w-3.5 text-slate-500" />
+                <span>Upload PO (PDF)</span>
+              </button>
+
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-3 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Upload Sales Orders from an Excel spreadsheet"
+              >
+                <FileUp className="h-3.5 w-3.5 text-slate-500" />
+                <span>Import (.xlsx)</span>
               </button>
 
               <button
@@ -859,54 +883,47 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   setCreateOrderType('local_purchase')
                   setIsCreateModalOpen(true)
                 }}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-                title="Create Local Purchase Sales Order with custom L-Codes and Local UAE Suppliers"
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-3 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Create Local Purchase Sales Order with custom L-Codes"
               >
-                <ShoppingBag className="h-4 w-4 text-purple-200" />
-                <span>Create Local SO (L-Code)</span>
+                <ShoppingBag className="h-3.5 w-3.5 text-slate-500" />
+                <span>Local SO (L-Code)</span>
               </button>
 
               <button
-                onClick={() => setIsPdfModalOpen(true)}
-                className="bg-red-700 hover:bg-red-800 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-                title="Upload Customer Sales Order / PO directly from PDF"
+                onClick={() => {
+                  setCreateOrderType('regular')
+                  setIsCreateModalOpen(true)
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
               >
-                <FileText className="h-4 w-4 text-red-200" />
-                <span>Upload SO (PDF)</span>
-              </button>
-
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-                title="Upload Sales Orders from an Excel spreadsheet"
-              >
-                <FileUp className="h-4 w-4" />
-                <span>Upload SO (.xlsx)</span>
+                <Plus className="h-4 w-4" />
+                <span>New Sales Order</span>
               </button>
             </>
           )}
 
           <button
-            onClick={() => setIsDemoModalOpen(true)}
-            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
-            title="First time here? View interactive guided tour of all automated ERP features"
+            onClick={() => exportSalesOrders()}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-3 py-2 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <PlayCircle className="h-4 w-4 text-amber-200" />
-            <span>ERP Demo & Guide</span>
+            <Download className="h-3.5 w-3.5 text-slate-500" />
+            <span>Export</span>
           </button>
 
           <button
-            onClick={() => exportSalesOrders()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+            onClick={() => setIsDemoModalOpen(true)}
+            className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-medium text-xs px-2.5 py-2 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+            title="View interactive walkthrough"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export Orders (.xlsx)</span>
+            <PlayCircle className="h-3.5 w-3.5 text-slate-500" />
+            <span>Guide</span>
           </button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="relative flex-1 min-w-[240px] max-w-md">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
           <input
@@ -914,17 +931,17 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
             placeholder="Search by SO#, Customer, PO Ref..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-800"
+            className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
           />
         </div>
 
-        <div className="flex items-center space-x-2">
-          <Filter className="h-3.5 w-3.5 text-slate-500" />
-          <span className="font-semibold text-slate-600">Status:</span>
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-slate-400" />
+          <span className="font-medium text-slate-600">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 font-medium"
+            className="border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-800 font-medium"
           >
             <option value="all">All Statuses ({orders.length})</option>
             <option value="Draft">Draft</option>
@@ -942,15 +959,15 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
       {/* Sales Orders List / Actionable Empty State */}
       <div className="space-y-3">
         {filteredOrders.length === 0 ? (
-          <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center max-w-lg mx-auto my-6 space-y-4">
-            <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto border border-red-100">
-              <ShoppingCart className="h-7 w-7" />
+          <div className="bg-white p-8 rounded-lg border border-slate-200 shadow-sm text-center max-w-lg mx-auto my-6 space-y-4">
+            <div className="w-12 h-12 bg-slate-100 text-slate-600 rounded-lg flex items-center justify-center mx-auto border border-slate-200">
+              <ShoppingCart className="h-6 w-6" />
             </div>
 
             <div>
-              <h3 className="font-bold text-sm text-slate-800 uppercase tracking-tight">No Sales Orders Found</h3>
+              <h3 className="font-semibold text-sm text-slate-900">No Sales Orders Found</h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                You can create a customer sales order using the interactive form, upload customer PO PDFs directly, or import orders in bulk from an Excel spreadsheet.
+                Create a customer sales order using the interactive form, upload customer PO PDFs directly, or import orders in bulk from Excel.
               </p>
             </div>
 
@@ -959,33 +976,33 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 <>
                   <button
                     onClick={() => setIsCreateModalOpen(true)}
-                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2 rounded-md shadow-sm transition-colors flex items-center space-x-1.5"
                   >
-                    <Plus className="h-4 w-4" />
-                    <span>Create Order (Form)</span>
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>New Sales Order</span>
                   </button>
 
                   <button
                     onClick={() => setIsPdfModalOpen(true)}
-                    className="bg-red-700 hover:bg-red-800 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                    className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-md transition-colors flex items-center space-x-1.5"
                   >
-                    <FileText className="h-4 w-4" />
-                    <span>Upload Customer PO (PDF)</span>
+                    <FileText className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Upload PO (PDF)</span>
                   </button>
 
                   <button
                     onClick={() => setIsImportModalOpen(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                    className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-md transition-colors flex items-center space-x-1.5"
                   >
-                    <FileUp className="h-4 w-4" />
-                    <span>Upload from Excel (.xlsx)</span>
+                    <FileUp className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Import Excel (.xlsx)</span>
                   </button>
 
                   <button
                     onClick={handleLoadSampleOrder}
-                    className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-colors flex items-center space-x-1.5"
+                    className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-md transition-colors flex items-center space-x-1.5"
                   >
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="h-3.5 w-3.5 text-slate-500" />
                     <span>Load Demo Order</span>
                   </button>
                 </>
@@ -1002,31 +1019,31 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
             return (
               <div
                 key={order.id}
-                className={`bg-white rounded-xl border shadow-sm transition-all overflow-hidden ${
-                  isCancelled ? 'border-red-200 bg-red-50/20' : 'border-slate-200 hover:border-slate-300'
+                className={`bg-white rounded-lg border shadow-xs transition-colors overflow-hidden ${
+                  isCancelled ? 'border-rose-200 bg-rose-50/10' : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 {/* Order Summary Top Bar */}
-                <div className="p-4 bg-slate-50/70 border-b border-slate-200/80 flex flex-wrap justify-between items-center gap-3">
-                  <div className="flex items-center space-x-3">
-                    <span className="font-mono font-bold text-sm text-[#0B2545]">{order.so_number}</span>
-                    <span className="text-xs font-semibold text-slate-700">&bull; {order.customer_name}</span>
-                    <span className="text-xs text-slate-400">PO: {order.po_number}</span>
+                <div className="px-4 py-3.5 bg-white border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="font-mono font-semibold text-sm text-slate-900">{order.so_number}</span>
+                    <span className="text-xs font-medium text-slate-700">&bull; {order.customer_name}</span>
+                    <span className="text-xs text-slate-500 font-mono">PO: {order.po_number}</span>
                     {(order.order_type === 'local_purchase' || order.purchase_type === 'local_purchase' || order.items.some(i => i.is_local || i.purchase_type === 'local_purchase')) && (
-                      <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full border border-purple-200 flex items-center space-x-1">
-                        <Tag className="h-2.5 w-2.5 text-purple-600" />
+                      <span className="text-[11px] bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded border border-slate-200 inline-flex items-center space-x-1">
+                        <Tag className="h-2.5 w-2.5 text-slate-500" />
                         <span>Local SO (L-Code)</span>
                       </span>
                     )}
                     {order.po_document_name && (
-                      <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                      <span className="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded inline-flex items-center space-x-1">
                         <Paperclip className="h-3 w-3" />
                         <span>{order.po_document_name}</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {(() => {
                       const totalReq = order.items.reduce((sum, i) => sum + (i.required_qty || 0), 0)
                       const totalAlloc = order.items.reduce((sum, i) => sum + (i.allocated_qty || 0), 0)
@@ -1045,15 +1062,15 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                         'Draft (Unallocated)'
 
                       return (
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                          isCancelled ? 'bg-red-100 text-red-800' :
-                          isDispatched ? 'bg-emerald-100 text-emerald-800' :
-                          order.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
-                          order.status === 'MTC Generated' ? 'bg-indigo-100 text-indigo-800' :
-                          order.status === 'Pending Storekeeper Approval' ? 'bg-amber-100 text-amber-800' :
-                          allLinesAllocated ? 'bg-blue-100 text-blue-800' :
-                          someLinesAllocated ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                          'bg-slate-200 text-slate-800'
+                        <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${
+                          isCancelled ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                          isDispatched ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          order.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          order.status === 'MTC Generated' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          order.status === 'Pending Storekeeper Approval' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          allLinesAllocated ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          someLinesAllocated ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200'
                         }`}>
                           {displayOrderStatus}
                         </span>
@@ -1064,10 +1081,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     <button
                       onClick={() => handleDownloadSOPDF(order)}
                       disabled={generatingPdfSoId === order.id}
-                      className="bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow transition-colors"
+                      className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
                       title="Download official publication-grade Sales Order confirmation PDF"
                     >
-                      <Download className="h-3.5 w-3.5 text-slate-300" />
+                      <Download className="h-3.5 w-3.5 text-slate-500" />
                       <span>{generatingPdfSoId === order.id ? 'Generating...' : 'SO PDF'}</span>
                     </button>
 
@@ -1077,7 +1094,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                         href={order.po_document_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-xs px-2 py-1.5 rounded-lg flex items-center space-x-1 transition-colors"
+                        className="bg-white hover:bg-slate-50 text-blue-700 border border-slate-300 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
                         title="View original uploaded Customer PO PDF document"
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -1091,7 +1108,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                       <button
                         onClick={() => handleGenerateMTCPackage(order)}
                         disabled={generatingMtcSoId === order.id}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow transition-colors"
+                        className="bg-white hover:bg-slate-50 text-emerald-700 border border-emerald-300 font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
                         title="Compile and download Certified EN 10204 3.1 MTC package for all allocated heats"
                       >
                         <Layers className="h-3.5 w-3.5" />
@@ -1102,28 +1119,28 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     {!isCancelled && !isDispatched && (
                       <button
                         onClick={() => onNavigateToAllocation(order.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 shadow-xs transition-colors"
                         title="Open Stock Allocation Studio to allocate or adjust heats"
                       >
                         <Flame className="h-3.5 w-3.5" />
-                        <span>Allocate Stock (FIFO / Manual)</span>
+                        <span>Allocate Stock</span>
                       </button>
                     )}
 
                     {order.status === 'Stock Allocated' && (
                       <button
                         onClick={() => handleSubmitForStoreApproval(order)}
-                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow"
+                        className="bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
                       >
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>Submit for Store Approval</span>
+                        <Clock className="h-3.5 w-3.5 text-amber-600" />
+                        <span>Submit for Approval</span>
                       </button>
                     )}
 
                     {!isCancelled && !isDispatched && canCreateOrder && (
                       <button
                         onClick={() => setCancelModalOrder(order)}
-                        className="text-slate-400 hover:text-red-600 font-semibold text-xs p-1.5 rounded"
+                        className="text-slate-400 hover:text-rose-600 font-medium text-xs p-1.5 rounded hover:bg-rose-50 transition-colors"
                         title="Cancel Sales Order"
                       >
                         <XCircle className="h-4 w-4" />
@@ -1133,14 +1150,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 </div>
 
                 {/* 1-Click Automated Deliverables Suite (Stickers, Summary Sheet, CIPL, Stores, Client, MTC) */}
-                <div className="bg-slate-50 border-b border-slate-200/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                      <Sparkles className="h-3 w-3 mr-1 text-amber-600" />
-                      100% AUTOMATED EXPORTS
-                    </span>
-                    <span className="text-slate-500 text-[11px] font-medium hidden sm:inline">
-                      Direct from SO data:
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Deliverables
                     </span>
                   </div>
 
@@ -1148,88 +1161,88 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                     {/* 1. 58mm x 39mm Stickers PDF */}
                     <button
                       onClick={() => handleDownloadStickers(order)}
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="1-Click export exact 58mm × 39mm landscape stickers with QR code & MSG logo"
                     >
-                      <Sparkles className="h-3 w-3 text-amber-200" />
-                      <span>Stickers (58x39mm .pdf)</span>
+                      <Sparkles className="h-3 w-3 text-slate-500" />
+                      <span>Stickers (.pdf)</span>
                     </button>
 
                     {/* 2. SUMMARY SHEET Preview */}
                     <button
                       onClick={() => handleOpenPreviewModal(order, 'summary', true)}
-                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Preview Summary Sheet, edit details, allocate suppliers & export Excel"
                     >
-                      <Eye className="h-3 w-3 text-emerald-200" />
-                      <span>Preview</span>
+                      <Eye className="h-3 w-3 text-slate-500" />
+                      <span>Summary Sheet</span>
                     </button>
 
                     {/* 3. CIPL Logistics Preview */}
                     <button
                       onClick={() => handleOpenPreviewModal(order, 'cipl_invoice', true)}
-                      className="bg-blue-700 hover:bg-blue-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Preview CIPL Commercial Invoice & Packing List before download"
                     >
-                      <Truck className="h-3 w-3 text-blue-200" />
-                      <span>CIPL Logistics (.xlsx)</span>
+                      <Truck className="h-3 w-3 text-slate-500" />
+                      <span>CIPL (.xlsx)</span>
                     </button>
 
                     {/* 4. Client Technical Summary Preview */}
                     <button
                       onClick={() => handleOpenPreviewModal(order, 'client', true)}
-                      className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Preview Client Technical Summary before download"
                     >
-                      <FileText className="h-3 w-3 text-teal-200" />
-                      <span>Client Summary (.xlsx)</span>
+                      <FileText className="h-3 w-3 text-slate-500" />
+                      <span>Client Summary</span>
                     </button>
 
                     {/* 5. Stores Internal Summary Preview */}
                     <button
                       onClick={() => handleOpenPreviewModal(order, 'stores', true)}
-                      className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Preview Stores Internal Sheet with supplier details before download"
                     >
-                      <Layers className="h-3 w-3 text-purple-200" />
-                      <span>Stores Summary (.xlsx)</span>
+                      <Layers className="h-3 w-3 text-slate-500" />
+                      <span>Stores Summary</span>
                     </button>
 
                     {/* 6. Certified MTC Package */}
                     <button
                       onClick={() => handleGenerateMTCPackage(order)}
                       disabled={generatingMtcSoId === order.id}
-                      className="bg-red-700 hover:bg-red-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Download Certified EN 10204 3.1 MTC (Page 1 Rectangular Seal, Page 2+ Round Seal with QC Signature)"
                     >
-                      <FileCheck2 className="h-3 w-3 text-red-200" />
+                      <FileCheck2 className="h-3 w-3 text-blue-600" />
                       <span>{generatingMtcSoId === order.id ? 'Certifying...' : 'MTC Package (.pdf)'}</span>
                     </button>
 
                     {/* 7. Download All Certificates (.zip) */}
                     <button
                       onClick={() => handleDownloadCertificatesZip(order)}
-                      className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition-colors"
+                      className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-[11px] px-2.5 py-1 rounded-md flex items-center space-x-1 transition-colors"
                       title="Download all authentic MTC Certificates for this Sales Order as a ZIP file"
                     >
-                      <Download className="h-3 w-3 text-amber-300" />
-                      <span>SO Certificates (.zip)</span>
+                      <Download className="h-3 w-3 text-slate-500" />
+                      <span>Certificates (.zip)</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Line Items Table */}
-                <div className="p-4">
-                  <table className="w-full text-left text-xs">
-                    <thead className="text-[10px] uppercase text-slate-400 border-b border-slate-100">
+                <div className="p-4 overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[680px]">
+                    <thead className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50/70">
                       <tr>
-                        <th className="pb-2">Item Code</th>
-                        <th className="pb-2">Description</th>
-                        <th className="pb-2 text-center">Required</th>
-                        <th className="pb-2 text-center">Allocated</th>
-                        <th className="pb-2 text-center">Dispatched</th>
-                        <th className="pb-2">Allocated Heat & Certificates</th>
-                        <th className="pb-2 text-right">Status</th>
+                        <th className="py-2 px-2">Item Code</th>
+                        <th className="py-2 px-2">Description</th>
+                        <th className="py-2 px-2 text-center">Required</th>
+                        <th className="py-2 px-2 text-center">Allocated</th>
+                        <th className="py-2 px-2 text-center">Dispatched</th>
+                        <th className="py-2 px-2">Allocated Heat & Certificates</th>
+                        <th className="py-2 px-2 text-right">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1252,10 +1265,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
                         return (
                           <tr key={item.id} className={!isLineAllocated && !isLineDispatched ? 'bg-slate-50/40' : ''}>
-                            <td className="py-2.5 font-mono font-bold text-slate-800">
+                            <td className="py-2.5 font-mono font-semibold text-slate-800">
                               <div>{item.item_code}</div>
                               {(item.is_local || item.purchase_type === 'local_purchase' || item.l_code) && (
-                                <div className="text-[10px] font-sans font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1 mt-0.5">
+                                <div className="text-[10px] font-sans font-medium text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1 mt-0.5">
                                   <Tag className="h-2.5 w-2.5" />
                                   <span>{item.l_code || 'Local L-Code'}</span>
                                 </div>
@@ -1267,31 +1280,31 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                 <div className="text-[10px] text-slate-400">Supplier: {item.supplier_name}</div>
                               )}
                             </td>
-                            <td className="py-2.5 text-center font-bold text-slate-900">{item.required_qty} {item.uom}</td>
-                            <td className={`py-2.5 text-center font-bold ${lineAllocQty > 0 ? 'text-blue-700' : 'text-slate-400'}`}>
+                            <td className="py-2.5 text-center font-semibold text-slate-900 tabular-nums">{item.required_qty} {item.uom}</td>
+                            <td className={`py-2.5 text-center font-semibold tabular-nums ${lineAllocQty > 0 ? 'text-blue-700' : 'text-slate-400'}`}>
                               {lineAllocQty} {item.uom}
                             </td>
-                            <td className="py-2.5 text-center font-semibold text-emerald-700">{item.dispatched_qty} {item.uom}</td>
+                            <td className="py-2.5 text-center font-semibold text-emerald-700 tabular-nums">{item.dispatched_qty} {item.uom}</td>
                             <td className="py-2.5">
                               {itemAllocations.length === 0 ? (
                                 <div className="space-y-1">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-red-600 font-bold text-[10px] bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
-                                      ⭕ Unallocated
+                                    <span className="text-rose-700 font-medium text-[10px] bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                      Unallocated
                                     </span>
                                     <button
                                       type="button"
                                       onClick={() => onNavigateToAllocation(order.id)}
-                                      className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline"
+                                      className="text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:underline"
                                       title="Open Heat Allocation Studio for this line"
                                     >
                                       Allocate Heat
                                     </button>
                                     <label
-                                      className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded cursor-pointer flex items-center space-x-1 font-semibold transition-colors"
+                                      className="text-[10px] bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-1.5 py-0.5 rounded cursor-pointer flex items-center space-x-1 font-medium transition-colors"
                                       title="Upload MTC (.pdf) directly for this item"
                                     >
-                                      <FileUp className="h-2.5 w-2.5 text-purple-600" />
+                                      <FileUp className="h-2.5 w-2.5 text-slate-500" />
                                       <span>Attach MTC</span>
                                       <input
                                         type="file"
@@ -1309,10 +1322,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => onPreviewMTC ? onPreviewMTC(item.certificate_number!, item.item_code, item.heat_number || '') : null}
-                                        className="text-[10px] font-mono bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded flex items-center space-x-1"
+                                        className="text-[10px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded flex items-center space-x-1"
                                         title="Preview Certificate"
                                       >
-                                        <FileCheck2 className="h-2.5 w-2.5 text-amber-600" />
+                                        <FileCheck2 className="h-2.5 w-2.5 text-blue-600" />
                                         <span>Cert: {item.certificate_number}</span>
                                       </button>
                                     </div>
@@ -1392,55 +1405,55 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* CREATE ORDER MODAL (WITH REGULAR & LOCAL PURCHASE L-CODE MODES) */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className={`${createOrderType === 'local_purchase' ? 'bg-purple-900' : 'bg-[#0B2545]'} p-4 text-white flex justify-between items-center shrink-0`}>
-              <div className="flex items-center space-x-2">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
+              <div className="flex items-center space-x-2.5">
                 {createOrderType === 'local_purchase' ? (
-                  <ShoppingBag className="h-5 w-5 text-purple-300" />
+                  <ShoppingBag className="h-4 w-4 text-blue-600" />
                 ) : (
-                  <Plus className="h-5 w-5 text-red-400" />
+                  <Plus className="h-4 w-4 text-blue-600" />
                 )}
                 <div>
-                  <h3 className="font-bold text-sm uppercase tracking-wide">
+                  <h3 className="font-semibold text-sm text-slate-900">
                     {createOrderType === 'local_purchase' ? 'Create Local Purchase Sales Order (L-Code)' : 'Create Customer Sales Order'}
                   </h3>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-slate-500">
                     {createOrderType === 'local_purchase'
                       ? 'Local stockist order: Assign custom L-Codes, specifications, and local UAE suppliers.'
                       : 'Standard mill stock order: Select existing catalog items for standard heat allocation.'}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-300 hover:text-white">✕</button>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
             {/* Order Type Toggle Tabs */}
-            <div className="bg-slate-100 p-2 border-b border-slate-200 shrink-0">
-              <div className="grid grid-cols-2 gap-2 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
+            <div className="bg-slate-50/60 px-5 py-2.5 border-b border-slate-200 shrink-0">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-md text-xs font-medium">
                 <button
                   type="button"
                   onClick={() => setCreateOrderType('regular')}
-                  className={`py-2 px-3 rounded-lg flex items-center justify-center space-x-2 transition-all ${
+                  className={`py-1.5 px-3 rounded flex items-center justify-center space-x-2 transition-colors ${
                     createOrderType === 'regular'
-                      ? 'bg-white text-slate-900 shadow-sm'
+                      ? 'bg-white text-slate-900 shadow-xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Package className="h-4 w-4 text-blue-600" />
+                  <Package className="h-3.5 w-3.5 text-blue-600" />
                   <span>Regular Mill Stock SO</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setCreateOrderType('local_purchase')}
-                  className={`py-2 px-3 rounded-lg flex items-center justify-center space-x-2 transition-all ${
+                  className={`py-1.5 px-3 rounded flex items-center justify-center space-x-2 transition-colors ${
                     createOrderType === 'local_purchase'
-                      ? 'bg-purple-700 text-white shadow-sm'
+                      ? 'bg-white text-slate-900 shadow-xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <ShoppingBag className="h-4 w-4 text-purple-200" />
-                  <span>🏷️ Local Purchase SO (L-Code)</span>
+                  <ShoppingBag className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Local Purchase SO (L-Code)</span>
                 </button>
               </div>
             </div>
@@ -1511,7 +1524,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                       {createOrderType === 'local_purchase' ? 'Local Purchase Line Items & L-Codes' : 'Requested Material Line Items'}
                     </label>
                     {createOrderType === 'local_purchase' && (
-                      <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded">
+                      <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 font-medium px-2 py-0.5 rounded">
                         Auto L-Code Tracking
                       </span>
                     )}
@@ -1519,7 +1532,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   <button
                     type="button"
                     onClick={handleAddLine}
-                    className="text-red-600 hover:text-red-700 font-semibold"
+                    className="text-blue-600 hover:text-blue-700 font-semibold"
                   >
                     + Add Another Item
                   </button>
@@ -1529,11 +1542,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   {orderLines.map((line, idx) => (
                     <div
                       key={idx}
-                      className={`p-3 rounded-xl border ${
-                        createOrderType === 'local_purchase'
-                          ? 'bg-purple-50/40 border-purple-200'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
+                      className="p-3 rounded-lg border bg-slate-50 border-slate-200"
                     >
                       {createOrderType === 'regular' ? (
                         <div className="flex items-center space-x-2">
@@ -1711,19 +1720,15 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-xs"
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md font-medium text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className={`px-5 py-2 text-white rounded-lg font-bold text-xs shadow flex items-center space-x-1.5 ${
-                    createOrderType === 'local_purchase'
-                      ? 'bg-purple-700 hover:bg-purple-800'
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold text-xs shadow-sm flex items-center space-x-1.5"
                 >
-                  <span>Save & Proceed to Heat Allocation</span>
+                  <span>Save &amp; Proceed to Allocation</span>
                 </button>
               </div>
             </form>
@@ -1733,14 +1738,14 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* UPLOAD SALES ORDERS FROM EXCEL MODAL */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="bg-[#0B2545] p-4 text-white flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
               <div className="flex items-center space-x-2">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
-                <h3 className="font-bold text-sm uppercase">Upload Sales Orders (.xlsx / .csv)</h3>
+                <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+                <h3 className="font-semibold text-sm text-slate-900">Upload Sales Orders (.xlsx / .csv)</h3>
               </div>
-              <button onClick={() => setIsImportModalOpen(false)} className="text-slate-300 hover:text-white">✕</button>
+              <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto text-xs">
@@ -1780,7 +1785,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   <div className="font-bold text-slate-800 uppercase tracking-tight text-[11px]">
                     Parsed Orders Preview ({parsedImportRows.length} Line Items)
                   </div>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="border border-slate-200 rounded-lg max-h-48 overflow-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-100 text-slate-700 font-bold text-[10px] uppercase sticky top-0">
                         <tr>
@@ -1814,7 +1819,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(false)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-medium text-xs"
+                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md font-medium text-xs"
               >
                 Cancel
               </button>
@@ -1822,9 +1827,9 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 type="button"
                 onClick={handleCommitSOImport}
                 disabled={isImportingSO || parsedImportRows.length === 0}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg font-bold text-xs shadow flex items-center space-x-1.5"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-md font-semibold text-xs shadow-sm flex items-center space-x-1.5"
               >
-                <span>{isImportingSO ? 'Importing Orders...' : `Commit ${parsedImportRows.length} Items into Sales Orders`}</span>
+                <span>{isImportingSO ? 'Importing Orders...' : `Import ${parsedImportRows.length} Items`}</span>
               </button>
             </div>
           </div>
@@ -1833,26 +1838,26 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* UPLOAD SALES ORDER FROM CUSTOMER PDF MODAL */}
       {isPdfModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className={`bg-white rounded-lg w-full shadow-xl border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
             isPdfModalEnlarged ? 'max-w-[97vw] h-[95vh]' : 'max-w-4xl max-h-[90vh]'
           }`}>
-            <div className="bg-[#0B2545] p-3.5 text-white flex justify-between items-center shrink-0">
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
               <div className="flex items-center space-x-2">
-                <FileText className="h-4 w-4 text-red-400" />
-                <h3 className="font-bold text-sm uppercase">Upload Customer Sales Order (PDF)</h3>
+                <FileText className="h-4 w-4 text-blue-600" />
+                <h3 className="font-semibold text-sm text-slate-900">Upload Customer Sales Order (PDF)</h3>
               </div>
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsPdfModalEnlarged(!isPdfModalEnlarged)}
-                  className="text-slate-200 hover:text-white flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700 transition-colors"
+                  className="text-slate-700 hover:bg-slate-100 flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-md bg-white border border-slate-300 transition-colors"
                   title={isPdfModalEnlarged ? 'Switch to Standard Size' : 'Enlarge to Full Page'}
                 >
-                  {isPdfModalEnlarged ? <Minimize2 className="h-3.5 w-3.5 text-amber-300" /> : <Maximize2 className="h-3.5 w-3.5 text-amber-300" />}
+                  {isPdfModalEnlarged ? <Minimize2 className="h-3.5 w-3.5 text-slate-500" /> : <Maximize2 className="h-3.5 w-3.5 text-slate-500" />}
                   <span>{isPdfModalEnlarged ? 'Standard View' : 'Enlarge Full Page'}</span>
                 </button>
-                <button onClick={() => { setIsPdfModalOpen(false); setPdfParsedData(null); }} className="text-slate-300 hover:text-white text-base ml-2">✕</button>
+                <button onClick={() => { setIsPdfModalOpen(false); setPdfParsedData(null); }} className="text-slate-400 hover:text-slate-600 text-base ml-2">✕</button>
               </div>
             </div>
 
@@ -1864,20 +1869,20 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
               </div>
 
               {/* PDF Dropzone */}
-              <div className="border-2 border-dashed border-slate-300 hover:border-red-500 rounded-xl p-4 text-center bg-slate-50 transition-colors relative">
+              <div className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center bg-slate-50 transition-colors relative">
                 <input
                   type="file"
                   accept=".pdf"
                   onChange={handlePdfFileChange}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
-                <FileText className="h-8 w-8 text-red-600 mx-auto mb-1" />
-                <div className="font-bold text-slate-700">Click or Drop Customer Sales Order PDF</div>
-                <p className="text-[10px] text-slate-400 mt-0.5">
+                <FileText className="h-7 w-7 text-blue-600 mx-auto mb-1" />
+                <div className="font-semibold text-slate-700">Click or Drop Customer Sales Order PDF</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   Accepts standard oilfield customer Purchase Orders (ADNOC, McDermott, Petrofac, Saipem, etc.)
                 </p>
                 {isParsingPdf && (
-                  <div className="mt-2 text-xs font-semibold text-red-600 animate-pulse">
+                  <div className="mt-2 text-xs font-medium text-blue-600">
                     Parsing PDF text streams and extracting PO data...
                   </div>
                 )}
@@ -1985,18 +1990,18 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                             ]
                           })
                         }}
-                        className="text-red-600 hover:text-red-700 font-bold text-xs flex items-center space-x-1"
+                        className="text-blue-600 hover:text-blue-700 font-semibold text-xs flex items-center space-x-1"
                       >
                         <Plus className="h-3.5 w-3.5" />
                         <span>Add Item</span>
                       </button>
                     </div>
 
-                    <div className={`border border-slate-200 rounded-xl overflow-x-auto overflow-y-auto bg-white ${
+                    <div className={`border border-slate-200 rounded-lg overflow-x-auto overflow-y-auto bg-white ${
                       isPdfModalEnlarged ? 'max-h-[56vh]' : 'max-h-60'
                     }`}>
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-[#0B2545] text-white font-bold text-[10px] uppercase sticky top-0 z-10">
+                        <thead className="bg-slate-50 text-slate-600 font-semibold text-[11px] uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
                           <tr>
                             <th className="p-2.5 w-16 text-center">Pos #</th>
                             <th className="p-2.5 w-48 min-w-[180px]">Item Code</th>
@@ -2167,7 +2172,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
               <button
                 type="button"
                 onClick={() => { setIsPdfModalOpen(false); setPdfParsedData(null); }}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-medium text-xs"
+                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md font-medium text-xs"
               >
                 Cancel
               </button>
@@ -2175,10 +2180,10 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 type="button"
                 onClick={handleCommitPdfSO}
                 disabled={!pdfParsedData || pdfParsedData.items.length === 0}
-                className="px-5 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white rounded-lg font-bold text-xs shadow flex items-center space-x-1.5"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-md font-semibold text-xs shadow-sm flex items-center space-x-1.5"
               >
-                <FileCheck2 className="h-4 w-4" />
-                <span>Confirm & Proceed to Heat Allocation</span>
+                <FileCheck2 className="h-3.5 w-3.5" />
+                <span>Confirm &amp; Proceed to Allocation</span>
               </button>
             </div>
           </div>
@@ -2187,21 +2192,21 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* CANCEL SALES ORDER MODAL */}
       {cancelModalOrder && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-red-700 p-4 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3.5 bg-rose-50 border-b border-rose-200 text-rose-900 flex justify-between items-center gap-2 shrink-0">
               <div className="flex items-center space-x-2">
-                <AlertTriangle className="h-4 w-4" />
-                <h3 className="font-bold text-sm uppercase">Cancel Sales Order: {cancelModalOrder.so_number}</h3>
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+                <h3 className="font-semibold text-sm">Cancel Sales Order: {cancelModalOrder.so_number}</h3>
               </div>
-              <button onClick={() => setCancelModalOrder(null)} className="text-slate-300 hover:text-white">✕</button>
+              <button onClick={() => setCancelModalOrder(null)} className="text-rose-400 hover:text-rose-700">✕</button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-900">
-                <div className="font-bold">Important Audit Notice:</div>
-                <div className="mt-1 text-[11px] leading-relaxed">
-                  Per MSG Oilfield quality standards, cancelled orders remain permanently archived for full audit traceability. Un-dispatched stock allocations will be immediately restored to available inventory.
+            <div className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
+              <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-md text-rose-900">
+                <div className="font-semibold">Audit Notice</div>
+                <div className="mt-1 text-[11px] leading-relaxed text-rose-800">
+                  Per MSG Oilfield quality standards, cancelled orders remain permanently archived for audit traceability. Un-dispatched stock allocations will be restored to available inventory.
                 </div>
               </div>
 
@@ -2213,7 +2218,7 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                   placeholder="e.g. Customer cancelled project PO, or specifications changed."
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800"
+                  className="w-full border border-slate-300 rounded-md p-2 text-slate-800"
                 />
               </div>
 
@@ -2221,16 +2226,16 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
                 <button
                   type="button"
                   onClick={() => setCancelModalOrder(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium"
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md font-medium"
                 >
                   Abort
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmCancel}
-                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-semibold shadow-sm"
                 >
-                  Confirm Order Cancellation
+                  Confirm Cancellation
                 </button>
               </div>
             </div>
@@ -2240,119 +2245,119 @@ export const SalesOrderManagement: React.FC<SalesOrderManagementProps> = ({
 
       {/* INTERACTIVE ERP DEMO & GUIDED TOUR MODAL */}
       {isDemoModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
-            <div className="bg-gradient-to-r from-[#0B2545] via-[#133E70] to-red-700 p-6 text-white flex justify-between items-start">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col shadow-xl border border-slate-200 overflow-hidden">
+            <div className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-start gap-2 shrink-0">
               <div>
                 <div className="flex items-center space-x-2">
-                  <PlayCircle className="h-6 w-6 text-amber-400" />
-                  <h3 className="font-bold text-lg tracking-tight uppercase">
-                    MSG Oilfield ERP — Complete User Guide & Live Demo
+                  <PlayCircle className="h-5 w-5 text-blue-600" />
+                  <h3 className="font-semibold text-base text-slate-900">
+                    MSG Oilfield ERP — Workflow Guide &amp; Demo
                   </h3>
                 </div>
-                <p className="text-xs text-blue-100 mt-1">
-                  100% Automated workflow: from Customer PO PDF upload to verified true copy MTCs, exact 58mm stickers, and customs CIPL packages.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Automated workflow: from Customer PO PDF upload to verified true copy MTCs, 58mm stickers, and customs CIPL packages.
                 </p>
               </div>
               <button
                 onClick={() => setIsDemoModalOpen(false)}
-                className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg p-1.5 transition-colors"
+                className="text-slate-400 hover:text-slate-600 rounded-md p-1 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto text-xs">
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto text-xs">
               {/* 6 Step Interactive Visual Pipeline */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {/* Step 1 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-blue-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-blue-900 flex items-center space-x-1.5">
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
                       <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">1</span>
                       <span>Customer PO Ingestion</span>
                     </span>
-                    <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PDF / Excel / Form</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">PDF / Excel / Form</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Click <strong>Upload SO (PDF)</strong> to automatically parse customer POs. The engine automatically extracts client PO numbers, item lines, required quantities, and item descriptions.
+                    Click <strong>Upload SO (PDF)</strong> to automatically parse customer POs. Extracts client PO numbers, item lines, quantities, and descriptions.
                   </p>
                 </div>
 
                 {/* Step 2 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-amber-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-amber-900 flex items-center space-x-1.5">
-                      <span className="bg-amber-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">2</span>
-                      <span>FIFO & Heat Allocation</span>
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
+                      <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">2</span>
+                      <span>FIFO &amp; Heat Allocation</span>
                     </span>
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Automated Batching</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">Automated Batching</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Assign authentic Heat Numbers from Mill Stock or Local Purchase (LOC). Supports heat splitting across multiple certificates with full batch traceability.
+                    Assign authentic Heat Numbers from Mill Stock or Local Purchase (LOC). Supports heat splitting across multiple certificates with batch traceability.
                   </p>
                 </div>
 
                 {/* Step 3 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-emerald-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-emerald-900 flex items-center space-x-1.5">
-                      <span className="bg-emerald-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">3</span>
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
+                      <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">3</span>
                       <span>Autogenerated SUMMARY SHEET</span>
                     </span>
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">9-Column Exact</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">9-Column Exact</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Instant 1-click export of the exact 9-column <strong>SUMMARY SHEET (.xlsx)</strong> with merged Client, PO Number, MSG Ref, and embedded logo without any manual upload.
+                    1-click export of the 9-column <strong>SUMMARY SHEET (.xlsx)</strong> with merged Client, PO Number, MSG Ref, and embedded logo.
                   </p>
                 </div>
 
                 {/* Step 4 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-purple-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-purple-900 flex items-center space-x-1.5">
-                      <span className="bg-purple-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">4</span>
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
+                      <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">4</span>
                       <span>58mm × 39mm Item Stickers</span>
                     </span>
-                    <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Times-Bold & QR</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">Times-Bold &amp; QR</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Direct 1-click generation of the exact 58mm × 39mm item stickers PDF. Features authentic Times-Bold 7.3pt typography, MSG logo, dynamic text autofit, and scannable QR code.
+                    1-click generation of exact 58mm × 39mm item stickers PDF with Times-Bold 7.3pt typography, MSG logo, dynamic autofit, and QR code.
                   </p>
                 </div>
 
                 {/* Step 5 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-red-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-red-900 flex items-center space-x-1.5">
-                      <span className="bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">5</span>
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
+                      <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">5</span>
                       <span>Multi-Page MTC Stamping</span>
                     </span>
-                    <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full">EN 10204 3.1</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">EN 10204 3.1</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    <strong>Page 1:</strong> Stamped with 100% transparent rectangular seal and autofilled PO No, Item No, QTY, and Sign.<br/>
-                    <strong>Next Pages (Page 2+):</strong> Stamped with official transparent circular round seal with authentic inspection Sign line.
+                    <strong>Page 1:</strong> Rectangular seal with autofilled PO No, Item No, QTY, and Sign.<br/>
+                    <strong>Page 2+:</strong> Circular round seal with authentic inspection Sign line.
                   </p>
                 </div>
 
                 {/* Step 6 */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-indigo-400 transition-all">
+                <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/70">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-indigo-900 flex items-center space-x-1.5">
-                      <span className="bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">6</span>
-                      <span>Customer 360 & Analytics</span>
+                    <span className="font-semibold text-slate-900 flex items-center space-x-2">
+                      <span className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px]">6</span>
+                      <span>Customer 360 &amp; Analytics</span>
                     </span>
-                    <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Zoho-Style Hub</span>
+                    <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded">Unified Hub</span>
                   </div>
                   <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Select any customer in the <strong>Reports & Customer 360</strong> tab to inspect their complete order lifecycle and 1-click download all 7 customer documents in one centralized place.
+                    Select any customer in <strong>Customer Analytics</strong> to inspect their complete order lifecycle and download all customer documents in one place.
                   </p>
                 </div>
               </div>
 
               {/* Sample Order Banner */}
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
                 <div>
                   <div className="font-bold text-amber-900">Want to see the system in action right now?</div>
                   <div className="text-amber-700 text-[11px] mt-0.5">
