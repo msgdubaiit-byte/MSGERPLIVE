@@ -258,6 +258,9 @@ class DBService {
   private isPullingCloud: boolean = false
   private lastLocalWriteTime: number = 0
   private realtimeDebounceTimer: any = null
+  private mutationChain: Promise<void> = Promise.resolve()
+  private pendingActiveOrderId: string = ''
+  private lastActiveOrderWriteTime: number = 0
 
   constructor() {
     this.init()
@@ -1079,10 +1082,11 @@ class DBService {
     if (!customer && orderData.customer_name) {
       customer = this.customers.find(c => c.customer_name.toLowerCase().trim() === orderData.customer_name!.toLowerCase().trim())
       if (!customer) {
-        // Register new customer on the fly
+        // Register new customer on the fly with collision-proof ID
+        const custSuffix = `${Date.now().toString().slice(-4)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
         const newCust: Customer = {
-          id: 'CUST-' + (this.customers.length + 1).toString().padStart(3, '0'),
-          customer_code: 'CUST-' + (this.customers.length + 1).toString().padStart(3, '0'),
+          id: `CUST-${custSuffix}`,
+          customer_code: `CUST-${custSuffix}`,
           customer_name: orderData.customer_name.trim(),
           address: 'Dubai / Abu Dhabi, UAE',
           contact_details: 'procurement@client.ae',
@@ -1106,8 +1110,9 @@ class DBService {
     }
 
     const count = this.orders.length + 116
-    const soNumber = orderData.so_number?.trim() || `SO-2026-${count}`
-    const orderId = `ORD-${count}`
+    const uniqueSuffix = `${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+    const soNumber = orderData.so_number?.trim() || `SO-2026-${count}-${uniqueSuffix.slice(-4)}`
+    const orderId = `ORD-${uniqueSuffix}`
 
     const allocations: StockAllocation[] = []
 
@@ -1116,9 +1121,9 @@ class DBService {
       if (!itm && item.item_code) {
         itm = this.items.find(i => i.item_code.toLowerCase().trim() === item.item_code!.toLowerCase().trim())
         if (!itm) {
-          // Add item if missing
+          // Add item if missing with collision-proof ID
           itm = {
-            id: 'ITEM-' + (this.items.length + 1).toString().padStart(3, '0'),
+            id: `ITEM-${uniqueSuffix}-${idx + 1}`,
             item_code: item.item_code.trim().toUpperCase(),
             item_description: item.item_description?.trim() || `Oilfield Material ${item.item_code}`,
             material_grade: 'ASTM A234 WPB / SS316',
@@ -1135,9 +1140,9 @@ class DBService {
         }
       }
 
-      const itemId = itm?.id || `ITEM-${idx + 1}`
+      const itemId = itm?.id || `ITEM-${uniqueSuffix}-${idx + 1}`
       const itemCode = itm?.item_code || item.item_code || 'GENERIC-ITEM'
-      const soItemId = `SOI-${count}-${idx + 1}`
+      const soItemId = `SOI-${uniqueSuffix}-${idx + 1}`
 
       const isLocal = Boolean(
         item.purchase_type === 'local_purchase' ||
@@ -2174,6 +2179,9 @@ class DBService {
     this.importJobs = []
     this.users = [...initialUsers]
     this.suppliers = [...initialSuppliers]
+    this.pendingActiveOrderId = ''
+    this.lastActiveOrderWriteTime = 0
+    this.mutationChain = Promise.resolve()
 
     this.saveAll()
     if (userEmail) {
@@ -2697,7 +2705,16 @@ class DBService {
       }
       if (Array.isArray(d.sourcingDrafts)) setSourcingDraftsCache(d.sourcingDrafts)
       if (Array.isArray(d.locDrafts)) setLOCDraftsCache(d.locDrafts)
-      if (d.activeOrderId) saveToStorage('active_so_id', d.activeOrderId)
+      if (d.activeOrderId) {
+        const hasRecentLocalActive =
+          Boolean(this.pendingActiveOrderId) || Date.now() - this.lastActiveOrderWriteTime < 8000
+        if (!hasRecentLocalActive || d.activeOrderId === this.pendingActiveOrderId) {
+          saveToStorage('active_so_id', d.activeOrderId)
+          if (d.activeOrderId === this.pendingActiveOrderId) {
+            this.pendingActiveOrderId = ''
+          }
+        }
+      }
 
       this.saveLocalStorageOnly()
       this.notify()
@@ -2730,7 +2747,10 @@ class DBService {
   }
 
   private backendMutation(fn: () => Promise<any>) {
-    void this.backendMutationAsync(fn)
+    if (typeof window === 'undefined' || !getAuthToken()) return
+    this.mutationChain = this.mutationChain
+      .then(() => this.backendMutationAsync(fn))
+      .catch(() => {})
   }
 
   // Automatic Background Cloud & Backend Synchronization
@@ -2897,9 +2917,19 @@ class DBService {
 
   public setActiveOrderId(id: string): void {
     if (!id) return
+    this.pendingActiveOrderId = id
+    this.lastActiveOrderWriteTime = Date.now()
+    this.lastLocalWriteTime = Date.now()
     saveToStorage('active_so_id', id)
     if (getAuthToken()) {
-      apiPut('/api/preferences/active_so_id', { value: id }).catch(() => {})
+      this.mutationChain = this.mutationChain
+        .then(() => apiPut('/api/preferences/active_so_id', { value: id }))
+        .then(() => {
+          if (this.pendingActiveOrderId === id) {
+            this.pendingActiveOrderId = ''
+          }
+        })
+        .catch(() => {})
     }
   }
 }

@@ -352,6 +352,32 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
     })
     unmount()
 
+    // Unique SO IDs even across multiple rapid creates + so_number fallback resolution
+    const orderC = db.createSalesOrder({
+      customer_name: 'OIS MIDDLE EAST',
+      so_number: 'MSG-1126-2227',
+      po_number: 'PO261393B',
+      required_delivery_date: '2026-12-22',
+      items: [{ item_code: 'ITEM-OIS', item_description: 'OIS Weld Neck Flange', uom: 'PCS', required_qty: 2 }],
+      userEmail: 'admin@msgoilfield.ae',
+    }).order!
+    expect(orderC.id).not.toBe(orderA.id)
+    expect(orderC.id).not.toBe(orderB.id)
+
+    db.setActiveOrderId(orderC.id)
+    localStorage.setItem('msg_sourcing_active_so_id', orderC.id)
+    localStorage.setItem('msg_sourcing_active_so_number', orderC.so_number)
+    const portalOrderCRender = render(
+      <AuthProvider>
+        <TechnicalSourcingPortal />
+      </AuthProvider>
+    )
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('PO261393B')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('MSG-1126-2227')).toBeInTheDocument()
+    })
+    portalOrderCRender.unmount()
+
     const hubRender = render(
       <AuthProvider>
         <CentralizedSoloHub onNavigateTab={() => {}} onOpenHeatModal={() => {}} />

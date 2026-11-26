@@ -258,15 +258,20 @@ def create_sales_order(data: Dict[str, Any], user_email: str) -> Dict[str, Any]:
         else:
             cust_id = f"CUST-{int(time.time() * 1000)}"
             code = re.sub(r"[^A-Z0-9]", "", cust_name.upper())[:12] or "CLIENT"
+            cust_code = f"{code}-{random.randint(10, 9999)}"
+            while conn.execute("SELECT 1 FROM customers WHERE customer_code = ?", (cust_code,)).fetchone():
+                cust_code = f"{code}-{random.randint(100, 99999)}"
             conn.execute(
                 """
                 INSERT INTO customers (id, customer_code, customer_name, address, contact_details, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, 'Active', ?, ?)
                 """,
-                (cust_id, f"{code}-{random.randint(10,99)}", cust_name, "UAE / International", "", today_date(), now_iso()),
+                (cust_id, cust_code, cust_name, "UAE / International", "", today_date(), now_iso()),
             )
 
         so_id = data.get("id") or _uid("SO")
+        if conn.execute("SELECT 1 FROM sales_orders WHERE id = ?", (so_id,)).fetchone():
+            so_id = _uid("SO")
         count = conn.execute("SELECT COUNT(*) FROM sales_orders").fetchone()[0]
         so_number = (data.get("so_number") or "").strip() or f"SO-2026-{str(1000 + count + 1)}"
         # Guarantee unique so_number

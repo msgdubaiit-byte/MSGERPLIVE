@@ -122,12 +122,31 @@ export const TechnicalSourcingPortal: React.FC = () => {
     const initialOrders = db.getOrders()
     if (initialOrders.length > 0) {
       const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
-      const target = (saved && initialOrders.find(o => o.id === saved)) || initialOrders[0]
-      if (target) {
-        handleLoadFromOrder(target.id)
+      const savedSoNumber = localStorage.getItem('msg_sourcing_active_so_number')
+      const matched =
+        (saved && initialOrders.find(o => o.id === saved)) ||
+        (savedSoNumber && initialOrders.find(o => o.so_number === savedSoNumber))
+      if (matched) {
+        handleLoadFromOrder(matched.id)
+      } else {
+        // Fallback visually without overwriting an in-flight saved active SO preference
+        handleLoadFromOrder(initialOrders[0].id, true)
       }
     }
   }, [])
+
+  // Keep worksheet synced if the requested active Sales Order finishes syncing asynchronously after mount
+  useEffect(() => {
+    if (orders.length === 0) return
+    const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
+    const savedSoNumber = localStorage.getItem('msg_sourcing_active_so_number')
+    const target =
+      (saved && orders.find(o => o.id === saved)) ||
+      (savedSoNumber && orders.find(o => o.so_number === savedSoNumber))
+    if (target && target.id !== selectedOrderId) {
+      handleLoadFromOrder(target.id)
+    }
+  }, [orders])
 
   // Checkbox helpers
   const toggleSelectItem = (id: string) => {
@@ -286,14 +305,19 @@ export const TechnicalSourcingPortal: React.FC = () => {
   }
 
   // Load from existing Sales Order
-  const handleLoadFromOrder = (orderId: string) => {
+  const handleLoadFromOrder = (orderId: string, skipActiveSync: boolean = false) => {
     const allOrders = db.getOrders()
     const order = allOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId) || uniqueOrders.find(o => o.id === orderId)
     if (!order) return
 
     setSelectedOrderId(orderId)
-    db.setActiveOrderId(orderId)
-    localStorage.setItem('msg_sourcing_active_so_id', orderId)
+    if (!skipActiveSync) {
+      db.setActiveOrderId(orderId)
+      localStorage.setItem('msg_sourcing_active_so_id', orderId)
+      if (order.so_number) {
+        localStorage.setItem('msg_sourcing_active_so_number', order.so_number)
+      }
+    }
     setClientName(order.customer_name || '')
     setPoNumber(order.po_number || '')
     setMsgRef(order.so_number || order.msg_ref || '')

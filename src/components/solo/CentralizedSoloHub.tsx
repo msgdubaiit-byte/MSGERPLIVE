@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Zap,
   Search,
@@ -65,6 +65,12 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   const [dbRefreshKey, setDbRefreshKey] = useState(0)
   const refreshData = () => setDbRefreshKey(k => k + 1)
 
+  useEffect(() => {
+    return db.subscribe(() => {
+      setDbRefreshKey(k => k + 1)
+    })
+  }, [])
+
   // Real-time data from local DB
   const orders = useMemo(() => db.getOrders(), [dbRefreshKey])
   const lots = useMemo(() => db.getLots(), [dbRefreshKey])
@@ -74,12 +80,17 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
   // Selected Order for Instant Deliverables (only populated from Sales Order uploaded in this view)
   const [selectedOrderId, setSelectedOrderId] = useState<string>('')
   const [uploadedSessionOrderIds, setUploadedSessionOrderIds] = useState<string[]>([])
-  const selectOrderAndSync = (orderId: string) => {
+  const selectOrderAndSync = (orderId: string, soNumber?: string) => {
     setSelectedOrderId(orderId)
     if (orderId) {
       db.setActiveOrderId(orderId)
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('msg_sourcing_active_so_id', orderId)
+        if (soNumber) {
+          localStorage.setItem('msg_sourcing_active_so_number', soNumber)
+        } else {
+          localStorage.removeItem('msg_sourcing_active_so_number')
+        }
       }
     }
   }
@@ -329,7 +340,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
         if (res.success && res.order) {
           refreshData()
           setUploadedSessionOrderIds(prev => (prev.includes(res.order!.id) ? prev : [res.order!.id, ...prev]))
-          selectOrderAndSync(res.order.id)
+          selectOrderAndSync(res.order.id, res.order.so_number)
           setStatusNotice(
             `🎉 Sales Order ${res.order.so_number} (${res.order.customer_name}) loaded with ${res.order.items.length} items! 1-Click deliverables are ready below.`
           )
@@ -346,7 +357,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
           refreshData()
           const importedIds = res.orders.map(o => o.id)
           setUploadedSessionOrderIds(prev => [...importedIds, ...prev.filter(id => !importedIds.includes(id))])
-          selectOrderAndSync(res.orders[0].id)
+          selectOrderAndSync(res.orders[0].id, res.orders[0].so_number)
           setStatusNotice(
             `🎉 Successfully imported ${res.orders.length} order(s) with ${rows.length} line items from spreadsheet!`
           )
@@ -674,7 +685,7 @@ export const CentralizedSoloHub: React.FC<CentralizedSoloHubProps> = ({
                   type="button"
                   onClick={() => {
                     const targetId = selectedOrder?.id || selectedOrderId
-                    if (targetId) selectOrderAndSync(targetId)
+                    if (targetId) selectOrderAndSync(targetId, selectedOrder?.so_number)
                     onNavigateTab('sourcing')
                   }}
                   className="ml-auto text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 cursor-pointer"
