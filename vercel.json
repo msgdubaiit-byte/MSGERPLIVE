@@ -3,14 +3,14 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "server/api/index.py": {
+    "api/index.py": {
       "excludeFiles": "{public/certificates/**,dist/**,node_modules/**,tests/**,src/**}"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server/api/index.py"
+      "destination": "/api/index.py"
     },
     {
       "source": "/(.*)",
