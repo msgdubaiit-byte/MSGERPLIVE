@@ -5,46 +5,18 @@ import { apiUpload, apiGet } from './api'
 
 export interface CloudinaryConfig {
   cloudName: string
-  uploadPreset?: string
   folder: string
 }
 
-const STORAGE_KEY = 'msg_cloudinary_config'
-
-export function getStoredCloudinaryConfig(): CloudinaryConfig {
-  const envCloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || ''
-  const envPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || ''
-  const envFolder = import.meta.env.VITE_CLOUDINARY_FOLDER || 'msg-oilfield-erp'
-
-  try {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      return {
-        cloudName: parsed.cloudName || envCloudName,
-        uploadPreset: parsed.uploadPreset || envPreset,
-        folder: parsed.folder || envFolder,
-      }
-    }
-  } catch {}
-
+export function getCloudinaryEnvConfig(): CloudinaryConfig {
   return {
-    cloudName: envCloudName,
-    uploadPreset: envPreset,
-    folder: envFolder,
-  }
-}
-
-export function saveCloudinaryConfig(config: Partial<CloudinaryConfig>): void {
-  const current = getStoredCloudinaryConfig()
-  const updated = { ...current, ...config }
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    cloudName: (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '').trim(),
+    folder: (import.meta.env.VITE_CLOUDINARY_FOLDER || 'msg-oilfield-erp').trim(),
   }
 }
 
 export function isCloudinaryConfigured(): boolean {
-  const config = getStoredCloudinaryConfig()
+  const config = getCloudinaryEnvConfig()
   return Boolean(config.cloudName)
 }
 

@@ -325,6 +325,20 @@ def test_documents_parsers_drafts_reports_backup_and_100pct_route_audit(client: 
     for rtype in ["master_stock", "movements", "sales_orders", "dispatches", "local_purchases", "heat_register"]:
         assert client.get(f"/api/reports/{rtype}", headers=headers).status_code == 200
 
+    # Item weight persistence endpoints (manual + bulk certificate Excel)
+    assert client.post(
+        "/api/item-weights",
+        json={"description": 'ELBOW 8", 90DEG, SCH.40', "item_code": "ELB-8-S40", "unit_weight_kg": 12.5, "source": "manual"},
+        headers=headers,
+    ).status_code == 200
+    assert client.post(
+        "/api/item-weights/bulk",
+        json={"weights": [{"description": "CAP 6 SCH.40", "heat_number": "65N10028", "unit_weight_kg": 5.4, "source": "certificate_excel"}]},
+        headers=headers,
+    ).status_code == 200
+    wt_list = client.get("/api/item-weights", headers=headers).json()["weights"]
+    assert any(w["unit_weight_kg"] == 12.5 for w in wt_list)
+
     # Full JSON export + import
     snap = client.get("/api/admin/export-json", headers=headers).json()
     assert client.post("/api/admin/import-json", json=snap, headers=headers).status_code == 200
@@ -363,6 +377,9 @@ def test_documents_parsers_drafts_reports_backup_and_100pct_route_audit(client: 
         "POST /api/suppliers/preload",
         "POST /api/suppliers/bulk",
         "POST /api/items",
+        "GET /api/item-weights",
+        "POST /api/item-weights",
+        "POST /api/item-weights/bulk",
         "POST /api/stock/lots",
         "POST /api/stock/import-excel",
         "POST /api/orders",

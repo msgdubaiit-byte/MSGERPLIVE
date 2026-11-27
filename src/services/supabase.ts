@@ -1,29 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { isCloudinaryConfigured, uploadToCloudinary } from './cloudinary'
 
-const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://snmafjucycnzikmtkrsr.supabase.co'
-const DEFAULT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNubWFmanVjeWNuemlrbXRrcnNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTgxOTcsImV4cCI6MjExMDczNDE5N30.-ZpWWjEZZ-m7DqIwaKyp0yC8zTMOXjc5O-4LXtWH9Ss'
+const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const ENV_SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
 
-export function getStoredSupabaseConfig(): { url: string; key: string } {
-  let url: string = (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_supabase_url') : null) || ''
-  let key: string = (typeof localStorage !== 'undefined' ? localStorage.getItem('msg_supabase_anon_key') : null) || ''
-
-  // Auto-purge any stale placeholder or demo key from previous test runs
-  if (!url || url.includes('msg-oilfield') || !key || key.includes('demo')) {
-    url = DEFAULT_SUPABASE_URL
-    key = DEFAULT_SUPABASE_ANON_KEY
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('msg_supabase_url', url)
-        localStorage.setItem('msg_supabase_anon_key', key)
-      }
-    } catch {}
-  }
-  return { url, key }
+export function getSupabaseEnvConfig(): { url: string; key: string } {
+  return { url: ENV_SUPABASE_URL, key: ENV_SUPABASE_ANON_KEY }
 }
 
 export function isSupabaseConfigured(): boolean {
-  const { url, key } = getStoredSupabaseConfig()
+  const { url, key } = getSupabaseEnvConfig()
   return Boolean(
     url &&
     key &&
@@ -33,15 +19,14 @@ export function isSupabaseConfigured(): boolean {
   )
 }
 
-let currentClient: SupabaseClient = createClient(
-  getStoredSupabaseConfig().url,
-  getStoredSupabaseConfig().key
-)
+const currentClient: SupabaseClient | null = isSupabaseConfigured()
+  ? createClient(ENV_SUPABASE_URL, ENV_SUPABASE_ANON_KEY)
+  : null
 
 let realtimeChannel: any = null
 
 export function subscribeToRealtimeChanges(onTableChange: (tableName: string) => void) {
-  if (!isSupabaseConfigured()) return () => {}
+  if (!isSupabaseConfigured() || !currentClient) return () => {}
 
   if (realtimeChannel) {
     try {
@@ -66,7 +51,7 @@ export function subscribeToRealtimeChanges(onTableChange: (tableName: string) =>
   }
 
   return () => {
-    if (realtimeChannel) {
+    if (realtimeChannel && currentClient) {
       try {
         currentClient.removeChannel(realtimeChannel)
       } catch {}
@@ -75,23 +60,25 @@ export function subscribeToRealtimeChanges(onTableChange: (tableName: string) =>
   }
 }
 
-export function saveSupabaseConfig(url: string, key: string) {
-  localStorage.setItem('msg_supabase_url', url.trim())
-  localStorage.setItem('msg_supabase_anon_key', key.trim())
-  currentClient = createClient(url.trim(), key.trim())
-  if (realtimeChannel) {
-    try { currentClient.removeChannel(realtimeChannel) } catch {}
-    realtimeChannel = null
-  }
-}
-
 export function getSupabase(): SupabaseClient {
+  if (!currentClient) {
+    throw new Error('Supabase environment variables (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) are not configured.')
+  }
   return currentClient
 }
 
-// Test connection to Supabase PostgreSQL & Storage
-export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; message: string }> {
+// Test connection to Supabase PostgreSQL & Storage using .env configuration
+export async function testSupabaseConnection(
+  url: string = ENV_SUPABASE_URL,
+  key: string = ENV_SUPABASE_ANON_KEY
+): Promise<{ success: boolean; message: string }> {
   try {
+    if (!url.trim() || !key.trim()) {
+      return {
+        success: false,
+        message: 'Supabase environment variables (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) are not set in .env.',
+      }
+    }
     const testClient = createClient(url.trim(), key.trim())
     // 1. Test database ping
     const { error: dbErr } = await testClient.from('suppliers').select('id').limit(1)
@@ -158,7 +145,8 @@ export async function uploadMTCFileToSupabase(
       uploadBody = new Blob([fileData as any], { type: 'application/pdf' })
     }
 
-    const { error: uploadError } = await currentClient.storage
+    const client = getSupabase()
+    const { error: uploadError } = await client.storage
       .from('mtc-vault')
       .upload(filePath, uploadBody, {
         cacheControl: '31536000',
@@ -170,7 +158,7 @@ export async function uploadMTCFileToSupabase(
       return { success: false, error: uploadError.message }
     }
 
-    const { data: { publicUrl } } = currentClient.storage
+    const { data: { publicUrl } } = client.storage
       .from('mtc-vault')
       .getPublicUrl(filePath)
 
@@ -189,8 +177,10 @@ export async function uploadMTCFileToSupabase(
  */
 export async function downloadMTCFromSupabase(filePath: string): Promise<Uint8Array | null> {
   try {
+    if (!isSupabaseConfigured()) return null
+    const client = getSupabase()
     const cleanPath = filePath.includes('mtc-vault/') ? filePath.split('mtc-vault/')[1] : filePath
-    const { data, error } = await currentClient.storage
+    const { data, error } = await client.storage
       .from('mtc-vault')
       .download(cleanPath)
 
@@ -224,11 +214,12 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
       }
     }
 
+    const client = getSupabase()
     const results: Record<string, number> = {}
 
     // 1. Sync System Config
     const config = dbInstance.getSystemConfig()
-    await currentClient.from('system_config').upsert({
+    await client.from('system_config').upsert({
       id: 'SYSTEM_CONFIG_MAIN',
       company_name: config.companyName,
       trn_number: config.trnNumber,
@@ -262,7 +253,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const suppliers = dbInstance.getSuppliers()
       if (suppliers.length > 0) {
-        await currentClient.from('suppliers').upsert(suppliers)
+        await client.from('suppliers').upsert(suppliers)
         results['suppliers'] = suppliers.length
       }
     } catch (err: any) {
@@ -273,7 +264,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const customers = dbInstance.getCustomers()
       if (customers.length > 0) {
-        await currentClient.from('customers').upsert(customers)
+        await client.from('customers').upsert(customers)
         results['customers'] = customers.length
       }
     } catch (err: any) {
@@ -284,7 +275,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const items = dbInstance.getItems()
       if (items.length > 0) {
-        await currentClient.from('items').upsert(items)
+        await client.from('items').upsert(items)
         results['items'] = items.length
       }
     } catch (err: any) {
@@ -305,7 +296,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
           yom: Number(l.yom || 2026),
           stock_receipt_date: l.stock_receipt_date || new Date().toISOString().substring(0, 10)
         }))
-        await currentClient.from('stock_lots').upsert(sanitizedLots)
+        await client.from('stock_lots').upsert(sanitizedLots)
         results['stock_lots'] = sanitizedLots.length
       }
     } catch (err: any) {
@@ -323,7 +314,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
           available_qty: Number(b.available_qty ?? 0),
           dispatched_qty: Number(b.dispatched_qty ?? 0)
         }))
-        await currentClient.from('stock_balances').upsert(sanitizedBalances)
+        await client.from('stock_balances').upsert(sanitizedBalances)
         results['stock_balances'] = sanitizedBalances.length
       }
     } catch (err: any) {
@@ -334,7 +325,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const orders = dbInstance.getOrders()
       if (orders.length > 0) {
-        await currentClient.from('sales_orders').upsert(orders)
+        await client.from('sales_orders').upsert(orders)
         results['sales_orders'] = orders.length
       }
     } catch (err: any) {
@@ -355,7 +346,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
           upload_date: m.upload_date || new Date().toISOString().substring(0, 10),
           original_file_path: m.original_file_path || '/sample-mtc.pdf'
         }))
-        await currentClient.from('mtc_certificates').upsert(sanitizedMtcs)
+        await client.from('mtc_certificates').upsert(sanitizedMtcs)
         results['mtc_certificates'] = sanitizedMtcs.length
       }
     } catch (err: any) {
@@ -366,7 +357,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const movements = dbInstance.getMovements()
       if (movements.length > 0) {
-        await currentClient.from('stock_movements').upsert(movements.slice(0, 100))
+        await client.from('stock_movements').upsert(movements.slice(0, 100))
         results['stock_movements'] = movements.length
       }
     } catch (err: any) {
@@ -377,7 +368,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const users = dbInstance.getUsers()
       if (users && users.length > 0) {
-        await currentClient.from('user_profiles').upsert(users.map((u: any) => ({
+        await client.from('user_profiles').upsert(users.map((u: any) => ({
           id: u.id,
           employee_name: u.employee_name || 'Staff Member',
           email: u.email.trim().toLowerCase(),
@@ -399,7 +390,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const localPurchases = dbInstance.getLocalPurchases()
       if (localPurchases && localPurchases.length > 0) {
-        await currentClient.from('local_purchases').upsert(localPurchases)
+        await client.from('local_purchases').upsert(localPurchases)
         results['local_purchases'] = localPurchases.length
       }
     } catch (err: any) {
@@ -410,7 +401,7 @@ export async function pushAllTablesToSupabase(dbInstance: any): Promise<{
     try {
       const dispatches = dbInstance.getDispatches()
       if (dispatches && dispatches.length > 0) {
-        await currentClient.from('dispatch_records').upsert(dispatches)
+        await client.from('dispatch_records').upsert(dispatches)
         results['dispatch_records'] = dispatches.length
       }
     } catch (err: any) {
@@ -444,6 +435,7 @@ export async function pullAllTablesFromSupabase(): Promise<{
       return { success: false, message: 'Supabase credentials not configured.' }
     }
 
+    const client = getSupabase()
     const [
       { data: configData },
       { data: suppData },
@@ -458,18 +450,18 @@ export async function pullAllTablesFromSupabase(): Promise<{
       { data: dspData },
       { data: usersData }
     ] = await Promise.all([
-      currentClient.from('system_config').select('*').limit(1),
-      currentClient.from('suppliers').select('*'),
-      currentClient.from('customers').select('*'),
-      currentClient.from('items').select('*'),
-      currentClient.from('stock_lots').select('*'),
-      currentClient.from('stock_balances').select('*'),
-      currentClient.from('sales_orders').select('*'),
-      currentClient.from('mtc_certificates').select('*'),
-      currentClient.from('local_purchases').select('*'),
-      currentClient.from('stock_movements').select('*').order('id', { ascending: false }).limit(200),
-      currentClient.from('dispatch_records').select('*'),
-      currentClient.from('user_profiles').select('*')
+      client.from('system_config').select('*').limit(1),
+      client.from('suppliers').select('*'),
+      client.from('customers').select('*'),
+      client.from('items').select('*'),
+      client.from('stock_lots').select('*'),
+      client.from('stock_balances').select('*'),
+      client.from('sales_orders').select('*'),
+      client.from('mtc_certificates').select('*'),
+      client.from('local_purchases').select('*'),
+      client.from('stock_movements').select('*').order('id', { ascending: false }).limit(200),
+      client.from('dispatch_records').select('*'),
+      client.from('user_profiles').select('*')
     ])
 
     return {

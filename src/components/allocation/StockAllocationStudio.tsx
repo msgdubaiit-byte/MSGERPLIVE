@@ -45,6 +45,16 @@ export const StockAllocationStudio: React.FC<StockAllocationStudioProps> = ({ pr
     return (active && allocatableOrders.some(o => o.id === active)) ? active : (allocatableOrders[0]?.id || '')
   })
 
+  // Auto-bind selectedOrderId when orders finish loading asynchronously from backend
+  useEffect(() => {
+    if (allocatableOrders.length === 0) return
+    if (!selectedOrderId || !allocatableOrders.some(o => o.id === selectedOrderId)) {
+      const preferred = preselectedOrderId || db.getActiveOrderId()
+      const matched = preferred ? allocatableOrders.find(o => o.id === preferred) : null
+      setSelectedOrderId(matched ? matched.id : allocatableOrders[0].id)
+    }
+  }, [allocatableOrders, selectedOrderId, preselectedOrderId])
+
   // Keep selectedOrderId strictly in sync only when preselectedOrderId prop itself changes
   const lastPreselectedPropRef = React.useRef(preselectedOrderId)
   useEffect(() => {

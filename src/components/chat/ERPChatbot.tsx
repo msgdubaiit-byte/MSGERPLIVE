@@ -17,7 +17,10 @@ import {
   RotateCcw,
   CheckCircle2,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Move
 } from 'lucide-react'
 import {
   processChatQuery,
@@ -36,6 +39,31 @@ import {
 } from '../../services/excelEngine'
 import { NavTabId } from '../common/Sidebar'
 
+type AssistantPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+
+interface CustomCoordinates {
+  x: number
+  y: number
+}
+
+const POSITION_STORAGE_KEY = 'msg_erp_assistant_position'
+const HIDDEN_STORAGE_KEY = 'msg_erp_assistant_hidden'
+const CUSTOM_POS_STORAGE_KEY = 'msg_erp_assistant_custom_pos'
+
+const POSITION_CLASSES: Record<AssistantPosition, string> = {
+  'bottom-right': 'bottom-5 right-5',
+  'bottom-left': 'bottom-5 left-5',
+  'top-right': 'top-20 right-5',
+  'top-left': 'top-20 left-5'
+}
+
+const POSITION_OPTIONS: { id: AssistantPosition; label: string; short: string }[] = [
+  { id: 'top-left', label: 'Top Left', short: '↖ Top Left' },
+  { id: 'top-right', label: 'Top Right', short: '↗ Top Right' },
+  { id: 'bottom-left', label: 'Bottom Left', short: '↙ Bottom Left' },
+  { id: 'bottom-right', label: 'Bottom Right', short: '↘ Bottom Right' }
+]
+
 interface ERPChatbotProps {
   onNavigateTab: (tab: NavTabId) => void
   onOpenTraceability: (heatNumber: string) => void
@@ -49,10 +77,49 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [isWide, setIsWide] = useState(false)
+  const [isHidden, setIsHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HIDDEN_STORAGE_KEY) === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [position, setPosition] = useState<AssistantPosition>(() => {
+    try {
+      const saved = localStorage.getItem(POSITION_STORAGE_KEY) as AssistantPosition | null
+      if (saved && saved in POSITION_CLASSES) return saved
+    } catch {
+      // ignore storage failure
+    }
+    return 'bottom-right'
+  })
+  const [customPos, setCustomPos] = useState<CustomCoordinates | null>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_POS_STORAGE_KEY)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
+        return { x: parsed.x, y: parsed.y }
+      }
+    } catch {
+      // ignore storage failure
+    }
+    return null
+  })
+  const [isPositionMenuOpen, setIsPositionMenuOpen] = useState(false)
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [hasUnreadAlert, setHasUnreadAlert] = useState(false)
+  const dragStateRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    origX: number
+    origY: number
+    didMove: boolean
+  } | null>(null)
+  const suppressOpenClickRef = useRef(false)
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -75,23 +142,117 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
       inputRef.current?.focus()
       setHasUnreadAlert(false)
     }
   }, [isOpen, messages])
+
+  // Persist visibility and position preferences
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDDEN_STORAGE_KEY, String(isHidden))
+    } catch {
+      // ignore storage failure
+    }
+  }, [isHidden])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(POSITION_STORAGE_KEY, position)
+    } catch {
+      // ignore storage failure
+    }
+  }, [position])
+
+  useEffect(() => {
+    try {
+      if (customPos) {
+        localStorage.setItem(CUSTOM_POS_STORAGE_KEY, JSON.stringify(customPos))
+      } else {
+        localStorage.removeItem(CUSTOM_POS_STORAGE_KEY)
+      }
+    } catch {
+      // ignore storage failure
+    }
+  }, [customPos])
 
   // Global keyboard shortcut to open/close chatbot (Ctrl + Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
         e.preventDefault()
+        setIsHidden(false)
         setIsOpen(prev => !prev)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  // Pointer drag repositioning on floating launcher
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = dragStateRef.current
+      if (!drag) return
+      const dx = e.clientX - drag.startX
+      const dy = e.clientY - drag.startY
+      if (!drag.didMove && Math.hypot(dx, dy) >= 6) {
+        drag.didMove = true
+      }
+      if (!drag.didMove) return
+      const maxX = Math.max(12, window.innerWidth - 260)
+      const maxY = Math.max(12, window.innerHeight - 64)
+      setCustomPos({
+        x: Math.min(Math.max(12, drag.origX + dx), maxX),
+        y: Math.min(Math.max(12, drag.origY + dy), maxY)
+      })
+    }
+
+    const handlePointerUp = () => {
+      const drag = dragStateRef.current
+      if (!drag) return
+      if (drag.didMove) {
+        suppressOpenClickRef.current = true
+      }
+      dragStateRef.current = null
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [])
+
+  const handleLauncherPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('[data-assistant-control="true"]')) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    suppressOpenClickRef.current = false
+    dragStateRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: customPos ? customPos.x : rect.left,
+      origY: customPos ? customPos.y : rect.top,
+      didMove: false
+    }
+  }
+
+  const handleSelectCorner = (nextPos: AssistantPosition) => {
+    setPosition(nextPos)
+    setCustomPos(null)
+    setIsPositionMenuOpen(false)
+  }
+
+  const handleHideAssistant = () => {
+    setIsOpen(false)
+    setIsPositionMenuOpen(false)
+    setIsHidden(true)
+  }
 
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim()
@@ -192,37 +353,142 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
     ])
   }
 
+  const renderPositionPopover = (alignAbove: boolean) => {
+    if (!isPositionMenuOpen) return null
+    const alignHorizontal = position.endsWith('left') && !customPos ? 'left-0' : 'right-0'
+    return (
+      <div
+        data-assistant-control="true"
+        className={`absolute ${alignHorizontal} ${alignAbove ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-lg bg-white border border-slate-200 shadow-xl p-2 z-50 text-slate-800`}
+      >
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1.5 pb-1 border-b border-slate-100 mb-1.5">
+          Dock Corner (or drag)
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          {POSITION_OPTIONS.map(opt => {
+            const isActive = !customPos && position === opt.id
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handleSelectCorner(opt.id)}
+                className={`px-2 py-1.5 rounded text-[11px] font-medium text-left transition cursor-pointer ${isActive
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/70'
+                  }`}
+              >
+                {opt.short}
+              </button>
+            )
+          })}
+        </div>
+        {customPos && (
+          <button
+            type="button"
+            onClick={() => handleSelectCorner(position)}
+            className="mt-1.5 w-full px-2 py-1 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition cursor-pointer"
+          >
+            Reset Custom Position
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleHideAssistant}
+          className="mt-1.5 w-full px-2 py-1 rounded text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 flex items-center justify-center gap-1.5 transition cursor-pointer"
+        >
+          <EyeOff className="w-3 h-3" />
+          <span>Hide Assistant</span>
+        </button>
+      </div>
+    )
+  }
+
+  const drawerPositionClass = POSITION_CLASSES[position]
+  const launcherPositionClass = customPos ? '' : POSITION_CLASSES[position]
+
   return (
     <>
-      {/* Floating Toggle Button */}
-      {!isOpen && (
+      {/* Minimal Restore Pill when Assistant is hidden (keeps right-side table actions unobstructed) */}
+      {!isOpen && isHidden && (
         <button
-          onClick={() => setIsOpen(true)}
-          title="Open MSG AI Assistant (Ctrl + Space)"
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-colors border border-blue-500"
+          type="button"
+          onClick={() => setIsHidden(false)}
+          title="Show ERP Assistant (Ctrl + Space)"
+          aria-label="Show ERP Assistant"
+          className="fixed bottom-2 left-5 z-50 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-blue-600 text-white text-[11px] font-medium shadow-md backdrop-blur-sm border border-slate-600/60 transition-colors cursor-pointer"
         >
-          <div className="relative">
-            <Bot className="w-5 h-5" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-blue-600" />
-          </div>
-          <div className="flex flex-col text-left">
-            <span className="text-xs font-semibold">
-              ERP Assistant
-            </span>
-            <span className="text-[10px] text-blue-100">Find, Vet &amp; Download</span>
-          </div>
+          <Bot className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Show ERP Assistant</span>
+          <Eye className="w-3 h-3 text-slate-300" />
         </button>
+      )}
+
+      {/* Floating Toggle Pill with Reposition & Hide Controls */}
+      {!isOpen && !isHidden && (
+        <div
+          data-assistant-position={customPos ? 'custom' : position}
+          onPointerDown={handleLauncherPointerDown}
+          style={customPos ? { left: `${customPos.x}px`, top: `${customPos.y}px` } : undefined}
+          className={`fixed ${launcherPositionClass} z-50 flex items-center gap-1 rounded-full bg-blue-600 p-1 shadow-lg border border-blue-500 select-none`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (suppressOpenClickRef.current) {
+                suppressOpenClickRef.current = false
+                return
+              }
+              setIsPositionMenuOpen(false)
+              setIsOpen(true)
+            }}
+            title="Open MSG AI Assistant (Ctrl + Space) — drag to reposition"
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-full hover:bg-blue-700 text-white transition-colors cursor-pointer"
+          >
+            <div className="relative">
+              <Bot className="w-5 h-5" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-blue-600" />
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="text-xs font-semibold">
+                ERP Assistant
+              </span>
+              <span className="text-[10px] text-blue-100">Find, Vet &amp; Download</span>
+            </div>
+          </button>
+
+          <div data-assistant-control="true" className="relative flex items-center gap-0.5 pr-1 border-l border-blue-400/50 pl-1">
+            <button
+              type="button"
+              onClick={() => setIsPositionMenuOpen(o => !o)}
+              title="Reposition ERP Assistant"
+              aria-label="Reposition ERP Assistant"
+              className="p-1.5 rounded-full text-blue-100 hover:text-white hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              <Move className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleHideAssistant}
+              title="Hide ERP Assistant"
+              aria-label="Hide ERP Assistant"
+              className="p-1.5 rounded-full text-blue-100 hover:text-white hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
+            {renderPositionPopover(customPos ? customPos.y > window.innerHeight / 2 : position.startsWith('bottom'))}
+          </div>
+        </div>
       )}
 
       {/* Floating Chat Drawer Window */}
       {isOpen && (
         <div
-          className={`fixed bottom-5 right-5 z-50 flex flex-col bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 overflow-hidden transition-all duration-200 ${
-            isWide ? 'w-[760px] h-[700px]' : 'w-[420px] sm:w-[460px] h-[620px]'
-          } max-w-[calc(100vw-2rem)] max-h-[calc(100vh-3rem)]`}
+          data-assistant-position={position}
+          className={`fixed ${drawerPositionClass} z-50 flex flex-col bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 overflow-hidden transition-all duration-200 ${isWide ? 'w-[760px] h-[700px]' : 'w-[420px] sm:w-[460px] h-[620px]'
+            } max-w-[calc(100vw-2rem)] max-h-[calc(100vh-3rem)]`}
         >
           {/* Top Header */}
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between select-none">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between select-none relative">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
                 <Bot className="w-4 h-4 text-white" />
@@ -238,28 +504,53 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 relative">
               <button
+                type="button"
+                onClick={() => setIsPositionMenuOpen(o => !o)}
+                title="Reposition ERP Assistant"
+                aria-label="Reposition ERP Assistant"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition cursor-pointer"
+              >
+                <Move className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleHideAssistant}
+                title="Hide ERP Assistant"
+                aria-label="Hide ERP Assistant"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition cursor-pointer"
+              >
+                <EyeOff className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
                 onClick={handleClearHistory}
                 title="Reset conversation"
-                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
               <button
+                type="button"
                 onClick={() => setIsWide(!isWide)}
                 title={isWide ? 'Standard view' : 'Expand wide'}
-                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition"
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition cursor-pointer"
               >
                 {isWide ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                type="button"
+                onClick={() => {
+                  setIsPositionMenuOpen(false)
+                  setIsOpen(false)
+                }}
                 title="Close (Ctrl + Space)"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-200/70 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
+              {renderPositionPopover(false)}
             </div>
           </div>
 
@@ -320,11 +611,10 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
 
                 {/* Bubble Body */}
                 <div
-                  className={`max-w-[92%] rounded-2xl p-3.5 ${
-                    msg.sender === 'user'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-slate-800/90 text-slate-200 border border-slate-700/70 shadow-lg'
-                  }`}
+                  className={`max-w-[92%] rounded-2xl p-3.5 ${msg.sender === 'user'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-slate-800/90 text-slate-200 border border-slate-700/70 shadow-lg'
+                    }`}
                 >
                   {/* Markdown-style text rendering */}
                   <div className="space-y-1.5 leading-relaxed whitespace-pre-wrap">
@@ -345,19 +635,18 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
                           </div>
                         </div>
                         <span
-                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
-                            (msg.data as HeatVettingReport).overallScore === 'PASSED'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : (msg.data as HeatVettingReport).overallScore === 'WARNING'
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${(msg.data as HeatVettingReport).overallScore === 'PASSED'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : (msg.data as HeatVettingReport).overallScore === 'WARNING'
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                          }`}
+                            }`}
                         >
                           {(msg.data as HeatVettingReport).overallScore === 'PASSED'
                             ? '✅ 100% COMPLIANT'
                             : (msg.data as HeatVettingReport).overallScore === 'WARNING'
-                            ? '⚠️ WARNINGS FOUND'
-                            : '❌ NON-COMPLIANT'}
+                              ? '⚠️ WARNINGS FOUND'
+                              : '❌ NON-COMPLIANT'}
                         </span>
                       </div>
 
@@ -389,15 +678,14 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
                         {(msg.data as HeatVettingReport).issues.map((iss, i) => (
                           <div
                             key={i}
-                            className={`flex items-start gap-2 p-1.5 rounded text-[11px] ${
-                              iss.severity === 'success'
-                                ? 'bg-emerald-950/30 text-emerald-200 border border-emerald-800/30'
-                                : iss.severity === 'warning'
+                            className={`flex items-start gap-2 p-1.5 rounded text-[11px] ${iss.severity === 'success'
+                              ? 'bg-emerald-950/30 text-emerald-200 border border-emerald-800/30'
+                              : iss.severity === 'warning'
                                 ? 'bg-amber-950/30 text-amber-200 border border-amber-800/30'
                                 : iss.severity === 'error'
-                                ? 'bg-rose-950/30 text-rose-200 border border-rose-800/30'
-                                : 'bg-slate-800/50 text-slate-300'
-                            }`}
+                                  ? 'bg-rose-950/30 text-rose-200 border border-rose-800/30'
+                                  : 'bg-slate-800/50 text-slate-300'
+                              }`}
                           >
                             {iss.severity === 'success' ? (
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -471,13 +759,12 @@ export const ERPChatbot: React.FC<ERPChatbotProps> = ({
                           </div>
                         </div>
                         <span
-                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
-                            (msg.data as OrderVettingReport).overallScore === 'READY_TO_DISPATCH'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : (msg.data as OrderVettingReport).overallScore === 'PARTIALLY_READY'
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${(msg.data as OrderVettingReport).overallScore === 'READY_TO_DISPATCH'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : (msg.data as OrderVettingReport).overallScore === 'PARTIALLY_READY'
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                          }`}
+                            }`}
                         >
                           {(msg.data as OrderVettingReport).overallScore.replace(/_/g, ' ')}
                         </span>

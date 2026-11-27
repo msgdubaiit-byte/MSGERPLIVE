@@ -598,6 +598,19 @@ _SCHEMA_STATEMENTS: List[str] = [
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS public.item_weights (
+        key_norm TEXT PRIMARY KEY,
+        description TEXT DEFAULT '',
+        item_code TEXT DEFAULT '',
+        heat_number TEXT DEFAULT '',
+        unit_weight_kg DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+        uom TEXT DEFAULT 'PCS',
+        source TEXT DEFAULT 'manual',
+        updated_by TEXT DEFAULT '',
+        updated_at TEXT DEFAULT ''
+    )
+    """,
 ]
 
 

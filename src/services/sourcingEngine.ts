@@ -56,6 +56,177 @@ export interface SourcingLineItem {
   is_machined?: boolean
   parent_sl_no?: number
   is_new_added?: boolean
+  l_code?: string
+  is_local?: boolean
+  purchase_type?: 'regular' | 'local_purchase'
+  supplier_unit_price?: number
+  supplier_total_price?: number
+  po_ordered_qty?: number
+  po_created?: boolean
+  is_rejected?: boolean
+  rejection_reason?: string
+  rejected_at?: string
+  original_po_number?: string
+  original_supplier_name?: string
+  replacement_po_number?: string
+  replacement_supplier_name?: string
+  reordered?: boolean
+}
+
+export interface MasterStockCheckLot {
+  heat_number?: string
+  item_code?: string
+  item_description?: string
+  available_qty?: number
+  physical_qty?: number
+  purchase_type?: string
+  l_code?: string
+}
+
+/**
+ * Returns remaining pending quantity eligible for Create Purchase Order.
+ * Stock items, rejected items, and items already fully included in a created PO return 0.
+ */
+export function getRemainingPurchaseQty(
+  item: {
+    qty?: number | string
+    heat_number?: string
+    item_code?: string
+    description?: string
+    item_description?: string
+    supplier_name?: string
+    supplier_po_number?: string
+    remarks?: string
+    l_code?: string
+    is_local?: boolean
+    purchase_type?: string
+    po_ordered_qty?: number
+    po_created?: boolean
+    is_rejected?: boolean
+  },
+  masterStock: MasterStockCheckLot[] = []
+): number {
+  if (!item) return 0
+  if (isItemAvailableInStock(item, masterStock)) return 0
+  if (item.po_created || item.is_rejected) return 0
+  const total = extractQtyNumber(item.qty)
+  if (total <= 0) return 0
+  const ordered = Number(item.po_ordered_qty ?? 0)
+  return Math.max(0, Math.round((total - ordered) * 100) / 100)
+}
+
+/**
+ * Determines whether a sourcing line item is currently available in regular warehouse stock.
+ * Items that are available in stock are ineligible for Local Purchase; only non-stock items
+ * (and existing Local Purchase lines) may be procured via Local Purchase with an L-Code.
+ */
+export function isItemAvailableInStock(
+  item: {
+    heat_number?: string
+    item_code?: string
+    description?: string
+    item_description?: string
+    supplier_name?: string
+    supplier_po_number?: string
+    remarks?: string
+    l_code?: string
+    is_local?: boolean
+    purchase_type?: string
+  },
+  masterStock: MasterStockCheckLot[] = []
+): boolean {
+  if (!item) return false
+
+  // Already designated as a Local Purchase item -> keep eligible/editable in Local Purchase
+  if (
+    item.is_local === true ||
+    item.purchase_type === 'local_purchase' ||
+    Boolean((item.l_code || '').trim()) ||
+    (item.supplier_po_number || '').trim().toUpperCase().startsWith('LP-') ||
+    (item.remarks || '').toLowerCase().includes('local purchase')
+  ) {
+    return false
+  }
+
+  const heat = (item.heat_number || '').trim()
+  const hasHeat = Boolean(heat && heat !== '-' && heat.toUpperCase() !== 'N/A')
+  const regularLots = masterStock.filter(l => l.purchase_type !== 'local_purchase')
+
+  // 1. Check matching lot by Heat Number in Master Stock
+  if (hasHeat) {
+    const heatMatches = regularLots.filter(
+      l => (l.heat_number || '').trim().toUpperCase() === heat.toUpperCase()
+    )
+    if (heatMatches.length > 0) {
+      return heatMatches.some(l => (l.available_qty ?? l.physical_qty ?? 0) > 0)
+    }
+  }
+
+  // 2. Check matching lot by Item Code or normalized Description in Master Stock
+  const itemCode = (item.item_code || '').trim().toUpperCase()
+  const desc = (item.description || item.item_description || '').trim().toUpperCase()
+  const descPrefix = desc.replace(/\s+/g, ' ').slice(0, 28)
+
+  const itemMatches = regularLots.filter(l => {
+    const lotCode = (l.item_code || '').trim().toUpperCase()
+    if (itemCode && lotCode && itemCode !== 'GENERIC-ITEM' && !itemCode.startsWith('ITEM-') && lotCode === itemCode) {
+      return true
+    }
+    if (descPrefix.length >= 8) {
+      const lotDesc = (l.item_description || '').trim().toUpperCase().replace(/\s+/g, ' ')
+      if (lotDesc && (lotDesc === desc || lotDesc.includes(descPrefix) || desc.includes(lotDesc.slice(0, 28)))) {
+        return true
+      }
+    }
+    return false
+  })
+
+  if (itemMatches.length > 0) {
+    return itemMatches.some(l => (l.available_qty ?? l.physical_qty ?? 0) > 0)
+  }
+
+  // 3. Fallback when Master Stock lots aren't loaded:
+  // If marked as STOCK or already assigned a non-local stock heat, treat as in-stock.
+  const supp = (item.supplier_name || '').trim().toUpperCase()
+  if (supp === 'STOCK') return true
+  if (hasHeat && (!supp || supp.includes('BENKAN') || supp.includes('DELCORTE') || supp.includes('METALFAR') || supp.includes('MELESI') || supp.includes('ULMA'))) {
+    return true
+  }
+
+  return false
+}
+
+export function buildLCodeOptions(
+  localPurchases: { l_code?: string; supplier_name?: string; item_code?: string }[] = [],
+  lots: { l_code?: string; purchase_type?: string }[] = [],
+  suggestedCode?: string
+): { code: string; label: string }[] {
+  const seen = new Set<string>()
+  const options: { code: string; label: string }[] = []
+
+  for (const lp of localPurchases) {
+    const code = (lp.l_code || '').trim()
+    if (!code || seen.has(code.toUpperCase())) continue
+    seen.add(code.toUpperCase())
+    const detail = [lp.item_code, lp.supplier_name].filter(Boolean).join(' · ')
+    options.push({ code, label: detail ? `${code} (${detail})` : code })
+  }
+
+  for (const lot of lots) {
+    if (lot.purchase_type !== 'local_purchase') continue
+    const code = (lot.l_code || '').trim()
+    if (!code || seen.has(code.toUpperCase())) continue
+    seen.add(code.toUpperCase())
+    options.push({ code, label: code })
+  }
+
+  if (suggestedCode && suggestedCode.trim() && !seen.has(suggestedCode.trim().toUpperCase())) {
+    const clean = suggestedCode.trim()
+    seen.add(clean.toUpperCase())
+    options.push({ code: clean, label: `${clean} (New L-Code)` })
+  }
+
+  return options
 }
 
 export interface SourcingWorksheetData {

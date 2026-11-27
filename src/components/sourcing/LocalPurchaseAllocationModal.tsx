@@ -4,8 +4,11 @@ import {
   SourcingLineItem,
   SourcingWorksheetData,
   generateStoresSummaryExcel,
-  extractQtyNumber
+  extractQtyNumber,
+  isItemAvailableInStock,
+  buildLCodeOptions,
 } from '../../services/sourcingEngine'
+import { db } from '../../services/db'
 
 interface LocalPurchaseAllocationModalProps {
   isOpen: boolean
@@ -24,6 +27,8 @@ interface ItemRowState {
   uom: string
   localQty: number
   localSupplier: string
+  l_code: string
+  inStock: boolean
   isChecked: boolean
 }
 
@@ -70,10 +75,12 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
     setBulkSupplier(defaultSupp || 'AL GHAITH OILFIELD SUPPLIES')
     setBulkPO(defaultPO || 'LP-PO-01')
 
+    const masterStock = db.getMasterStockView()
     const initialStates: ItemRowState[] = data.items.map((it, idx) => {
       const qNum = extractQtyNumber(it.qty)
       const descLower = `${it.description || ''} ${it.remarks || ''}`.toLowerCase()
       const isMachined = keywords.some(k => descLower.includes(k)) || it.is_machined || (it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK' && it.supplier_name.toUpperCase() !== 'BENKAN THAILAND')
+      const inStock = isItemAvailableInStock(it, masterStock)
 
       return {
         id: it.id,
@@ -84,7 +91,9 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
         uom: it.uom || 'PCS',
         localQty: qNum,
         localSupplier: it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK' ? it.supplier_name : (defaultSupp || 'AL GHAITH OILFIELD SUPPLIES'),
-        isChecked: Boolean(isMachined)
+        l_code: it.l_code || '',
+        inStock,
+        isChecked: inStock ? false : Boolean(isMachined)
       }
     })
 
@@ -94,7 +103,7 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
   if (!isOpen) return null
 
   const handleToggleSelectAll = (checked: boolean) => {
-    setRowStates(prev => prev.map(r => ({ ...r, isChecked: checked })))
+    setRowStates(prev => prev.map(r => (r.inStock ? { ...r, isChecked: false } : { ...r, isChecked: checked })))
   }
 
   const handleSelectMachinedOnly = () => {
@@ -102,13 +111,14 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
     let count = 0
     setRowStates(prev =>
       prev.map(r => {
+        if (r.inStock) return { ...r, isChecked: false }
         const descLower = r.description.toLowerCase()
         const isMatch = keywords.some(k => descLower.includes(k))
         if (isMatch) count++
         return { ...r, isChecked: isMatch }
       })
     )
-    if (showToast) showToast(`Selected ${count} Machined/Fabricated/Local items.`)
+    if (showToast) showToast(`Selected ${count} eligible non-stock Machined/Fabricated/Local items.`)
   }
 
   const handleBulkApplySupplier = () => {
@@ -118,7 +128,7 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
     }
     const trimmed = bulkSupplier.trim()
     setRowStates(prev =>
-      prev.map(r => (r.isChecked ? { ...r, localSupplier: trimmed } : r))
+      prev.map(r => (r.isChecked && !r.inStock ? { ...r, localSupplier: trimmed } : r))
     )
     if (showToast) showToast(`Applied "${trimmed}" to selected items!`)
   }
@@ -135,19 +145,36 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
     )
   }
 
+  const handleUpdateRowLCode = (id: string, val: string) => {
+    setRowStates(prev =>
+      prev.map(r => (r.id === id ? { ...r, l_code: val } : r))
+    )
+  }
+
   const handleToggleRowCheck = (id: string) => {
     setRowStates(prev =>
-      prev.map(r => (r.id === id ? { ...r, isChecked: !r.isChecked } : r))
+      prev.map(r => (r.id === id && !r.inStock ? { ...r, isChecked: !r.isChecked } : r))
     )
+  }
+
+  const validateCheckedRows = (checkedRows: ItemRowState[]): boolean => {
+    if (checkedRows.length === 0) {
+      alert('Please select at least one eligible non-stock item with quantity greater than 0.')
+      return false
+    }
+    const missingLCode = checkedRows.filter(r => !r.l_code.trim())
+    if (missingLCode.length > 0) {
+      const labels = missingLCode.map(r => `#${r.client_po_item_no || r.sl_no}`).join(', ')
+      alert(`Please select an L-Code for all selected non-stock Local Purchase items (missing on Item ${labels}).`)
+      return false
+    }
+    return true
   }
 
   // Action 1: Download Separate Local Purchase Excel
   const handleDownloadSeparateExcel = async () => {
-    const checkedRows = rowStates.filter(r => r.isChecked && r.localQty > 0)
-    if (checkedRows.length === 0) {
-      alert('Please select at least one item with quantity greater than 0.')
-      return
-    }
+    const checkedRows = rowStates.filter(r => !r.inStock && r.isChecked && r.localQty > 0)
+    if (!validateCheckedRows(checkedRows)) return
 
     setIsExporting(true)
     try {
@@ -168,7 +195,10 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
             total_price: localTotal,
             supplier_name: state.localSupplier || bulkSupplier || 'LOCAL PURCHASE',
             supplier_po_number: bulkPO || it.supplier_po_number || `LP-PO-${idx + 1}`,
-            remarks: 'Local Purchase'
+            l_code: state.l_code.trim(),
+            is_local: true,
+            purchase_type: 'local_purchase',
+            remarks: `Local Purchase (${state.l_code.trim()})`
           }
         })
 
@@ -189,11 +219,8 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
 
   // Action 2: Apply & Split on Worksheet
   const handleApplyToWorksheet = () => {
-    const checkedRows = rowStates.filter(r => r.isChecked && r.localQty > 0)
-    if (checkedRows.length === 0) {
-      alert('Please select at least one item to apply.')
-      return
-    }
+    const checkedRows = rowStates.filter(r => !r.inStock && r.isChecked && r.localQty > 0)
+    if (!validateCheckedRows(checkedRows)) return
 
     const rowStateMap = new Map(checkedRows.map(r => [r.id, r]))
     const newItems: SourcingLineItem[] = []
@@ -212,6 +239,7 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
       const localQty = state.localQty
       const supplierName = state.localSupplier || bulkSupplier || 'LOCAL PURCHASE'
       const supplierPO = bulkPO || originalItem.supplier_po_number || 'LP-PO'
+      const lCode = state.l_code.trim()
 
       // Case 1: Full Allocation (Local Qty == Total Qty)
       if (localQty >= totalQty) {
@@ -220,7 +248,10 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
           qty: totalQty,
           supplier_name: supplierName,
           supplier_po_number: supplierPO,
-          remarks: originalItem.remarks ? `${originalItem.remarks}; Local Purchase` : 'Local Purchase',
+          l_code: lCode,
+          is_local: true,
+          purchase_type: 'local_purchase',
+          remarks: originalItem.remarks ? `${originalItem.remarks}; Local Purchase (${lCode})` : `Local Purchase (${lCode})`,
           is_machined: true
         })
         appliedCount++
@@ -247,7 +278,10 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
           total_price: localQty * unitRate,
           supplier_name: supplierName,
           supplier_po_number: supplierPO,
-          remarks: 'Local Purchase',
+          l_code: lCode,
+          is_local: true,
+          purchase_type: 'local_purchase',
+          remarks: `Local Purchase (${lCode})`,
           is_machined: true
         })
 
@@ -405,16 +439,24 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                 <thead className="bg-slate-900 text-white sticky top-0 z-10 text-left">
                   <tr>
                     <th className="p-2.5 text-center w-10">
-                      <input
-                        type="checkbox"
-                        checked={rowStates.length > 0 && rowStates.every(r => r.isChecked)}
-                        onChange={e => handleToggleSelectAll(e.target.checked)}
-                        className="rounded text-amber-600 focus:ring-0 cursor-pointer"
-                      />
+                      {(() => {
+                        const eligible = rowStates.filter(r => !r.inStock)
+                        return (
+                          <input
+                            type="checkbox"
+                            checked={eligible.length > 0 && eligible.every(r => r.isChecked)}
+                            disabled={eligible.length === 0}
+                            onChange={e => handleToggleSelectAll(e.target.checked)}
+                            className="rounded text-amber-600 focus:ring-0 cursor-pointer disabled:cursor-not-allowed"
+                            title={eligible.length === 0 ? 'All items are available in stock' : 'Select all eligible non-stock items'}
+                          />
+                        )
+                      })()}
                     </th>
                     <th className="p-2.5 text-center w-12 font-mono">#</th>
                     <th className="p-2.5 text-center w-20 font-mono">Client #</th>
-                    <th className="p-2.5 min-w-[220px]">Item Description</th>
+                    <th className="p-2.5 min-w-[200px]">Item Description</th>
+                    <th className="p-2.5 w-36">L-Code *</th>
                     <th className="p-2.5 text-center w-24">Total Qty</th>
                     <th className="p-2.5 text-center w-36">Local Qty (PCS)</th>
                     <th className="p-2.5 text-center w-36">Remaining Balance</th>
@@ -427,18 +469,26 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                     const isFull = Math.abs(diff) < 0.0001
                     const isExceeded = row.localQty > row.totalQty
                     const isSplit = row.localQty > 0 && row.localQty < row.totalQty
+                    const lCodeOptions = buildLCodeOptions(
+                      db.getLocalPurchases(),
+                      db.getLots(),
+                      `L-${(row.client_po_item_no || String(row.sl_no)).replace(/[^A-Za-z0-9]/g, '')}`
+                    )
+                    const isMissingLCode = !row.inStock && row.isChecked && !row.l_code.trim()
 
                     return (
                       <tr
                         key={row.id}
-                        className={`transition-colors ${row.isChecked ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
+                        className={`transition-colors ${row.inStock ? 'bg-slate-50 opacity-60' : row.isChecked ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
                       >
                         <td className="p-2 text-center">
                           <input
                             type="checkbox"
                             checked={row.isChecked}
+                            disabled={row.inStock}
                             onChange={() => handleToggleRowCheck(row.id)}
-                            className="rounded text-amber-600 focus:ring-0 cursor-pointer"
+                            title={row.inStock ? 'Available in stock — Local Purchase disabled' : 'Select non-stock item for Local Purchase'}
+                            className="rounded text-amber-600 focus:ring-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </td>
                         <td className="p-2 text-center font-mono text-slate-500 font-semibold">{row.sl_no}</td>
@@ -447,6 +497,37 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                           <div className="font-semibold text-slate-800 line-clamp-2" title={row.description}>
                             {row.description}
                           </div>
+                          {row.inStock && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              In Stock — Local Purchase Disabled
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2">
+                          {row.inStock ? (
+                            <span className="text-[10px] font-medium text-slate-400">Stock Item</span>
+                          ) : (
+                            <select
+                              aria-label={`Modal L-Code for item ${row.client_po_item_no || row.sl_no}`}
+                              value={row.l_code}
+                              disabled={!row.isChecked}
+                              onChange={e => handleUpdateRowLCode(row.id, e.target.value)}
+                              className={`w-full text-xs border rounded px-2 py-1 font-mono font-semibold bg-white disabled:bg-slate-100 disabled:text-slate-400 ${isMissingLCode
+                                ? 'border-rose-400 text-rose-900 bg-rose-50/50'
+                                : 'border-slate-300 text-slate-900'
+                                }`}
+                            >
+                              <option value="">-- Select L-Code --</option>
+                              {lCodeOptions.map(opt => (
+                                <option key={opt.code} value={opt.code}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                              {row.l_code && !lCodeOptions.some(o => o.code === row.l_code) && (
+                                <option value={row.l_code}>{row.l_code}</option>
+                              )}
+                            </select>
+                          )}
                         </td>
                         <td className="p-2 text-center font-mono font-bold text-slate-700">
                           {row.totalQty} <span className="text-[10px] text-slate-400 font-normal">{row.uom}</span>
@@ -458,9 +539,10 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                               min="0"
                               max={row.totalQty}
                               step="any"
+                              disabled={row.inStock || !row.isChecked}
                               value={row.localQty}
                               onChange={e => handleUpdateLocalQty(row.id, parseFloat(e.target.value) || 0)}
-                              className="w-16 text-center font-mono font-bold text-amber-900 focus:outline-none"
+                              className="w-16 text-center font-mono font-bold text-amber-900 focus:outline-none disabled:text-slate-400"
                             />
                             <span className="text-[10px] text-slate-400">{row.uom}</span>
                           </div>
@@ -494,10 +576,11 @@ export const LocalPurchaseAllocationModal: React.FC<LocalPurchaseAllocationModal
                           <input
                             type="text"
                             list="lpSuppliersDatalist"
+                            disabled={row.inStock || !row.isChecked}
                             value={row.localSupplier}
                             onChange={e => handleUpdateRowSupplier(row.id, e.target.value)}
                             placeholder="Local Supplier..."
-                            className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
                           />
                         </td>
                       </tr>

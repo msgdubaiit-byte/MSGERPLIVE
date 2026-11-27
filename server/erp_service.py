@@ -192,6 +192,7 @@ def get_bootstrap_data(current_user: Optional[Dict[str, Any]]) -> Dict[str, Any]
 
         sourcing_drafts = [parse_json_col(r["payload_json"], {}) for r in conn.execute("SELECT payload_json FROM sourcing_drafts ORDER BY saved_at DESC").fetchall()]
         loc_drafts = [parse_json_col(r["payload_json"], {}) for r in conn.execute("SELECT payload_json FROM loc_drafts ORDER BY timestamp DESC").fetchall()]
+        item_weights = [dict(r) for r in conn.execute("SELECT * FROM item_weights ORDER BY updated_at DESC").fetchall()]
 
         active_order_id = ""
         if current_user:
@@ -224,6 +225,7 @@ def get_bootstrap_data(current_user: Optional[Dict[str, Any]]) -> Dict[str, Any]
             "granularPermissions": granular_permissions,
             "sourcingDrafts": sourcing_drafts,
             "locDrafts": loc_drafts,
+            "itemWeights": item_weights,
             "activeOrderId": active_order_id,
         }
 
@@ -667,6 +669,76 @@ def storekeeper_approve(order_id: str, approver_name: str, status: str, remarks:
         order = _format_order(row)
 
         if status == "Approved":
+            # Deduct pending stock quantities for items with selected heat numbers that were not yet allocated
+            for it in order["items"]:
+                is_local = bool(it.get("is_local")) or it.get("purchase_type") == "local_purchase" or (it.get("supplier_name") or "").strip().upper() == "LOCAL"
+                heat_no = (it.get("heat_number") or "").strip()
+                if is_local or not heat_no or heat_no.upper() in ("-", "N/A", "PENDING"):
+                    continue
+                req_qty = int(it.get("required_qty") or 0)
+                active_alloc = sum(
+                    int(a.get("allocated_qty") or 0)
+                    for a in order["allocations"]
+                    if (a.get("sales_order_item_id") == it["id"] or a.get("so_item_id") == it["id"])
+                    and a.get("allocation_status") != "Released"
+                )
+                needed = req_qty - active_alloc
+                if needed <= 0:
+                    continue
+                matching_lots = conn.execute(
+                    """
+                    SELECT l.*, b.id AS bal_id, b.reserved_qty, b.available_qty
+                    FROM stock_lots l
+                    JOIN stock_balances b ON b.stock_lot_id = l.id
+                    WHERE upper(trim(l.heat_number)) = ?
+                    ORDER BY l.stock_receipt_date ASC, COALESCE(l.yom, 2024) ASC, l.id ASC
+                    """,
+                    (heat_no.upper(),),
+                ).fetchall()
+                if not matching_lots:
+                    continue
+                total_avail = sum(int(l["available_qty"]) for l in matching_lots)
+                if total_avail < needed:
+                    return {
+                        "success": False,
+                        "message": f"Insufficient available stock in Heat {heat_no} on approval. Available: {total_avail}, Needed: {needed}.",
+                    }
+                rem_needed = needed
+                for lot_row in matching_lots:
+                    if rem_needed <= 0:
+                        break
+                    avail = int(lot_row["available_qty"])
+                    take = min(rem_needed, avail)
+                    new_avail = avail - take
+                    new_res = int(lot_row["reserved_qty"]) + take
+                    conn.execute(
+                        "UPDATE stock_balances SET reserved_qty=?, available_qty=?, updated_at=? WHERE id=?",
+                        (new_res, new_avail, now_iso(), lot_row["bal_id"]),
+                    )
+                    order["allocations"].append({
+                        "id": _uid("ALC"),
+                        "sales_order_item_id": it["id"],
+                        "sales_order_id": order["id"],
+                        "stock_lot_id": lot_row["id"],
+                        "heat_number": lot_row["heat_number"],
+                        "allocated_qty": take,
+                        "released_qty": 0,
+                        "dispatched_qty": 0,
+                        "allocation_status": "Allocated",
+                        "created_at": now_iso(),
+                        "updated_at": now_iso(),
+                    })
+                    conn.execute(
+                        """
+                        INSERT INTO stock_movements (id, stock_lot_id, item_code, heat_number, movement_type, quantity, reference_type, reference_id, previous_balance, new_balance, performed_by, timestamp, remarks)
+                        VALUES (?, ?, ?, ?, 'Reservation', ?, 'StorekeeperApproval', ?, ?, ?, ?, ?, ?)
+                        """,
+                        (_uid("MOV"), lot_row["id"], it["item_code"], lot_row["heat_number"], take, order["so_number"], avail, new_avail, approver_name, now_stamp(), f"Approved & deducted {take} PCS from Heat {lot_row['heat_number']} for {order['so_number']}"),
+                    )
+                    rem_needed -= take
+                it["allocated_qty"] = active_alloc + needed
+                it["line_status"] = "Allocated"
+
             order["status"] = "Approved"
             order["approved_by"] = approver_name
             order["store_remarks"] = remarks

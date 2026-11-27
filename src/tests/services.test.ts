@@ -5,6 +5,12 @@ import { getAuthToken, setAuthToken, clearAuthToken, apiGet, apiPost } from '../
 import { vetHeatNumber, vetSalesOrder, runFullStockAudit, processChatQuery } from '../services/aiAssistantEngine'
 import { parseMSGDescription, parseExcelBuffer } from '../services/excelEngine'
 import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin } from '../services/sourcingEngine'
+import {
+  encodeStaticAssetUrl,
+  isValidPdfBytes,
+  registerUploadedCertificate,
+  getUploadedCertificateBytes,
+} from '../services/certificateVault'
 
 describe('Frontend API & Token Client', () => {
   beforeEach(() => {
@@ -183,5 +189,22 @@ describe('DBService Full Operational Lifecycle & Backend Sync', () => {
 
     const chatReply = await processChatQuery('vet stock health')
     expect(chatReply.type).toBeDefined()
+  })
+
+  it('encodes # in certificate URLs and rejects HTML fallback bytes without %PDF header', () => {
+    const encoded = encodeStaticAssetUrl('/certificates/FULL COUPLING 0.5 INCH, 3000#, NPT.pdf')
+    expect(encoded).toContain('%23')
+    expect(encoded).not.toContain('#')
+
+    const htmlBytes = new TextEncoder().encode('<!doctype html><html><body>SPA</body></html>')
+    expect(isValidPdfBytes(htmlBytes)).toBe(false)
+    expect(registerUploadedCertificate('HT-HTML-BAD', htmlBytes, 'bad.pdf', 'HT-HTML-BAD')).toBe('')
+    expect(getUploadedCertificateBytes('HT-HTML-BAD')).toBeNull()
+
+    const pdfBytes = new TextEncoder().encode('%PDF-1.7\n1 0 obj\n<<>>\nendobj')
+    expect(isValidPdfBytes(pdfBytes)).toBe(true)
+    const blobUrl = registerUploadedCertificate('HT-PDF-GOOD', pdfBytes, 'good.pdf', 'HT-PDF-GOOD')
+    expect(blobUrl).toBeTruthy()
+    expect(getUploadedCertificateBytes('HT-PDF-GOOD')).toEqual(pdfBytes)
   })
 })

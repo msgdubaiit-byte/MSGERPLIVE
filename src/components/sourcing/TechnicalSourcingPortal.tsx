@@ -25,11 +25,22 @@ import {
   ShoppingCart,
   LayoutGrid,
   UploadCloud,
+  Maximize2,
+  Minimize2,
+  EyeOff,
+  Columns3,
+  ArrowLeftRight,
+  ArrowLeft,
+  ArrowRight,
+  ChevronUp,
+  RotateCcw,
+  Check,
 } from 'lucide-react'
 import { ExcelDeliverablesPreviewModal, SourcingPreviewTab } from './ExcelDeliverablesPreviewModal'
 import { LocalPurchaseAllocationModal } from './LocalPurchaseAllocationModal'
 import { InPagePurchaseOrderTab } from './InPagePurchaseOrderTab'
 import { InPageCertificateTab } from './InPageCertificateTab'
+import { InPageCIPLTab } from './InPageCIPLTab'
 import { HeatNumberCombobox } from './HeatNumberCombobox'
 import {
   SourcingWorksheetData,
@@ -49,6 +60,7 @@ import {
   generateStickerSummaryExcel,
   extractQtyNumber,
   extractTotalQtyNumber,
+  isItemAvailableInStock,
 } from '../../services/sourcingEngine'
 import {
   generateStickersPdf,
@@ -60,11 +72,56 @@ import { parseCustomerSOPDF } from '../../services/pdfEngine'
 import {
   registerUploadedCertificate,
   detectHeatNumberFromFilename,
+  getVaultManifest,
+  hasSelectedHeatNumber,
+  hasAvailableMtcForItem,
+  ManifestCertificate,
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
 import { SalesOrder } from '../../types'
 
-export type PortalActiveTab = 'worksheet' | 'purchase_order' | 'create_certificate'
+export type PortalActiveTab = 'worksheet' | 'purchase_order' | 'create_certificate' | 'create_cipl'
+
+export type WorksheetColumnKey =
+  | 'po_item'
+  | 'description'
+  | 'qty'
+  | 'packaging'
+  | 'heat_number'
+  | 'certificate_number'
+  | 'make'
+  | 'supplier_name'
+  | 'supplier_po_number'
+  | 'hs_code'
+  | 'coo'
+  | 'price'
+  | 'actions'
+
+interface WorksheetColumnDef {
+  key: WorksheetColumnKey
+  label: string
+  subLabel?: string
+  thClass: string
+}
+
+const WORKSHEET_COLUMN_DEFS: WorksheetColumnDef[] = [
+  { key: 'po_item', label: 'PO Item', thClass: 'w-20' },
+  { key: 'description', label: 'Description & Machining Spec', thClass: 'min-w-[260px]' },
+  { key: 'qty', label: 'Qty / UOM', thClass: 'w-24 text-center' },
+  { key: 'packaging', label: 'Packaging (CIPL)', subLabel: 'Pallet / Box / #', thClass: 'w-32 text-center' },
+  { key: 'heat_number', label: 'Heat Number', thClass: 'w-32' },
+  { key: 'certificate_number', label: 'MTC Cert Ref', thClass: 'w-32' },
+  { key: 'make', label: 'MAKE / Mfr', thClass: 'w-36' },
+  { key: 'supplier_name', label: 'Supplier Name', thClass: 'w-36' },
+  { key: 'supplier_po_number', label: 'Supplier PO #', subLabel: 'Stores / CIPL', thClass: 'w-36' },
+  { key: 'hs_code', label: 'HS Tariff', thClass: 'w-28' },
+  { key: 'coo', label: 'COO', thClass: 'w-24' },
+  { key: 'price', label: 'Price', thClass: 'w-24 text-right' },
+  { key: 'actions', label: 'Actions', thClass: 'w-20 text-center' },
+]
+
+const DEFAULT_COLUMN_ORDER: WorksheetColumnKey[] = WORKSHEET_COLUMN_DEFS.map(c => c.key)
+const COLUMN_DEF_MAP = new Map(WORKSHEET_COLUMN_DEFS.map(c => [c.key, c]))
 
 export const TechnicalSourcingPortal: React.FC = () => {
   // Database orders subscription
@@ -105,8 +162,114 @@ export const TechnicalSourcingPortal: React.FC = () => {
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
   const [isLocalPurchaseModalOpen, setIsLocalPurchaseModalOpen] = useState(false)
+  const [isSheetFullscreen, setIsSheetFullscreen] = useState(false)
   const [previewTab, setPreviewTab] = useState<SourcingPreviewTab>('client')
+
+  // Workspace Customization State (collapse panels, hide/reorder columns, flip toolbar L <-> R)
+  const [showMetadataPanel, setShowMetadataPanel] = useState<boolean>(() => {
+    try { return localStorage.getItem('msg_sourcing_show_metadata') !== 'false' } catch { return true }
+  })
+  const [showExportsPanel, setShowExportsPanel] = useState<boolean>(() => {
+    try { return localStorage.getItem('msg_sourcing_show_exports') !== 'false' } catch { return true }
+  })
+  const [toolbarFlipSide, setToolbarFlipSide] = useState<boolean>(() => {
+    try { return localStorage.getItem('msg_sourcing_toolbar_flip') === 'true' } catch { return false }
+  })
+  const [hiddenColumns, setHiddenColumns] = useState<WorksheetColumnKey[]>(() => {
+    try {
+      const raw = localStorage.getItem('msg_sourcing_hidden_cols')
+      const parsed = raw ? JSON.parse(raw) : []
+      return Array.isArray(parsed) ? parsed.filter(k => COLUMN_DEF_MAP.has(k)) : []
+    } catch {
+      return []
+    }
+  })
+  const [columnOrder, setColumnOrder] = useState<WorksheetColumnKey[]>(() => {
+    try {
+      const raw = localStorage.getItem('msg_sourcing_col_order')
+      const parsed = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter((k): k is WorksheetColumnKey => COLUMN_DEF_MAP.has(k))
+        const missing = DEFAULT_COLUMN_ORDER.filter(k => !valid.includes(k))
+        return [...valid, ...missing]
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_COLUMN_ORDER
+  })
+  const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false)
+  const columnsMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    try { localStorage.setItem('msg_sourcing_show_metadata', String(showMetadataPanel)) } catch {}
+  }, [showMetadataPanel])
+  useEffect(() => {
+    try { localStorage.setItem('msg_sourcing_show_exports', String(showExportsPanel)) } catch {}
+  }, [showExportsPanel])
+  useEffect(() => {
+    try { localStorage.setItem('msg_sourcing_toolbar_flip', String(toolbarFlipSide)) } catch {}
+  }, [toolbarFlipSide])
+  useEffect(() => {
+    try { localStorage.setItem('msg_sourcing_hidden_cols', JSON.stringify(hiddenColumns)) } catch {}
+  }, [hiddenColumns])
+  useEffect(() => {
+    try { localStorage.setItem('msg_sourcing_col_order', JSON.stringify(columnOrder)) } catch {}
+  }, [columnOrder])
+
+  useEffect(() => {
+    if (!isColumnsMenuOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(e.target as Node)) {
+        setIsColumnsMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [isColumnsMenuOpen])
+
+  const toggleColumnVisibility = (key: WorksheetColumnKey) => {
+    setHiddenColumns(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]))
+  }
+
+  const moveColumn = (key: WorksheetColumnKey, direction: -1 | 1) => {
+    setColumnOrder(prev => {
+      const idx = prev.indexOf(key)
+      const nextIdx = idx + direction
+      if (idx === -1 || nextIdx < 0 || nextIdx >= prev.length) return prev
+      const copy = [...prev]
+      ;[copy[idx], copy[nextIdx]] = [copy[nextIdx], copy[idx]]
+      return copy
+    })
+  }
+
+  const resetWorkspaceLayout = () => {
+    setShowMetadataPanel(true)
+    setShowExportsPanel(true)
+    setToolbarFlipSide(false)
+    setHiddenColumns([])
+    setColumnOrder(DEFAULT_COLUMN_ORDER)
+  }
+
+  const visibleColumns = columnOrder.filter(k => !hiddenColumns.includes(k))
+
+  useEffect(() => {
+    if (!isSheetFullscreen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSheetFullscreen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSheetFullscreen])
   const [draftsList, setDraftsList] = useState<SourcingWorksheetData[]>([])
+  const [vaultManifest, setVaultManifest] = useState<ManifestCertificate[]>([])
+  useEffect(() => {
+    getVaultManifest()
+      .then(list => {
+        if (Array.isArray(list)) setVaultManifest(list)
+      })
+      .catch(() => {})
+  }, [])
   const [selectedOrderId, setSelectedOrderId] = useState<string>(() => {
     const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
     return (saved && uniqueOrders.some(o => o.id === saved)) ? saved : (uniqueOrders[0]?.id || '')
@@ -135,16 +298,30 @@ export const TechnicalSourcingPortal: React.FC = () => {
     }
   }, [])
 
-  // Keep worksheet synced if the requested active Sales Order finishes syncing asynchronously after mount
+  // Keep worksheet synced when orders finish loading asynchronously or when active SO changes
   useEffect(() => {
     if (orders.length === 0) return
     const saved = db.getActiveOrderId() || localStorage.getItem('msg_sourcing_active_so_id')
     const savedSoNumber = localStorage.getItem('msg_sourcing_active_so_number')
     const target =
       (saved && orders.find(o => o.id === saved)) ||
-      (savedSoNumber && orders.find(o => o.so_number === savedSoNumber))
-    if (target && target.id !== selectedOrderId) {
-      handleLoadFromOrder(target.id)
+      (savedSoNumber && orders.find(o => o.so_number === savedSoNumber)) ||
+      (poNumber && orders.find(o => o.po_number === poNumber)) ||
+      (msgRef && orders.find(o => o.so_number === msgRef || (o as any).msg_ref === msgRef))
+
+    if (target) {
+      if (target.id !== selectedOrderId || items.length === 0) {
+        if (items.length === 0 || (selectedOrderId && selectedOrderId !== target.id)) {
+          handleLoadFromOrder(target.id)
+        } else {
+          // Bind matching dropdown id without overwriting an already-loaded worksheet
+          setSelectedOrderId(target.id)
+        }
+      }
+    } else if (!selectedOrderId || !orders.some(o => o.id === selectedOrderId)) {
+      if (items.length === 0) {
+        handleLoadFromOrder(orders[0].id, true)
+      }
     }
   }, [orders])
 
@@ -168,7 +345,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
 
   const handleConvertToPO = () => {
     if (selectedItemIds.size === 0 && items.length > 0) {
-      setSelectedItemIds(new Set(items.map(it => it.id)))
+      setSelectedItemIds(new Set(items.filter(it => !isItemInStock(it)).map(it => it.id)))
     }
     setActivePortalTab('purchase_order')
   }
@@ -199,6 +376,18 @@ export const TechnicalSourcingPortal: React.FC = () => {
     items,
     filter_machined_only: filterMachinedOnly,
   }
+
+  const storedFiles = db.getStoredFiles()
+  const dbMtcs = db.getMTCs()
+  const masterStock = db.getMasterStockView()
+  const hasItemMtc = (it?: SourcingLineItem | null) =>
+    hasAvailableMtcForItem(it, vaultManifest, storedFiles, dbMtcs)
+  const isItemInStock = (it?: SourcingLineItem | null) =>
+    Boolean(it && isItemAvailableInStock(it, masterStock))
+  const availableMtcCount = items.filter(it => hasItemMtc(it)).length
+  const selectedMtcCount = items.filter(it => selectedItemIds.has(it.id) && hasItemMtc(it)).length
+  const nonStockCount = items.filter(it => !isItemInStock(it)).length
+  const selectedNonStockCount = items.filter(it => selectedItemIds.has(it.id) && !isItemInStock(it)).length
 
   // Handle PDF Upload & Auto-Populate
   const handlePDFUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -283,7 +472,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
         setSelectedOrderId(createdRes.order.id)
         db.setActiveOrderId(createdRes.order.id)
         localStorage.setItem('msg_sourcing_active_so_id', createdRes.order.id)
-        
+
         // Map order's actual line IDs onto items so future updates target exact items
         const mappedItems: SourcingLineItem[] = newItems.map((it, idx) => {
           const matchedOrderItem = createdRes.order!.items[idx]
@@ -330,9 +519,11 @@ export const TechnicalSourcingPortal: React.FC = () => {
       const detectedMake = it.make || ''
       const detectedCOO = (it as any).country_of_origin || (it as any).countryOfOrigin || ''
       const detectedHS = it.hs_code || autoDetectHSCode(desc, it.item_code)
-      const unitWt = estimateUnitWeight(desc, it.uom)
-      const lineNet = Math.round(it.required_qty * unitWt * 100) / 100
-      const lineGross = Math.round(lineNet * 1.15 * 100) / 100
+      const recordedWt = db.getRecordedItemWeight(desc, it.item_code, it.heat_number)
+      const existingWt = Number((it as any).unit_weight_kg || 0)
+      const unitWt = existingWt > 0 ? existingWt : (recordedWt?.unit_weight_kg || estimateUnitWeight(desc, it.uom))
+      const lineNet = Number((it as any).total_net_weight_kg || 0) || Math.round(it.required_qty * unitWt * 100) / 100
+      const lineGross = Number((it as any).total_gross_weight_kg || 0) || Math.round(lineNet * 1.15 * 100) / 100
       const isMachined = isMeaningfulItem({ description: desc })
       const orderUnitPrice = Number((it as any).unit_price ?? (it as any).rate ?? (it as any).price ?? 0)
 
@@ -358,11 +549,103 @@ export const TechnicalSourcingPortal: React.FC = () => {
         total_gross_weight_kg: lineGross,
         package_no: (it as any).package_no || `PKG # ${Math.floor(idx / 3) + 1}`,
         is_machined: isMachined,
+        l_code: (it as any).l_code || '',
+        is_local: (it as any).is_local,
+        purchase_type: (it as any).purchase_type,
+        supplier_unit_price: (it as any).supplier_unit_price,
+        supplier_total_price: (it as any).supplier_total_price,
+        po_ordered_qty: (it as any).po_ordered_qty,
+        po_created: (it as any).po_created,
+        is_rejected: (it as any).is_rejected,
+        rejection_reason: (it as any).rejection_reason,
+        rejected_at: (it as any).rejected_at,
+        original_po_number: (it as any).original_po_number,
+        original_supplier_name: (it as any).original_supplier_name,
+        replacement_po_number: (it as any).replacement_po_number,
+        replacement_supplier_name: (it as any).replacement_supplier_name,
+        reordered: (it as any).reordered,
       }
     })
 
     setItems(newItems)
     setStatusNotice(`Loaded ${newItems.length} line items from order ${order.so_number}!`)
+  }
+
+  const syncItemsToOrder = (updatedList: SourcingLineItem[]) => {
+    if (!selectedOrderId) return
+    try {
+      db.updateSalesOrder({
+        id: selectedOrderId,
+        customer_name: clientName,
+        po_number: poNumber,
+        so_number: msgRef,
+        items: updatedList.map(it => ({
+          id: it.id,
+          position: it.sl_no,
+          client_po_item_no: it.client_po_item_no,
+          item_description: it.description,
+          heat_number: it.heat_number,
+          certificate_number: it.certificate_number,
+          make: it.make,
+          country_of_origin: it.country_of_origin,
+          required_qty: extractQtyNumber(it.qty),
+          unit_price: it.unit_price,
+          unit_weight_kg: it.unit_weight_kg,
+          total_net_weight_kg: it.total_net_weight_kg,
+          total_gross_weight_kg: it.total_gross_weight_kg,
+          uom: it.uom,
+          remarks: it.remarks,
+          supplier_name: it.supplier_name,
+          supplier_po_number: it.supplier_po_number,
+          package_type: it.package_type,
+          package_no: it.package_no,
+          hs_code: it.hs_code,
+          split_qty: (it as any).split_qty,
+          total_qty: (it as any).total_qty,
+          group_id: (it as any).group_id,
+          l_code: it.l_code,
+          is_local: it.is_local,
+          purchase_type: it.purchase_type,
+          supplier_unit_price: it.supplier_unit_price,
+          supplier_total_price: it.supplier_total_price,
+          po_ordered_qty: it.po_ordered_qty,
+          po_created: it.po_created,
+          is_rejected: it.is_rejected,
+          rejection_reason: it.rejection_reason,
+          rejected_at: it.rejected_at,
+          original_po_number: it.original_po_number,
+          original_supplier_name: it.original_supplier_name,
+          replacement_po_number: it.replacement_po_number,
+          replacement_supplier_name: it.replacement_supplier_name,
+          reordered: it.reordered,
+        }))
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleApplyHeatSelection = (
+    id: string,
+    heat: string,
+    meta?: { fileName?: string; isBenkan?: boolean; make?: string; countryOfOrigin?: string }
+  ) => {
+    const trimmedHeat = heat.trim()
+    setItems(prev => {
+      const updatedList = prev.map(it => {
+        if (it.id !== id) return it
+        const updated: SourcingLineItem = {
+          ...it,
+          heat_number: heat,
+          certificate_number: !trimmedHeat ? '' : (meta?.fileName || ''),
+          make: meta?.make || (meta?.isBenkan ? 'BENKAN THAILAND CORP' : it.make),
+          country_of_origin: meta?.countryOfOrigin || (meta?.isBenkan ? 'Thailand' : it.country_of_origin),
+        }
+        return updated
+      })
+      syncItemsToOrder(updatedList)
+      return updatedList
+    })
   }
 
   // Update item field
@@ -386,7 +669,9 @@ export const TechnicalSourcingPortal: React.FC = () => {
         }
         if (field === 'heat_number') {
           const heatVal = String(value || '').trim()
-          if (heatVal) {
+          if (!heatVal) {
+            updated.certificate_number = ''
+          } else {
             const combined = `${updated.description || ''} ${updated.remarks || ''}`
             // Auto-fill Certificate Number if empty
             if (!updated.certificate_number) {
@@ -411,42 +696,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
         return updated
       })
 
-      // Sync active item change back to DB Sales Order
-      if (selectedOrderId) {
-        try {
-          db.updateSalesOrder({
-            id: selectedOrderId,
-            customer_name: clientName,
-            po_number: poNumber,
-            so_number: msgRef,
-            items: updatedList.map(it => ({
-              id: it.id,
-              position: it.sl_no,
-              client_po_item_no: it.client_po_item_no,
-              item_description: it.description,
-              heat_number: it.heat_number,
-              certificate_number: it.certificate_number,
-              make: it.make,
-              country_of_origin: it.country_of_origin,
-              required_qty: extractQtyNumber(it.qty),
-              unit_price: it.unit_price,
-              uom: it.uom,
-              remarks: it.remarks,
-              supplier_name: it.supplier_name,
-              supplier_po_number: it.supplier_po_number,
-              package_type: it.package_type,
-              package_no: it.package_no,
-              hs_code: it.hs_code,
-              split_qty: (it as any).split_qty,
-              total_qty: (it as any).total_qty,
-              group_id: (it as any).group_id,
-            }))
-          })
-        } catch (e) {
-          // ignore
-        }
-      }
-
+      syncItemsToOrder(updatedList)
       return updatedList
     })
   }
@@ -532,6 +782,171 @@ export const TechnicalSourcingPortal: React.FC = () => {
     setStatusNotice(`Item #${parent.client_po_item_no || parent.sl_no} split into "${fmt1} OF ${fmtTotal}" and "${fmt2} OF ${fmtTotal}"!`)
   }
 
+  const isRowStockApplicable = (it?: SourcingLineItem | null) => {
+    if (!it) return false
+    const supp = (it.supplier_name || '').trim().toUpperCase()
+    if (it.is_local || it.purchase_type === 'local_purchase' || supp === 'LOCAL') return false
+    const heat = (it.heat_number || '').trim().toUpperCase()
+    const hasLotForHeat = Boolean(heat && masterStock.some(s => (s.heat_number || '').trim().toUpperCase() === heat))
+    return supp === 'STOCK' || hasLotForHeat || isItemInStock(it)
+  }
+
+  const activeOrder = uniqueOrders.find(o => o.id === selectedOrderId) || null
+
+  const getLineAppliedState = (it: SourcingLineItem) => {
+    const qtyNeeded = extractQtyNumber(it.qty)
+    const heatNorm = (it.heat_number || '').trim().toUpperCase()
+    const activeAllocs = (activeOrder?.allocations || []).filter(
+      a => (a.sales_order_item_id === it.id || (a as any).so_item_id === it.id) && a.allocation_status !== 'Released'
+    )
+    const appliedQty = activeAllocs.reduce((sum, a) => sum + Number(a.allocated_qty || 0), 0)
+    const appliedHeatMatches = activeAllocs.length > 0 && activeAllocs.every(a => (a.heat_number || '').trim().toUpperCase() === heatNorm)
+    const isAppliedExact = Boolean(heatNorm && appliedQty > 0 && appliedHeatMatches && Math.abs(appliedQty - qtyNeeded) < 1e-6)
+    const remainingAvail = heatNorm ? db.getAvailableStockQtyForHeat(it.heat_number) : 0
+    return { appliedQty, isAppliedExact, remainingAvail }
+  }
+
+  const ensureWorksheetOrderSynced = (): { orderId: string; idMap: Map<string, string> } | null => {
+    const idMap = new Map<string, string>()
+    const existing = selectedOrderId ? db.getOrders().find(o => o.id === selectedOrderId) : null
+    if (existing) {
+      db.updateSalesOrder({
+        id: existing.id,
+        customer_name: clientName || existing.customer_name,
+        po_number: poNumber || existing.po_number,
+        so_number: msgRef || existing.so_number,
+        items: items.map(it => ({
+          id: it.id,
+          position: it.sl_no,
+          client_po_item_no: it.client_po_item_no,
+          item_description: it.description,
+          heat_number: it.heat_number,
+          certificate_number: it.certificate_number,
+          make: it.make,
+          country_of_origin: it.country_of_origin,
+          required_qty: extractQtyNumber(it.qty),
+          unit_price: it.unit_price,
+          unit_weight_kg: it.unit_weight_kg,
+          total_net_weight_kg: it.total_net_weight_kg,
+          total_gross_weight_kg: it.total_gross_weight_kg,
+          uom: it.uom,
+          remarks: it.remarks,
+          supplier_name: it.supplier_name,
+          supplier_po_number: it.supplier_po_number,
+          package_type: it.package_type,
+          package_no: it.package_no,
+          hs_code: it.hs_code,
+          split_qty: (it as any).split_qty,
+          total_qty: (it as any).total_qty,
+          group_id: (it as any).group_id,
+          l_code: it.l_code,
+          is_local: it.is_local,
+          purchase_type: it.purchase_type,
+          supplier_unit_price: it.supplier_unit_price,
+          supplier_total_price: it.supplier_total_price,
+          po_ordered_qty: it.po_ordered_qty,
+          po_created: it.po_created,
+          is_rejected: it.is_rejected,
+          rejection_reason: it.rejection_reason,
+          rejected_at: it.rejected_at,
+          original_po_number: it.original_po_number,
+          original_supplier_name: it.original_supplier_name,
+          replacement_po_number: it.replacement_po_number,
+          replacement_supplier_name: it.replacement_supplier_name,
+          reordered: it.reordered,
+        }))
+      })
+      items.forEach(it => idMap.set(it.id, it.id))
+      return { orderId: existing.id, idMap }
+    }
+
+    const newSoNum = msgRef.trim() || `SO-2026-${db.getOrders().length + 116}`
+    const created = db.createSalesOrder({
+      customer_name: clientName.trim() || 'Valued Client',
+      po_number: poNumber.trim() || 'PO-NEW',
+      so_number: newSoNum,
+      required_delivery_date: new Date(Date.now() + 14 * 86400000).toISOString().substring(0, 10),
+      items: items.map(it => ({
+        item_code: (it as any).item_code || `ITEM-${it.sl_no}`,
+        item_description: it.description,
+        heat_number: it.heat_number,
+        required_qty: extractQtyNumber(it.qty),
+        client_po_item_no: it.client_po_item_no,
+        position: it.sl_no,
+        unit_price: it.unit_price,
+        uom: it.uom,
+        make: it.make,
+        country_of_origin: it.country_of_origin,
+        hs_code: it.hs_code,
+        package_no: it.package_no,
+        remarks: it.remarks,
+        supplier_name: it.supplier_name,
+        supplier_po_number: it.supplier_po_number,
+      })),
+      userEmail: 'sales@msgoilfield.ae'
+    })
+    if (!created.success || !created.order) {
+      alert('Failed to sync order before applying stock: ' + created.message)
+      return null
+    }
+    setSelectedOrderId(created.order.id)
+    db.setActiveOrderId(created.order.id)
+    localStorage.setItem('msg_sourcing_active_so_id', created.order.id)
+    const mappedItems = items.map((it, idx) => {
+      const canonicalId = created.order!.items[idx]?.id || it.id
+      idMap.set(it.id, canonicalId)
+      return { ...it, id: canonicalId }
+    })
+    setItems(mappedItems)
+    return { orderId: created.order.id, idMap }
+  }
+
+  const runApplyStockEntries = (targetRows: SourcingLineItem[]) => {
+    if (targetRows.length === 0) {
+      alert('No stock items with a selected Heat Number are queued to apply.')
+      return
+    }
+    const synced = ensureWorksheetOrderSynced()
+    if (!synced) return
+
+    const batchRes = db.applyWorksheetStockBatch(
+      synced.orderId,
+      targetRows.map(it => ({
+        lineId: synced.idMap.get(it.id) || it.id,
+        heatNumber: it.heat_number,
+        qty: extractQtyNumber(it.qty)
+      })),
+      'sales@msgoilfield.ae'
+    )
+
+    if (batchRes.errors.length > 0) {
+      alert(batchRes.errors.join('\n'))
+    }
+    if (batchRes.appliedCount > 0) {
+      setStatusNotice(
+        `Applied ${batchRes.appliedCount} stock item(s) and deducted quantities from backend inventory.`
+      )
+    } else if (batchRes.alreadyCount > 0 && batchRes.errors.length === 0) {
+      setStatusNotice(`Selected stock item(s) are already applied (${batchRes.alreadyCount}).`)
+    }
+  }
+
+  const handleApplySingleStockItem = (itemId: string) => {
+    const target = items.find(it => it.id === itemId)
+    if (!target) return
+    runApplyStockEntries([target])
+  }
+
+  const handleApplyBulkStockItems = () => {
+    const checkedStock = items.filter(it => selectedItemIds.has(it.id) && isRowStockApplicable(it) && hasSelectedHeatNumber(it.heat_number))
+    const fallbackStock = items.filter(it => isRowStockApplicable(it) && hasSelectedHeatNumber(it.heat_number) && !getLineAppliedState(it).isAppliedExact)
+    const targets = checkedStock.length > 0 ? checkedStock : fallbackStock
+    runApplyStockEntries(targets)
+  }
+
+  const applicableStockWithHeat = items.filter(it => isRowStockApplicable(it) && hasSelectedHeatNumber(it.heat_number))
+  const pendingApplyStockCount = applicableStockWithHeat.filter(it => !getLineAppliedState(it).isAppliedExact).length
+
   // Add blank item
   const handleAddItem = () => {
     const nextSl = items.length > 0 ? Math.max(...items.map(i => i.sl_no)) + 1 : 1
@@ -598,7 +1013,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
           const fmtCurr = Number.isInteger(curr) ? curr : Math.round(curr * 100) / 100
           s.qty = `${fmtCurr} OF ${fmtTotal}`
           s.split_qty = `${fmtCurr} OF ${fmtTotal}`
-          ;(s as any).total_qty = fmtTotal
+            ; (s as any).total_qty = fmtTotal
         })
       }
     }
@@ -768,7 +1183,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
     <div className="space-y-5">
       {/* Top Header Card */}
       <div className="bg-white p-5 rounded-lg shadow-xs border border-slate-200">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className={`flex flex-col lg:items-center justify-between gap-4 ${toolbarFlipSide ? 'lg:flex-row-reverse' : 'lg:flex-row'}`}>
           <div>
             <div className="flex items-center space-x-2.5 mb-1">
               <h1 className="text-lg font-semibold text-slate-900">
@@ -788,7 +1203,7 @@ export const TechnicalSourcingPortal: React.FC = () => {
             <div className="bg-slate-50 border border-slate-300 rounded-md px-3 py-1.5 flex items-center space-x-2">
               <span className="text-[11px] font-semibold text-slate-500 uppercase shrink-0">Active SO:</span>
               <select
-                value={selectedOrderId}
+                value={uniqueOrders.some(o => o.id === selectedOrderId) ? selectedOrderId : ''}
                 onChange={e => {
                   const newId = e.target.value
                   setSelectedOrderId(newId)
@@ -798,6 +1213,11 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 }}
                 className="bg-transparent text-slate-900 text-xs font-semibold focus:outline-none cursor-pointer max-w-[220px] truncate"
               >
+                {!uniqueOrders.some(o => o.id === selectedOrderId) && (
+                  <option value="" disabled>
+                    {uniqueOrders.length === 0 ? 'Loading orders...' : '-- Select Active SO --'}
+                  </option>
+                )}
                 {uniqueOrders.map(o => (
                   <option key={o.id} value={o.id}>
                     {o.so_number} - {o.po_number} ({o.customer_name})
@@ -859,8 +1279,24 @@ export const TechnicalSourcingPortal: React.FC = () => {
         )}
       </div>
 
-      {/* Header Metadata Controls */}
-      <div className="bg-white p-4 rounded-lg shadow-xs border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* Header Metadata Controls (Collapsible / Hideable) */}
+      {showMetadataPanel ? (
+      <div className="bg-white p-4 rounded-lg shadow-xs border border-slate-200 space-y-3">
+        <div className={`flex items-center justify-between gap-2 pb-2 border-b border-slate-100 ${toolbarFlipSide ? 'flex-row-reverse' : ''}`}>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Order Details &amp; Shipping Metadata
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowMetadataPanel(false)}
+            className="text-[11px] font-medium text-slate-500 hover:text-slate-800 px-2 py-0.5 rounded hover:bg-slate-100 flex items-center gap-1 cursor-pointer transition-colors"
+            title="Hide Order Details panel"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+            <span>Hide Panel</span>
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Client / Customer</label>
           <input
@@ -894,12 +1330,17 @@ export const TechnicalSourcingPortal: React.FC = () => {
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Loaded Sales Order</label>
           <select
-            value={selectedOrderId}
+            value={uniqueOrders.some(o => o.id === selectedOrderId) ? selectedOrderId : ''}
             onChange={e => {
               if (e.target.value) handleLoadFromOrder(e.target.value)
             }}
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800 bg-emerald-50/50 border-emerald-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           >
+            {!uniqueOrders.some(o => o.id === selectedOrderId) && (
+              <option value="" disabled>
+                {uniqueOrders.length === 0 ? 'Loading sales orders...' : '-- Select Sales Order --'}
+              </option>
+            )}
             {uniqueOrders.map(o => (
               <option key={o.id} value={o.id}>
                 {o.so_number} - {o.customer_name} ({o.items.length} items)
@@ -949,19 +1390,45 @@ export const TechnicalSourcingPortal: React.FC = () => {
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800"
           />
         </div>
+        </div>
       </div>
+      ) : null}
+
+      {/* Compact Restore Bar for Hidden Panels */}
+      {(!showMetadataPanel || !showExportsPanel) && (
+        <div className={`bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 flex flex-wrap items-center gap-2 text-xs ${toolbarFlipSide ? 'flex-row-reverse' : ''}`}>
+          <span className="text-[11px] font-semibold text-slate-500">Hidden Panels:</span>
+          {!showMetadataPanel && (
+            <button
+              type="button"
+              onClick={() => setShowMetadataPanel(true)}
+              className="px-2 py-0.5 rounded bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 font-medium text-[11px] cursor-pointer"
+            >
+              + Show Order Details
+            </button>
+          )}
+          {!showExportsPanel && (
+            <button
+              type="button"
+              onClick={() => setShowExportsPanel(true)}
+              className="px-2 py-0.5 rounded bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 font-medium text-[11px] cursor-pointer"
+            >
+              + Show Deliverables Toolbar
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Portal In-Page Tab Navigation Bar */}
-      <div className="bg-white p-2 rounded-lg shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div className={`bg-white p-2 rounded-lg shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-3 ${toolbarFlipSide ? 'flex-row-reverse' : ''}`}>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setActivePortalTab('worksheet')}
-            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
-              activePortalTab === 'worksheet'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${activePortalTab === 'worksheet'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
             <span>Sourcing Worksheet</span>
@@ -973,14 +1440,13 @@ export const TechnicalSourcingPortal: React.FC = () => {
           <button
             type="button"
             onClick={handleConvertToPO}
-            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
-              activePortalTab === 'purchase_order'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-            }`}
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${activePortalTab === 'purchase_order'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+              }`}
           >
             <ShoppingCart className="h-3.5 w-3.5" />
-            <span>Purchase Order / Local PO</span>
+            <span>Create Purchase Order</span>
             {selectedItemIds.size > 0 && (
               <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono px-1.5 py-0.5 rounded-full">
                 {selectedItemIds.size}
@@ -991,14 +1457,25 @@ export const TechnicalSourcingPortal: React.FC = () => {
           <button
             type="button"
             onClick={() => handleOpenCreateCertificate()}
-            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${
-              activePortalTab === 'create_certificate'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-            }`}
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${activePortalTab === 'create_certificate'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+              }`}
           >
             <FileCheck2 className="h-3.5 w-3.5" />
             <span>MTC Certificates</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('create_cipl')}
+            className={`px-3.5 py-2 rounded-md font-semibold text-xs flex items-center space-x-2 transition-colors cursor-pointer ${activePortalTab === 'create_cipl'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+              }`}
+          >
+            <Truck className="h-3.5 w-3.5" />
+            <span>Create CIPL</span>
           </button>
 
           <button
@@ -1021,16 +1498,20 @@ export const TechnicalSourcingPortal: React.FC = () => {
                 </span>
                 <button
                   type="button"
+                  disabled={selectedNonStockCount === 0}
                   onClick={handleConvertToPO}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
+                  title={selectedNonStockCount === 0 ? 'Selected items are available in stock — Local Purchase disabled' : 'Create Local Purchase Order for selected non-stock item(s)'}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
                 >
                   <ShoppingCart className="h-3 w-3" />
-                  <span>Convert to PO</span>
+                  <span>Create Purchase Order</span>
                 </button>
                 <button
                   type="button"
+                  disabled={selectedMtcCount === 0}
                   onClick={() => handleOpenCreateCertificate()}
-                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
+                  title={selectedMtcCount === 0 ? 'Select a Heat Number with an available MTC for selected item(s) first' : 'Open MTC Hub for selected item(s)'}
+                  className="bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed border border-slate-300 text-slate-700 font-semibold text-xs px-2.5 py-1 rounded flex items-center space-x-1 transition-colors cursor-pointer"
                 >
                   <FileCheck2 className="h-3 w-3" />
                   <span>MTC Hub</span>
@@ -1042,10 +1523,10 @@ export const TechnicalSourcingPortal: React.FC = () => {
                   type="button"
                   onClick={handleConvertToPO}
                   className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                  title="Create Purchase Order for lines"
+                  title="Create Purchase Order for L-Code and non-stock items"
                 >
                   <ShoppingCart className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Purchase Order</span>
+                  <span>Create Purchase Order</span>
                 </button>
                 <button
                   type="button"
@@ -1067,34 +1548,36 @@ export const TechnicalSourcingPortal: React.FC = () => {
         <InPagePurchaseOrderTab
           worksheetData={currentWorksheetData}
           selectedItemIds={selectedItemIds}
-          onApply={updatedItems => {
+          onApply={(updatedItems, stayInTab) => {
             setItems(updatedItems)
-            if (selectedOrderId) {
-              try {
-                db.updateSalesOrder({
-                  id: selectedOrderId,
-                  items: updatedItems.map(it => ({
-                    id: it.id,
-                    item_description: it.description,
-                    heat_number: it.heat_number,
-                    certificate_number: it.certificate_number,
-                    make: it.make,
-                    country_of_origin: it.country_of_origin,
-                    required_qty: extractQtyNumber(it.qty),
-                    unit_price: it.unit_price,
-                    remarks: it.remarks,
-                    supplier_name: it.supplier_name,
-                    supplier_po_number: it.supplier_po_number,
-                    package_type: it.package_type,
-                    package_no: it.package_no,
-                    hs_code: it.hs_code,
-                  }))
-                })
-              } catch (e) {
-                console.warn('Could not sync PO items to order:', e)
-              }
+            syncItemsToOrder(updatedItems)
+            setSelectedItemIds(prev => {
+              const orderedIds = new Set(updatedItems.filter(it => it.po_created).map(it => it.id))
+              const next = new Set<string>()
+              prev.forEach(id => {
+                if (!orderedIds.has(id)) next.add(id)
+              })
+              return next
+            })
+            if (!stayInTab) {
+              setActivePortalTab('worksheet')
             }
-            setActivePortalTab('worksheet')
+          }}
+          onBack={() => setActivePortalTab('worksheet')}
+          showToast={msg => setStatusNotice(msg)}
+        />
+      )}
+
+      {/* In-Page CIPL & Packing Labels Workbench */}
+      {activePortalTab === 'create_cipl' && (
+        <InPageCIPLTab
+          worksheetData={currentWorksheetData}
+          onApply={(updatedItems, stayInTab) => {
+            setItems(updatedItems)
+            syncItemsToOrder(updatedItems)
+            if (!stayInTab) {
+              setActivePortalTab('worksheet')
+            }
           }}
           onBack={() => setActivePortalTab('worksheet')}
           showToast={msg => setStatusNotice(msg)}
@@ -1145,7 +1628,6 @@ export const TechnicalSourcingPortal: React.FC = () => {
               }
               return next
             })
-            setActivePortalTab('worksheet')
           }}
           onBack={() => setActivePortalTab('worksheet')}
           showToast={msg => setStatusNotice(msg)}
@@ -1156,765 +1638,1007 @@ export const TechnicalSourcingPortal: React.FC = () => {
       {activePortalTab === 'worksheet' && (
         <>
 
-      {/* Action Export Buttons Banner */}
-      <div className="bg-white p-3.5 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleAutoDetectAll}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1.5 shadow-xs transition-colors"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Auto-Detect All (COO, HS, Wt)</span>
-          </button>
-
-          <label className="inline-flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer ml-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
-            <input
-              type="checkbox"
-              checked={filterMachinedOnly}
-              onChange={e => setFilterMachinedOnly(e.target.checked)}
-              className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-            />
-            <span>Filter Machined / Fab Items Only</span>
-          </label>
-        </div>
-
-        {/* Deliverable Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* 1. Client Summary: Opens Preview & Download Modal */}
-          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
-            <button
-              onClick={() => handleOpenPreview('client')}
-              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open Client Summary Preview & Download Modal"
-            >
-              <Eye className="h-3.5 w-3.5 text-slate-500" />
-              <span>Client Summary</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  await generateClientSummaryExcel(currentWorksheetData, filterMachinedOnly)
-                  setStatusNotice('Client Summary (.xlsx) downloaded successfully!')
-                } catch (err: any) {
-                  alert('Error exporting Client Summary: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
-              title="Direct 1-Click Instant Download (.xlsx)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* 2. Stores Internal Excel: Opens Preview & Download Modal */}
-          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
-            <button
-              onClick={() => handleOpenPreview('stores')}
-              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open Stores Sheet Preview & Download Modal"
-            >
-              <Eye className="h-3.5 w-3.5 text-slate-500" />
-              <span>Stores Sheet</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  await generateStoresSummaryExcel(currentWorksheetData, filterMachinedOnly)
-                  setStatusNotice('Stores Summary (.xlsx) downloaded successfully!')
-                } catch (err: any) {
-                  alert('Error exporting Stores Summary: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
-              title="Direct 1-Click Instant Download (.xlsx)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Local Purchase Sheet */}
-          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
-            <button
-              onClick={() => setIsLocalPurchaseModalOpen(true)}
-              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open Local Purchase Modal (Select Local Supplier, Items & PCS)"
-            >
-              <Wrench className="h-3.5 w-3.5 text-slate-500" />
-              <span>Local Purchase</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  const localItems = currentWorksheetData.items.filter(it => isMeaningfulItem({ description: it.description, remarks: it.remarks }) || (it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK'))
-                  const targetItems = localItems.length > 0 ? localItems : currentWorksheetData.items
-                  await generateStoresSummaryExcel({ ...currentWorksheetData, items: targetItems }, false)
-                  setStatusNotice(`Exported ${targetItems.length} Local Purchase item(s) to separate Excel!`)
-                } catch (err: any) {
-                  alert('Error exporting Local Purchase sheet: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
-              title="Direct 1-Click Instant Download (.xlsx)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* 3. Sticker Summary Sheet */}
-          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
-            <button
-              onClick={() => handleOpenPreview('summary')}
-              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open Sticker Summary Preview & Download Modal"
-            >
-              <Eye className="h-3.5 w-3.5 text-slate-500" />
-              <span>Sticker Summary</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  await generateStickerSummaryExcel(currentWorksheetData)
-                  setStatusNotice('Sticker Summary Sheet (.xlsx) downloaded successfully!')
-                } catch (err: any) {
-                  alert('Error exporting Sticker Summary Sheet: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
-              title="Direct 1-Click Instant Download (.xlsx)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* 4. CIPL Logistics */}
-          <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
-            <button
-              onClick={() => handleOpenPreview('cipl_invoice')}
-              className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open CIPL Logistics Builder & Preview Modal"
-            >
-              <Eye className="h-3.5 w-3.5 text-slate-500" />
-              <span>CIPL (.xlsx)</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  await generateCIPLLogisticExcel(currentWorksheetData)
-                  setStatusNotice('CIPL Logistics (.xlsx) downloaded successfully!')
-                } catch (err: any) {
-                  alert('Error exporting CIPL: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
-              title="Direct 1-Click Instant Download (.xlsx)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* 5. Supplier POs ZIP Package */}
-          <button
-            onClick={async () => {
-              setIsExporting(true)
-              try {
-                await generateSupplierPOZip(currentWorksheetData)
-                setStatusNotice('Supplier Purchase Orders package (.zip) generated and downloaded!')
-              } catch (err: any) {
-                alert('Error generating Supplier PO package: ' + err.message)
-              } finally {
-                setIsExporting(false)
-              }
-            }}
-            disabled={isExporting}
-            className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors"
-            title="Generate & download official Supplier PO PDFs in ZIP bundle"
-          >
-            <Archive className="h-3.5 w-3.5 text-slate-500" />
-            <span>{isExporting ? 'Generating ZIP...' : 'Supplier POs (.zip)'}</span>
-          </button>
-
-          {/* 6. Exact 58mm x 39mm Item Stickers PDF */}
-          <button
-            onClick={async () => {
-              setIsExporting(true)
-              try {
-                const stickerItems: StickerItem[] = currentWorksheetData.items.map((it, idx) => ({
-                  sl_no: it.sl_no || (idx + 1),
-                  client_po_item_no: it.client_po_item_no || String(it.sl_no || idx + 1),
-                  description: it.description || '',
-                  po_qty: it.qty || 0,
-                  uom: it.uom || 'Ea',
-                  heat_number: it.heat_number || '-',
-                  certificate_number: it.certificate_number || '-',
-                  make: it.make || 'DELCORTE, FRANCE',
-                  supplier: it.supplier_name || 'MSG OILFIELD STORES',
-                  remarks: it.remarks || 'LOCATION-1',
-                  loc: it.remarks || 'LOCATION-1',
-                  po_number: currentWorksheetData.po_number || poNumber,
-                  client_name: currentWorksheetData.client || clientName,
-                }))
-                const pdfBytes = await generateStickersPdf({
-                  client_name: currentWorksheetData.client || clientName,
-                  po_number: currentWorksheetData.po_number || poNumber,
-                  msg_ref: currentWorksheetData.msg_ref || msgRef,
-                  items: stickerItems,
-                })
-                const safeName = (poNumber || 'so').replace(/[^a-zA-Z0-9]/g, '_')
-                downloadStickerPdfBlob(pdfBytes, `stickers_${safeName}_final.pdf`)
-                setStatusNotice('Material Item Stickers (58mm × 39mm) PDF exported successfully matching exact layout!')
-              } catch (err: any) {
-                alert('Error generating Material Stickers: ' + err.message)
-              } finally {
-                setIsExporting(false)
-              }
-            }}
-            disabled={isExporting}
-            className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors"
-            title="Generate & download exact 58mm x 39mm Item Stickers PDF with QR code"
-          >
-            <Tag className="h-4 w-4" />
-            <span>Item Stickers (.pdf)</span>
-          </button>
-
-          {/* 7. MTC Certificates Package */}
-          <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-indigo-800">
-            <button
-              onClick={() => handleOpenCreateCertificate()}
-              className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Open MTC Hub to preview, attach and download stamped certificates"
-            >
-              <FileCheck2 className="h-4 w-4" />
-              <span>MTC Package</span>
-            </button>
-            <button
-              onClick={async () => {
-                setIsExporting(true)
-                try {
-                  const { PDFDocument } = await import('pdf-lib')
-                  const { stampMTCDocument, createSampleMillCertificate, downloadPDFBlob } = await import('../../services/pdfEngine')
-                  const { getAuthenticCertificateBytes } = await import('../../services/zipExtractor')
-                  const mergedPdf = await PDFDocument.create()
-                  let count = 0
-                  for (const it of currentWorksheetData.items) {
-                    const auth = await getAuthenticCertificateBytes(it.certificate_number, it.heat_number, it.description)
-                    if (!auth) continue
-                    const bytes = auth.bytes
-
-                    const stamped = await stampMTCDocument(bytes, {
-                      poNo: currentWorksheetData.po_number || 'PO-MSG',
-                      itemNo: it.client_po_item_no || String(it.sl_no),
-                      qty: `${it.qty} ${it.uom}`,
-                      sign: 'Alex Turner / MSG QA-04',
-                      dateStr: new Date().toISOString().substring(0, 10),
-                    }, true)
-                    const docToMerge = await PDFDocument.load(stamped)
-                    const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
-                    pages.forEach(p => mergedPdf.addPage(p))
-                    count++
-                  }
-
-                  if (count === 0) {
-                    alert('No authentic certificates attached to items. Please upload or link authentic MTCs from the bulk ZIP vault.')
-                    return
-                  }
-
-                  const mergedBytes = await mergedPdf.save()
-                  const pkgName = `${(currentWorksheetData.po_number || 'PO').replace(/[^a-zA-Z0-9_-]/g, '_')}_Complete_MTC_Package.pdf`
-                  downloadPDFBlob(mergedBytes, pkgName)
-                  setStatusNotice(`Downloaded complete authentic MTC Certificates Package (${count} items) into ${pkgName}!`)
-                } catch (err: any) {
-                  alert('Error downloading MTC package: ' + err.message)
-                } finally {
-                  setIsExporting(false)
-                }
-              }}
-              disabled={isExporting}
-              className="bg-indigo-800 hover:bg-indigo-900 text-indigo-100 hover:text-white px-2.5 py-2 border-l border-indigo-600/70 transition-colors cursor-pointer"
-              title="1-Click Direct Download Complete Stamped MTC Package (.pdf)"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive Line Items Grid */}
-      <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <div className="flex items-center space-x-2">
-            <h2 className="font-semibold text-sm text-slate-900">
-              Sourcing &amp; Allocation Worksheet
-            </h2>
-            <span className="text-[11px] bg-slate-100 border border-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full tabular-nums">
-              {items.length} lines
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-2 text-xs flex-wrap gap-y-2">
-            <span className="text-slate-600 tabular-nums">
-              Total: <strong className="text-slate-900">{currency} {totalAmount.toLocaleString()}</strong>
-            </span>
-            <span className="text-slate-300">|</span>
-            <span className="text-slate-600 tabular-nums">
-              Net Wt: <strong className="text-slate-900">{Math.round(totalNetWt * 100) / 100} kg</strong>
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5 pl-2 border-l border-slate-200">
+          {/* Action Export Buttons Banner (Hideable & Flippable) */}
+          {showExportsPanel && (
+          <div className={`bg-white p-3.5 rounded-lg border border-slate-200 flex flex-col items-center justify-between gap-3 ${toolbarFlipSide ? 'md:flex-row-reverse' : 'md:flex-row'}`}>
+            <div className="flex items-center space-x-2">
               <button
-                type="button"
-                onClick={handleConvertToPO}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Convert selected items into a Purchase Order"
+                onClick={handleAutoDetectAll}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1.5 shadow-xs transition-colors"
               >
-                <ShoppingCart className="h-3 w-3 text-slate-500" />
-                <span>Purchase Order</span>
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Auto-Detect All (COO, HS, Wt)</span>
               </button>
+
+              <label className="inline-flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer ml-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={filterMachinedOnly}
+                  onChange={e => setFilterMachinedOnly(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                />
+                <span>Filter Machined / Fab Items Only</span>
+              </label>
+
               <button
                 type="button"
-                onClick={() => handleOpenCreateCertificate()}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Create EN 10204 3.1 Mill Certificate"
+                onClick={() => setShowExportsPanel(false)}
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Hide Deliverables Toolbar panel"
+                aria-label="Hide Deliverables Toolbar panel"
               >
-                <FileCheck2 className="h-3 w-3 text-slate-500" />
-                <span>Create Cert</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const val = prompt('Enter Supplier PO Number to apply to all items:', '')
-                  if (val && val.trim()) {
-                    const trimmed = val.trim()
-                    setItems(prev => prev.map(item => ({ ...item, supplier_po_number: trimmed })))
-                    setStatusNotice(`Applied Supplier PO #${trimmed} to all items!`)
-                  }
-                }}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Bulk apply Supplier PO to all items outside"
-              >
-                <Plus className="h-3 w-3 text-slate-500" />
-                <span>Supplier PO</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsLocalPurchaseModalOpen(true)}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Select Local Supplier, which items and how many PCS"
-              >
-                <Wrench className="h-3 w-3 text-slate-500" />
-                <span>Local Purchase</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenPreview('cipl_invoice')}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Open CIPL Builder & Preview"
-              >
-                <Eye className="h-3 w-3 text-slate-500" />
-                <span>CIPL Builder</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setItems(prev => prev.map(item => ({ ...item, package_type: 'Pallet' })))
-                  setStatusNotice('Set packaging to Pallet for all items!')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors cursor-pointer"
-                title="Set All Pallet"
-              >
-                All Pallet
+                <EyeOff className="h-3.5 w-3.5" />
               </button>
             </div>
-            <button
-              onClick={handleAddItem}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add Item</span>
-            </button>
-          </div>
-        </div>
 
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
-              <tr>
-                <th className="p-2.5 w-10 text-center">
-                  <input
-                    type="checkbox"
-                    checked={items.length > 0 && items.every(it => selectedItemIds.has(it.id))}
-                    onChange={e => toggleSelectAll(e.target.checked)}
-                    className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
-                    title="Select all items"
-                  />
-                </th>
-                <th className="p-2.5 w-12 text-center">SL</th>
-                <th className="p-2.5 w-20">PO Item</th>
-                <th className="p-2.5 min-w-[260px]">Description &amp; Machining Spec</th>
-                <th className="p-2.5 w-24 text-center">Qty / UOM</th>
-                <th className="p-2.5 w-32 text-center">
-                  Packaging (CIPL)
-                  <span className="block text-[9px] text-slate-400 font-normal normal-case">Pallet / Box / #</span>
-                </th>
-                <th className="p-2.5 w-32">Heat Number</th>
-                <th className="p-2.5 w-32">MTC Cert Ref</th>
-                <th className="p-2.5 w-36">MAKE / Mfr</th>
-                <th className="p-2.5 w-36">Supplier Name</th>
-                <th className="p-2.5 w-36">
-                  Supplier PO #
-                  <span className="block text-[9px] text-slate-400 font-normal normal-case">Stores / CIPL</span>
-                </th>
-                <th className="p-2.5 w-28">HS Tariff</th>
-                <th className="p-2.5 w-24">COO</th>
-                <th className="p-2.5 w-24 text-right">Price ({currency})</th>
-                <th className="p-2.5 w-20 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.map((it, idx) => (
-                <tr
-                  key={it.id}
-                  className={`hover:bg-slate-50/70 transition-colors ${
-                    selectedItemIds.has(it.id) ? 'bg-amber-50/30' : ''
-                  } ${
-                    it.is_machined ? 'bg-amber-50/40' : ''
-                  }`}
+            {/* Deliverable Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* 1. Client Summary: Opens Preview & Download Modal */}
+              <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
+                <button
+                  onClick={() => handleOpenPreview('client')}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open Client Summary Preview & Download Modal"
                 >
-                  {/* Select Checkbox & Local PO Button */}
-                  <td className="p-2.5 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedItemIds.has(it.id)}
-                      onChange={() => toggleSelectItem(it.id)}
-                      className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
-                      title="Select for Purchase Order / Local PO"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newSet = new Set(selectedItemIds)
-                        newSet.add(it.id)
-                        setSelectedItemIds(newSet)
-                        setActivePortalTab('purchase_order')
-                      }}
-                      className="mt-1 block mx-auto text-[9px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                      title="Select this item and open Purchase Order tab"
-                    >
-                      PO
-                    </button>
-                  </td>
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Client Summary</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      await generateClientSummaryExcel(currentWorksheetData, filterMachinedOnly)
+                      setStatusNotice('Client Summary (.xlsx) downloaded successfully!')
+                    } catch (err: any) {
+                      alert('Error exporting Client Summary: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
+                  title="Direct 1-Click Instant Download (.xlsx)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-                  {/* SL NO */}
-                  <td className="p-2.5 text-center font-bold text-slate-700">
-                    {it.sl_no}
-                  </td>
+              {/* 2. Stores Internal Excel: Opens Preview & Download Modal */}
+              <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
+                <button
+                  onClick={() => handleOpenPreview('stores')}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open Stores Sheet Preview & Download Modal"
+                >
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Stores Sheet</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      await generateStoresSummaryExcel(currentWorksheetData, filterMachinedOnly)
+                      setStatusNotice('Stores Summary (.xlsx) downloaded successfully!')
+                    } catch (err: any) {
+                      alert('Error exporting Stores Summary: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
+                  title="Direct 1-Click Instant Download (.xlsx)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-                  {/* Client PO Item No */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      value={it.client_po_item_no}
-                      onChange={e => handleUpdateItem(it.id, 'client_po_item_no', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 text-center font-mono text-xs"
-                    />
-                  </td>
+              {/* Local Purchase Sheet */}
+              <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
+                <button
+                  disabled={nonStockCount === 0}
+                  onClick={() => setIsLocalPurchaseModalOpen(true)}
+                  className="bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title={nonStockCount === 0 ? 'All items are available in stock — Local Purchase disabled' : 'Open Local Purchase Modal (Select Local Supplier, Non-Stock Items & L-Codes)'}
+                >
+                  <Wrench className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Local Purchase</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      const localItems = currentWorksheetData.items.filter(it => isMeaningfulItem({ description: it.description, remarks: it.remarks }) || (it.supplier_name && it.supplier_name.toUpperCase() !== 'STOCK'))
+                      const targetItems = localItems.length > 0 ? localItems : currentWorksheetData.items
+                      await generateStoresSummaryExcel({ ...currentWorksheetData, items: targetItems }, false)
+                      setStatusNotice(`Exported ${targetItems.length} Local Purchase item(s) to separate Excel!`)
+                    } catch (err: any) {
+                      alert('Error exporting Local Purchase sheet: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
+                  title="Direct 1-Click Instant Download (.xlsx)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-                  {/* Description */}
-                  <td className="p-2.5">
-                    <textarea
-                      rows={2}
-                      value={it.description}
-                      onChange={e => handleUpdateItem(it.id, 'description', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 leading-snug resize-y"
-                    />
-                    {it.is_machined && (
-                      <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                        ⚙️ Machining Required
-                      </span>
-                    )}
-                  </td>
+              {/* 3. Sticker Summary Sheet */}
+              <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
+                <button
+                  onClick={() => handleOpenPreview('summary')}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open Sticker Summary Preview & Download Modal"
+                >
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Sticker Summary</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      await generateStickerSummaryExcel(currentWorksheetData)
+                      setStatusNotice('Sticker Summary Sheet (.xlsx) downloaded successfully!')
+                    } catch (err: any) {
+                      alert('Error exporting Sticker Summary Sheet: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
+                  title="Direct 1-Click Instant Download (.xlsx)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-                  {/* Qty & UOM */}
-                  <td className="p-2.5 text-center">
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        min="1"
-                        value={it.qty}
-                        onChange={e => handleUpdateItem(it.id, 'qty', Number(e.target.value))}
-                        className="w-14 border border-slate-200 rounded px-1 py-1 text-center font-bold text-xs"
-                      />
-                      <input
-                        type="text"
-                        value={it.uom}
-                        onChange={e => handleUpdateItem(it.id, 'uom', e.target.value)}
-                        className="w-10 border border-slate-200 rounded px-1 py-1 text-center text-[10px] uppercase font-mono"
-                      />
-                    </div>
-                  </td>
+              {/* 4. CIPL Logistics */}
+              <div className="inline-flex rounded-md overflow-hidden border border-slate-300">
+                <button
+                  onClick={() => handleOpenPreview('cipl_invoice')}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs px-3 py-1.5 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open CIPL Logistics Builder & Preview Modal"
+                >
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>CIPL (.xlsx)</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      await generateCIPLLogisticExcel(currentWorksheetData)
+                      setStatusNotice('CIPL Logistics (.xlsx) downloaded successfully!')
+                    } catch (err: any) {
+                      alert('Error exporting CIPL: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 border-l border-slate-300 transition-colors cursor-pointer"
+                  title="Direct 1-Click Instant Download (.xlsx)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-                  {/* Packaging (CIPL) */}
-                  <td className="p-2.5 bg-sky-50/20">
-                    <div className="flex items-center space-x-1">
-                      <select
-                        value={it.package_type || 'Pallet'}
-                        onChange={e => handleUpdateItem(it.id, 'package_type', e.target.value)}
-                        className="border border-sky-200 rounded px-1 py-1 text-xs bg-white text-slate-800"
-                      >
-                        <option value="Pallet">Pallet</option>
-                        <option value="Box">Box</option>
-                        <option value="Crate">Crate</option>
-                        <option value="Wooden Box">W.Box</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={it.package_no ? it.package_no.replace(/\D/g, '') || '1' : '1'}
-                        onChange={e => handleUpdateItem(it.id, 'package_no', `PKG # ${e.target.value || '1'}`)}
-                        className="w-9 border border-sky-200 rounded px-1 py-1 text-center font-mono text-xs bg-white"
-                        placeholder="1"
-                        title="Package number"
-                      />
-                    </div>
-                  </td>
+              {/* 5. Supplier POs ZIP Package */}
+              <button
+                onClick={async () => {
+                  setIsExporting(true)
+                  try {
+                    await generateSupplierPOZip(currentWorksheetData)
+                    setStatusNotice('Supplier Purchase Orders package (.zip) generated and downloaded!')
+                  } catch (err: any) {
+                    alert('Error generating Supplier PO package: ' + err.message)
+                  } finally {
+                    setIsExporting(false)
+                  }
+                }}
+                disabled={isExporting}
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors"
+                title="Generate & download official Supplier PO PDFs in ZIP bundle"
+              >
+                <Archive className="h-3.5 w-3.5 text-slate-500" />
+                <span>{isExporting ? 'Generating ZIP...' : 'Supplier POs (.zip)'}</span>
+              </button>
 
-                  {/* Heat Number */}
-                  <td className="p-2.5 min-w-[150px]">
-                    <HeatNumberCombobox
-                      value={it.heat_number}
-                      description={it.description}
-                      extraLots={db.getLots()}
-                      onChange={(heat, meta) => {
-                        handleUpdateItem(it.id, 'heat_number', heat)
-                        if (meta?.fileName) {
-                          handleUpdateItem(it.id, 'certificate_number', meta.fileName)
+              {/* 6. Exact 58mm x 39mm Item Stickers PDF */}
+              <button
+                onClick={async () => {
+                  setIsExporting(true)
+                  try {
+                    const stickerItems: StickerItem[] = currentWorksheetData.items.map((it, idx) => ({
+                      sl_no: it.sl_no || (idx + 1),
+                      client_po_item_no: it.client_po_item_no || String(it.sl_no || idx + 1),
+                      description: it.description || '',
+                      po_qty: it.qty || 0,
+                      uom: it.uom || 'Ea',
+                      heat_number: it.heat_number || '-',
+                      certificate_number: it.certificate_number || '-',
+                      make: it.make || 'DELCORTE, FRANCE',
+                      supplier: it.supplier_name || 'MSG OILFIELD STORES',
+                      remarks: it.remarks || 'LOCATION-1',
+                      loc: it.remarks || 'LOCATION-1',
+                      po_number: currentWorksheetData.po_number || poNumber,
+                      client_name: currentWorksheetData.client || clientName,
+                    }))
+                    const pdfBytes = await generateStickersPdf({
+                      client_name: currentWorksheetData.client || clientName,
+                      po_number: currentWorksheetData.po_number || poNumber,
+                      msg_ref: currentWorksheetData.msg_ref || msgRef,
+                      items: stickerItems,
+                    })
+                    const safeName = (poNumber || 'so').replace(/[^a-zA-Z0-9]/g, '_')
+                    downloadStickerPdfBlob(pdfBytes, `stickers_${safeName}_final.pdf`)
+                    setStatusNotice('Material Item Stickers (58mm × 39mm) PDF exported successfully matching exact layout!')
+                  } catch (err: any) {
+                    alert('Error generating Material Stickers: ' + err.message)
+                  } finally {
+                    setIsExporting(false)
+                  }
+                }}
+                disabled={isExporting}
+                className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center space-x-1.5 shadow-sm transition-colors"
+                title="Generate & download exact 58mm x 39mm Item Stickers PDF with QR code"
+              >
+                <Tag className="h-4 w-4" />
+                <span>Item Stickers (.pdf)</span>
+              </button>
+
+              {/* 7. MTC Certificates Package */}
+              <div className="inline-flex rounded-lg shadow-sm overflow-hidden border border-indigo-800">
+                <button
+                  onClick={() => handleOpenCreateCertificate()}
+                  className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open MTC Hub to preview, attach and download stamped certificates"
+                >
+                  <FileCheck2 className="h-4 w-4" />
+                  <span>MTC Package</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      const { PDFDocument } = await import('pdf-lib')
+                      const { stampMTCDocument, downloadPDFBlob } = await import('../../services/pdfEngine')
+                      const { getAuthenticCertificateBytes, resolveBackendMtcBytes, isValidPdfBytes } = await import('../../services/zipExtractor')
+                      const mergedPdf = await PDFDocument.create()
+                      let count = 0
+                      for (const it of currentWorksheetData.items) {
+                        const heat = (it.heat_number || '').trim()
+                        if (!heat || heat === '-' || heat.toUpperCase() === 'N/A') continue
+                        const auth = await getAuthenticCertificateBytes(it.certificate_number, heat)
+                        const bytes = auth?.bytes || await resolveBackendMtcBytes(it.certificate_number, heat)
+                        if (!bytes || !isValidPdfBytes(bytes)) continue
+
+                        try {
+                          const stamped = await stampMTCDocument(bytes, {
+                            poNo: currentWorksheetData.po_number || 'PO-MSG',
+                            itemNo: it.client_po_item_no || String(it.sl_no),
+                            qty: `${it.qty} ${it.uom}`,
+                            sign: 'Alex Turner / MSG QA-04',
+                            dateStr: new Date().toISOString().substring(0, 10),
+                          }, true)
+                          const docToMerge = await PDFDocument.load(stamped)
+                          const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
+                          pages.forEach(p => mergedPdf.addPage(p))
+                          count++
+                        } catch (itemErr) {
+                          console.warn('Skipping unreadable MTC in package export:', it.heat_number || it.certificate_number, itemErr)
                         }
-                      }}
-                    />
-                  </td>
+                      }
 
-                  {/* Certificate Number */}
-                  <td className="p-2.5">
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="text"
-                        placeholder="MTC-REF"
-                        value={it.certificate_number}
-                        onChange={e => handleUpdateItem(it.id, 'certificate_number', e.target.value)}
-                        className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-600"
-                      />
+                      if (count === 0) {
+                        alert('No authentic certificates attached to items. Please upload or link authentic MTCs from the bulk ZIP vault.')
+                        return
+                      }
+
+                      const mergedBytes = await mergedPdf.save()
+                      const pkgName = `${(currentWorksheetData.po_number || 'PO').replace(/[^a-zA-Z0-9_-]/g, '_')}_Complete_MTC_Package.pdf`
+                      downloadPDFBlob(mergedBytes, pkgName)
+                      setStatusNotice(`Downloaded complete authentic MTC Certificates Package (${count} items) into ${pkgName}!`)
+                    } catch (err: any) {
+                      alert('Error downloading MTC package: ' + err.message)
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  disabled={isExporting || availableMtcCount === 0}
+                  className="bg-indigo-800 hover:bg-indigo-900 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-indigo-100 hover:text-white px-2.5 py-2 border-l border-indigo-600/70 transition-colors cursor-pointer"
+                  title={availableMtcCount === 0 ? 'Select a Heat Number with an available MTC first' : '1-Click Direct Download Complete Stamped MTC Package (.pdf)'}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          )}
+
+          {/* Interactive Line Items Grid */}
+          <div className={isSheetFullscreen ? 'fixed inset-0 z-[45] bg-white flex flex-col overflow-hidden' : 'bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden'}>
+                <div className={`px-4 py-3 bg-white border-b border-slate-200 flex flex-col justify-between items-start sm:items-center gap-2 shrink-0 ${toolbarFlipSide ? 'sm:flex-row-reverse' : 'sm:flex-row'}`}>
+                  <div className="flex items-center space-x-2">
+                    <h2 className="font-semibold text-sm text-slate-900">
+                      Sourcing &amp; Allocation Worksheet
+                    </h2>
+                    <span className="text-[11px] bg-slate-100 border border-slate-200 text-slate-700 font-mono px-2 py-0.5 rounded-full tabular-nums">
+                      {items.length} lines
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2 text-xs flex-wrap gap-y-2">
+                    <span className="text-slate-600 tabular-nums">
+                      Total: <strong className="text-slate-900">{currency} {totalAmount.toLocaleString()}</strong>
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-600 tabular-nums">
+                      Net Wt: <strong className="text-slate-900">{Math.round(totalNetWt * 100) / 100} kg</strong>
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 pl-2 border-l border-slate-200">
                       <button
                         type="button"
-                        onClick={() => handleOpenCreateCertificate(it.id)}
-                        className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 transition-colors cursor-pointer shrink-0"
-                        title="View, Preview & Download MTC Certificate"
+                        onClick={handleApplyBulkStockItems}
+                        disabled={applicableStockWithHeat.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title={
+                          applicableStockWithHeat.length === 0
+                            ? 'Select a Heat Number on one or more stock items first'
+                            : 'Deduct selected stock item quantities from backend heat inventory'
+                        }
+                        aria-label="Apply Stock Items"
                       >
-                        <Eye className="h-3 w-3" />
+                        <Check className="h-3.5 w-3.5" />
+                        <span>
+                          Apply Stock Items{pendingApplyStockCount > 0 ? ` (${pendingApplyStockCount})` : ''}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConvertToPO}
+                        className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="Create Purchase Order for L-Code and non-stock items"
+                      >
+                        <ShoppingCart className="h-3 w-3 text-slate-500" />
+                        <span>Create Purchase Order</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateCertificate()}
+                        className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="Create EN 10204 3.1 Mill Certificate"
+                      >
+                        <FileCheck2 className="h-3 w-3 text-slate-500" />
+                        <span>Create Cert</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = prompt('Enter Supplier PO Number to apply to all items:', '')
+                          if (val && val.trim()) {
+                            const trimmed = val.trim()
+                            setItems(prev => prev.map(item => ({ ...item, supplier_po_number: trimmed })))
+                            setStatusNotice(`Applied Supplier PO #${trimmed} to all items!`)
+                          }
+                        }}
+                        className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="Bulk apply Supplier PO to all items outside"
+                      >
+                        <Plus className="h-3 w-3 text-slate-500" />
+                        <span>Supplier PO</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={nonStockCount === 0}
+                        onClick={() => setIsLocalPurchaseModalOpen(true)}
+                        className="bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title={nonStockCount === 0 ? 'All items are available in stock — Local Purchase disabled' : 'Select Local Supplier, non-stock items, and L-Codes'}
+                      >
+                        <Wrench className="h-3 w-3 text-slate-500" />
+                        <span>Local Purchase</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActivePortalTab('create_cipl')}
+                        className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="Open Create CIPL & Packing Labels Workbench in a dedicated tab"
+                      >
+                        <Truck className="h-3 w-3 text-slate-500" />
+                        <span>Create CIPL</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItems(prev => prev.map(item => ({ ...item, package_type: 'Pallet' })))
+                          setStatusNotice('Set packaging to Pallet for all items!')
+                        }}
+                        className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors cursor-pointer"
+                        title="Set All Pallet"
+                      >
+                        All Pallet
                       </button>
                     </div>
-                  </td>
+                    <button
+                      onClick={handleAddItem}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Add Item</span>
+                    </button>
 
-                  {/* MAKE */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      value={it.make}
-                      onChange={e => handleUpdateItem(it.id, 'make', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-semibold text-slate-800"
-                    />
-                  </td>
-
-                  {/* Supplier Name */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      value={it.supplier_name}
-                      onChange={e => handleUpdateItem(it.id, 'supplier_name', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-blue-900 font-medium"
-                    />
-                  </td>
-
-                  {/* Supplier PO # */}
-                  <td className="p-2.5 bg-amber-50/20">
-                    <input
-                      type="text"
-                      value={it.supplier_po_number || ''}
-                      onChange={e => handleUpdateItem(it.id, 'supplier_po_number', e.target.value)}
-                      placeholder="PO #"
-                      className="w-full border border-amber-300 rounded px-1.5 py-1 text-center font-mono text-xs font-bold text-amber-950 bg-white"
-                    />
-                  </td>
-
-                  {/* HS Code */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      value={it.hs_code}
-                      onChange={e => handleUpdateItem(it.id, 'hs_code', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 text-center font-mono text-[11px] text-slate-700"
-                    />
-                  </td>
-
-                  {/* COO */}
-                  <td className="p-2.5">
-                    <input
-                      type="text"
-                      value={it.country_of_origin}
-                      onChange={e => handleUpdateItem(it.id, 'country_of_origin', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700"
-                    />
-                  </td>
-
-                  {/* Price */}
-                  <td className="p-2.5 text-right font-mono">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={it.unit_price}
-                      onChange={e => handleUpdateItem(it.id, 'unit_price', Number(e.target.value))}
-                      className="w-16 border border-slate-200 rounded px-1 py-1 text-right text-xs font-bold"
-                    />
-                    <span className="block text-[10px] text-slate-400 mt-0.5">
-                      Tot: {it.total_price}
-                    </span>
-                  </td>
-
-                  {/* Actions (Cert, Split, Delete) */}
-                  <td className="p-2.5 text-center">
-                    <div className="flex items-center justify-center space-x-1">
+                    {/* Columns & Layout Customization Popover */}
+                    <div ref={columnsMenuRef} className="relative">
                       <button
-                        onClick={() => handleOpenCreateCertificate(it.id)}
-                        className="p-1 rounded text-indigo-600 hover:bg-indigo-50"
-                        title="Create & customize EN 10204 3.1 Certificate for this item"
+                        type="button"
+                        onClick={() => setIsColumnsMenuOpen(o => !o)}
+                        className={`font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer border ${hiddenColumns.length > 0
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                          }`}
+                        title="Hide, show, or reorder table columns & panels"
+                        aria-label="Customize columns and panels"
                       >
-                        <FileCheck2 className="h-4 w-4" />
+                        <Columns3 className="h-3.5 w-3.5" />
+                        <span>{hiddenColumns.length > 0 ? `Columns (${hiddenColumns.length} hidden)` : 'Columns'}</span>
                       </button>
 
-                      <button
-                        onClick={() => handleSplitItem(idx)}
-                        className="p-1 rounded text-orange-600 hover:bg-orange-50"
-                        title="Split Item (Multi-Heat / Partial Quantity)"
-                      >
-                        <Split className="h-4 w-4" />
-                      </button>
+                      {isColumnsMenuOpen && (
+                        <div className={`absolute ${toolbarFlipSide ? 'left-0' : 'right-0'} mt-1.5 w-80 bg-white rounded-lg shadow-xl border border-slate-200 z-50 text-xs overflow-hidden`}>
+                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                            <span className="font-semibold text-slate-800">Customize Columns &amp; Panels</span>
+                            <button
+                              type="button"
+                              onClick={resetWorkspaceLayout}
+                              className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              <span>Reset</span>
+                            </button>
+                          </div>
 
-                      <button
-                        onClick={() => handleDeleteItem(it.id)}
-                        className="p-1 rounded text-red-500 hover:bg-red-50"
-                        title="Delete line"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                          <div className="p-2.5 border-b border-slate-100 space-y-1.5">
+                            <div className="text-[10px] font-bold uppercase text-slate-400">Custom Panels</div>
+                            <label className="flex items-center justify-between px-1.5 py-1 rounded hover:bg-slate-50 cursor-pointer">
+                              <span className="text-slate-700 font-medium">Order Details Panel</span>
+                              <input
+                                type="checkbox"
+                                checked={showMetadataPanel}
+                                onChange={e => setShowMetadataPanel(e.target.checked)}
+                                className="rounded text-blue-600"
+                              />
+                            </label>
+                            <label className="flex items-center justify-between px-1.5 py-1 rounded hover:bg-slate-50 cursor-pointer">
+                              <span className="text-slate-700 font-medium">Deliverables &amp; Export Panel</span>
+                              <input
+                                type="checkbox"
+                                checked={showExportsPanel}
+                                onChange={e => setShowExportsPanel(e.target.checked)}
+                                className="rounded text-blue-600"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="p-2.5 max-h-64 overflow-y-auto space-y-1">
+                            <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              Worksheet Columns (Show/Hide &amp; Move L/R)
+                            </div>
+                            {columnOrder.map((colKey, colIdx) => {
+                              const def = COLUMN_DEF_MAP.get(colKey)
+                              if (!def) return null
+                              const isVisible = !hiddenColumns.includes(colKey)
+                              return (
+                                <div key={colKey} className="flex items-center justify-between gap-2 px-1.5 py-1 rounded hover:bg-slate-50">
+                                  <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isVisible}
+                                      onChange={() => toggleColumnVisibility(colKey)}
+                                      className="rounded text-blue-600 shrink-0"
+                                    />
+                                    <span className="truncate font-medium text-slate-700">
+                                      {def.key === 'price' ? `Price (${currency})` : def.label}
+                                    </span>
+                                  </label>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      disabled={colIdx === 0}
+                                      onClick={() => moveColumn(colKey, -1)}
+                                      title={`Move ${def.label} left`}
+                                      aria-label={`Move ${def.label} left`}
+                                      className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                                    >
+                                      <ArrowLeft className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={colIdx === columnOrder.length - 1}
+                                      onClick={() => moveColumn(colKey, 1)}
+                                      title={`Move ${def.label} right`}
+                                      aria-label={`Move ${def.label} right`}
+                                      className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                                    >
+                                      <ArrowRight className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </>
+
+                    <button
+                      type="button"
+                      onClick={() => setToolbarFlipSide(f => !f)}
+                      title="Reposition toolbar & panels Left <-> Right"
+                      aria-label="Flip toolbar side"
+                      className={`font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer border ${toolbarFlipSide
+                        ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-300'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                        }`}
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" />
+                      <span>{toolbarFlipSide ? 'Toolbar: Left' : 'Flip L/R'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsSheetFullscreen(f => !f)}
+                      title={isSheetFullscreen ? 'Exit Full-Screen Sheet Mode (Esc)' : 'Expand Worksheet to Full Screen'}
+                      aria-label={isSheetFullscreen ? 'Exit sheet full screen' : 'Full screen worksheet'}
+                      className={`font-semibold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1 transition-colors cursor-pointer border ${isSheetFullscreen
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                        }`}
+                    >
+                      {isSheetFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                      <span>{isSheetFullscreen ? 'Exit Full Screen' : 'Full Screen'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className={isSheetFullscreen ? 'flex-1 overflow-auto pb-16' : 'overflow-x-auto max-h-[600px] overflow-y-auto pb-16'}>
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                      <tr>
+                        <th className="p-2.5 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={items.length > 0 && items.every(it => selectedItemIds.has(it.id))}
+                            onChange={e => toggleSelectAll(e.target.checked)}
+                            className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
+                            title="Select all items"
+                          />
+                        </th>
+                        <th className="p-2.5 w-12 text-center">SL</th>
+                        {visibleColumns.map(colKey => {
+                          const def = COLUMN_DEF_MAP.get(colKey)
+                          if (!def) return null
+                          const headerLabel = def.key === 'price' ? `Price (${currency})` : def.label
+                          return (
+                            <th key={colKey} className={`p-2.5 ${def.thClass} group`}>
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="flex-1">
+                                  <span>{headerLabel}</span>
+                                  {def.subLabel && (
+                                    <span className="block text-[9px] text-slate-400 font-normal normal-case">
+                                      {def.subLabel}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleColumnVisibility(colKey)}
+                                  title={`Hide ${headerLabel} column`}
+                                  aria-label={`Hide ${headerLabel} column`}
+                                  className="opacity-40 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-opacity cursor-pointer shrink-0"
+                                >
+                                  <EyeOff className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </th>
+                          )
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {items.map((it, idx) => {
+                        const rowHasHeat = hasSelectedHeatNumber(it.heat_number)
+                        const rowHasMtc = hasItemMtc(it)
+                        const rowInStock = isItemInStock(it)
+                        const disabledMtcReason = !rowHasHeat
+                          ? 'Select a Heat Number first'
+                          : 'No MTC certificate available for this item'
+
+                        const renderCell = (colKey: WorksheetColumnKey) => {
+                          switch (colKey) {
+                            case 'po_item':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={it.client_po_item_no}
+                                    onChange={e => handleUpdateItem(it.id, 'client_po_item_no', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-center font-mono text-xs"
+                                  />
+                                </td>
+                              )
+                            case 'description':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <textarea
+                                    rows={2}
+                                    value={it.description}
+                                    onChange={e => handleUpdateItem(it.id, 'description', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 leading-snug resize-y"
+                                  />
+                                  {it.is_machined && (
+                                    <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                      ⚙️ Machining Required
+                                    </span>
+                                  )}
+                                </td>
+                              )
+                            case 'qty':
+                              return (
+                                <td key={colKey} className="p-2.5 text-center">
+                                  <div className="flex items-center space-x-1">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={it.qty}
+                                      onChange={e => handleUpdateItem(it.id, 'qty', Number(e.target.value))}
+                                      className="w-14 border border-slate-200 rounded px-1 py-1 text-center font-bold text-xs"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={it.uom}
+                                      onChange={e => handleUpdateItem(it.id, 'uom', e.target.value)}
+                                      className="w-10 border border-slate-200 rounded px-1 py-1 text-center text-[10px] uppercase font-mono"
+                                    />
+                                  </div>
+                                </td>
+                              )
+                            case 'packaging':
+                              return (
+                                <td key={colKey} className="p-2.5 bg-sky-50/20">
+                                  <div className="flex items-center space-x-1">
+                                    <select
+                                      value={it.package_type || 'Pallet'}
+                                      onChange={e => handleUpdateItem(it.id, 'package_type', e.target.value)}
+                                      className="border border-sky-200 rounded px-1 py-1 text-xs bg-white text-slate-800"
+                                    >
+                                      <option value="Pallet">Pallet</option>
+                                      <option value="Box">Box</option>
+                                      <option value="Crate">Crate</option>
+                                      <option value="Wooden Box">W.Box</option>
+                                    </select>
+                                    <input
+                                      type="text"
+                                      value={it.package_no ? it.package_no.replace(/\D/g, '') || '1' : '1'}
+                                      onChange={e => handleUpdateItem(it.id, 'package_no', `PKG # ${e.target.value || '1'}`)}
+                                      className="w-9 border border-sky-200 rounded px-1 py-1 text-center font-mono text-xs bg-white"
+                                      placeholder="1"
+                                      title="Package number"
+                                    />
+                                  </div>
+                                </td>
+                              )
+                            case 'heat_number': {
+                              const stockApplicable = isRowStockApplicable(it)
+                              const { isAppliedExact, remainingAvail } = getLineAppliedState(it)
+                              return (
+                                <td key={colKey} className="p-2.5 min-w-[175px]">
+                                  <div className="space-y-1">
+                                    <HeatNumberCombobox
+                                      value={it.heat_number}
+                                      description={it.description}
+                                      extraLots={masterStock}
+                                      onChange={(heat, meta) => {
+                                        handleApplyHeatSelection(it.id, heat, meta)
+                                      }}
+                                    />
+                                    {stockApplicable && (
+                                      <div className="flex items-center justify-between gap-1">
+                                        <button
+                                          type="button"
+                                          disabled={!rowHasHeat || isAppliedExact}
+                                          onClick={() => handleApplySingleStockItem(it.id)}
+                                          aria-label={`Apply stock item ${it.sl_no}`}
+                                          title={
+                                            !rowHasHeat
+                                              ? 'Select a Heat Number first'
+                                              : isAppliedExact
+                                                ? `Applied (${it.qty} PCS deducted from Heat ${it.heat_number})`
+                                                : `Apply ${extractQtyNumber(it.qty)} PCS from Heat ${it.heat_number}`
+                                          }
+                                          className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border ${isAppliedExact
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-default'
+                                            : !rowHasHeat
+                                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                              : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 cursor-pointer'
+                                            }`}
+                                        >
+                                          <Check className="h-2.5 w-2.5" />
+                                          <span>{isAppliedExact ? 'Applied' : 'Apply'}</span>
+                                        </button>
+                                        {rowHasHeat && (
+                                          <span className={`text-[10px] font-mono tabular-nums ${remainingAvail > 0 ? 'text-slate-600' : 'text-amber-700 font-semibold'}`}>
+                                            Avail: {remainingAvail}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              )
+                            }
+                            case 'certificate_number':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <div className="flex items-center space-x-1">
+                                    <input
+                                      type="text"
+                                      placeholder="MTC-REF"
+                                      value={it.certificate_number}
+                                      onChange={e => handleUpdateItem(it.id, 'certificate_number', e.target.value)}
+                                      className="w-full border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-600"
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={!rowHasMtc}
+                                      onClick={() => handleOpenCreateCertificate(it.id)}
+                                      className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 disabled:bg-slate-100 disabled:text-slate-300 disabled:border-slate-200 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
+                                      title={rowHasMtc ? 'View, Preview & Download MTC Certificate' : disabledMtcReason}
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              )
+                            case 'make':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={it.make}
+                                    onChange={e => handleUpdateItem(it.id, 'make', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-semibold text-slate-800"
+                                  />
+                                </td>
+                              )
+                            case 'supplier_name':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={it.supplier_name}
+                                    onChange={e => handleUpdateItem(it.id, 'supplier_name', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-blue-900 font-medium"
+                                  />
+                                </td>
+                              )
+                            case 'supplier_po_number':
+                              return (
+                                <td key={colKey} className="p-2.5 bg-amber-50/20">
+                                  <input
+                                    type="text"
+                                    value={it.supplier_po_number || ''}
+                                    onChange={e => handleUpdateItem(it.id, 'supplier_po_number', e.target.value)}
+                                    placeholder="PO #"
+                                    className="w-full border border-amber-300 rounded px-1.5 py-1 text-center font-mono text-xs font-bold text-amber-950 bg-white"
+                                  />
+                                </td>
+                              )
+                            case 'hs_code':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={it.hs_code}
+                                    onChange={e => handleUpdateItem(it.id, 'hs_code', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-center font-mono text-[11px] text-slate-700"
+                                  />
+                                </td>
+                              )
+                            case 'coo':
+                              return (
+                                <td key={colKey} className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={it.country_of_origin}
+                                    onChange={e => handleUpdateItem(it.id, 'country_of_origin', e.target.value)}
+                                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700"
+                                  />
+                                </td>
+                              )
+                            case 'price':
+                              return (
+                                <td key={colKey} className="p-2.5 text-right font-mono">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={it.unit_price}
+                                    onChange={e => handleUpdateItem(it.id, 'unit_price', Number(e.target.value))}
+                                    className="w-16 border border-slate-200 rounded px-1 py-1 text-right text-xs font-bold"
+                                  />
+                                  <span className="block text-[10px] text-slate-400 mt-0.5">
+                                    Tot: {it.total_price}
+                                  </span>
+                                </td>
+                              )
+                            case 'actions':
+                              return (
+                                <td key={colKey} className="p-2.5 text-center">
+                                  <div className="flex items-center justify-center space-x-1">
+                                    <button
+                                      type="button"
+                                      disabled={!rowHasMtc}
+                                      onClick={() => handleOpenCreateCertificate(it.id)}
+                                      className="p-1 rounded text-indigo-600 hover:bg-indigo-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                                      title={rowHasMtc ? 'Create & customize EN 10204 3.1 Certificate for this item' : disabledMtcReason}
+                                    >
+                                      <FileCheck2 className="h-4 w-4" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleSplitItem(idx)}
+                                      className="p-1 rounded text-orange-600 hover:bg-orange-50"
+                                      title="Split Item (Multi-Heat / Partial Quantity)"
+                                    >
+                                      <Split className="h-4 w-4" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleDeleteItem(it.id)}
+                                      className="p-1 rounded text-red-500 hover:bg-red-50"
+                                      title="Delete line"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              )
+                          }
+                        }
+
+                        return (
+                        <tr
+                          key={it.id}
+                          className={`hover:bg-slate-50/70 transition-colors ${selectedItemIds.has(it.id) ? 'bg-amber-50/30' : ''
+                            } ${it.is_machined ? 'bg-amber-50/40' : ''
+                            }`}
+                        >
+                          {/* Select Checkbox & Local PO Button */}
+                          <td className="p-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedItemIds.has(it.id)}
+                              onChange={() => toggleSelectItem(it.id)}
+                              className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                              title="Select item"
+                            />
+                            <button
+                              type="button"
+                              disabled={rowInStock}
+                              onClick={() => {
+                                const newSet = new Set(selectedItemIds)
+                                newSet.add(it.id)
+                                setSelectedItemIds(newSet)
+                                setActivePortalTab('purchase_order')
+                              }}
+                              className="mt-1 block mx-auto text-[9px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed px-1 py-0.5 rounded cursor-pointer transition-colors"
+                              title={rowInStock ? 'Available in stock — Local Purchase disabled' : 'Select this non-stock item and open Local PO tab'}
+                            >
+                              PO
+                            </button>
+                          </td>
+
+                          {/* SL NO */}
+                          <td className="p-2.5 text-center font-bold text-slate-700">
+                            {it.sl_no}
+                          </td>
+
+                          {visibleColumns.map(colKey => renderCell(colKey))}
+                        </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
       )}
 
-      {/* Drafts Modal */}
-      {isDraftsModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-6 shadow-xl border border-slate-200 overflow-hidden">
-            <div className="flex justify-between items-center gap-2 pb-3 border-b border-slate-200 mb-4 shrink-0">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-blue-600" />
-                <span>Saved Sourcing Drafts &amp; Worksheets</span>
-              </h3>
-              <button
-                onClick={() => setIsDraftsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-base"
-              >
-                ✕
-              </button>
-            </div>
-
-            {draftsList.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-xs">
-                No saved drafts found. Click &quot;Save Draft&quot; on any worksheet to preserve your progress.
-              </div>
-            ) : (
-              <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-                {draftsList.map(draft => (
-                  <div
-                    key={draft.id}
-                    className="p-3 border border-slate-200 rounded-md hover:bg-slate-50 flex items-center justify-between"
-                  >
-                    <div>
-                      <h4 className="font-semibold text-xs text-slate-800">
-                        {draft.msg_ref} — {draft.client}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        PO: {draft.po_number} | {draft.items.length} items | Saved: {new Date(draft.saved_at || '').toLocaleString()}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleRestoreDraft(draft)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md"
-                      >
-                        Restore
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (draft.id) deleteSourcingDraft(draft.id)
-                          setDraftsList(getSourcingDrafts())
-                        }}
-                        className="text-red-500 hover:text-red-700 p-1.5"
-                        title="Delete draft"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+            {/* Drafts Modal */}
+            {isDraftsModalOpen && (
+              <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-6 shadow-xl border border-slate-200 overflow-hidden">
+                  <div className="flex justify-between items-center gap-2 pb-3 border-b border-slate-200 mb-4 shrink-0">
+                    <h3 className="text-sm font-semibold text-slate-900 flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-blue-600" />
+                      <span>Saved Sourcing Drafts &amp; Worksheets</span>
+                    </h3>
+                    <button
+                      onClick={() => setIsDraftsModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-base"
+                    >
+                      ✕
+                    </button>
                   </div>
-                ))}
+
+                  {draftsList.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-xs">
+                      No saved drafts found. Click &quot;Save Draft&quot; on any worksheet to preserve your progress.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                      {draftsList.map(draft => (
+                        <div
+                          key={draft.id}
+                          className="p-3 border border-slate-200 rounded-md hover:bg-slate-50 flex items-center justify-between"
+                        >
+                          <div>
+                            <h4 className="font-semibold text-xs text-slate-800">
+                              {draft.msg_ref} — {draft.client}
+                            </h4>
+                            <p className="text-[11px] text-slate-500 font-mono">
+                              PO: {draft.po_number} | {draft.items.length} items | Saved: {new Date(draft.saved_at || '').toLocaleString()}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleRestoreDraft(draft)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md"
+                            >
+                              Restore
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (draft.id) deleteSourcingDraft(draft.id)
+                                setDraftsList(getSourcingDrafts())
+                              }}
+                              className="text-red-500 hover:text-red-700 p-1.5"
+                              title="Delete draft"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+
+            {/* Excel Deliverables Preview Modal */}
+            <ExcelDeliverablesPreviewModal
+              isOpen={isPreviewModalOpen}
+              onClose={() => setIsPreviewModalOpen(false)}
+              initialTab={previewTab}
+              data={currentWorksheetData}
+              filterMachinedOnly={filterMachinedOnly}
+            />
+
+            {/* Local Purchase & Supplier Allocation Modal */}
+            <LocalPurchaseAllocationModal
+              isOpen={isLocalPurchaseModalOpen}
+              onClose={() => setIsLocalPurchaseModalOpen(false)}
+              data={currentWorksheetData}
+              onApplyLocalPurchase={updatedItems => {
+                setItems(updatedItems)
+                syncItemsToOrder(updatedItems)
+              }}
+              showToast={msg => setStatusNotice(msg)}
+            />
           </div>
-        </div>
-      )}
-
-      {/* Excel Deliverables Preview Modal */}
-      <ExcelDeliverablesPreviewModal
-        isOpen={isPreviewModalOpen}
-        onClose={() => setIsPreviewModalOpen(false)}
-        initialTab={previewTab}
-        data={currentWorksheetData}
-        filterMachinedOnly={filterMachinedOnly}
-      />
-
-      {/* Local Purchase & Supplier Allocation Modal */}
-      <LocalPurchaseAllocationModal
-        isOpen={isLocalPurchaseModalOpen}
-        onClose={() => setIsLocalPurchaseModalOpen(false)}
-        data={currentWorksheetData}
-        onApplyLocalPurchase={updatedItems => {
-          setItems(updatedItems)
-        }}
-        showToast={msg => setStatusNotice(msg)}
-      />
-    </div>
-  )
+          )
 }

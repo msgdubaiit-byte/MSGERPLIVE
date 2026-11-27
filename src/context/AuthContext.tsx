@@ -220,8 +220,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token) {
           const res = await apiGet<{ success: boolean; user: UserProfile }>('/api/auth/me')
           if (res.success && res.user && res.user.account_status === 'Active' && isMounted) {
-            setCurrentUser(res.user)
             await Promise.all([db.refreshFromBackend(), syncPermissionsFromBackend()])
+            if (isMounted) {
+              setCurrentUser(res.user)
+            }
           } else {
             clearAuthToken()
           }
@@ -256,8 +258,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res.success && res.token && res.user) {
         setAuthToken(res.token)
-        setCurrentUser(res.user)
+        // Await full backend bootstrap & permissions before mounting workspace views
         await Promise.all([db.refreshFromBackend(), syncPermissionsFromBackend()])
+        setCurrentUser(res.user)
         return { success: true }
       }
       return { success: false, message: 'Invalid login credentials.' }

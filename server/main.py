@@ -23,7 +23,14 @@ from .auth import (
     seed_default_users_if_empty,
     verify_password,
 )
-from .config import CLOUDINARY_CLOUD_NAME, STORAGE_DIR
+from .config import (
+    CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET,
+    CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_FOLDER,
+    DATABASE_URL,
+    STORAGE_DIR,
+)
 from .database import close_connection, db_read, db_transaction, init_schema, now_iso, now_stamp, parse_json_col
 from .documents import (
     extract_and_store_zip,
@@ -217,8 +224,11 @@ def health_check():
     return {
         "status": "ok",
         "service": "msg-oilfield-erp-backend",
+        "databaseConfigured": bool(DATABASE_URL),
         "supabaseConfigured": is_supabase_configured(),
-        "cloudinaryConfigured": bool(CLOUDINARY_CLOUD_NAME),
+        "cloudinaryConfigured": bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET),
+        "cloudinaryCloudName": CLOUDINARY_CLOUD_NAME,
+        "cloudinaryFolder": CLOUDINARY_FOLDER,
         "timestamp": now_iso(),
     }
 
@@ -480,6 +490,79 @@ def create_item_endpoint(body: Dict[str, Any], user: Dict[str, Any] = Depends(re
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["message"])
     return res
+
+
+def _upsert_weight_row(conn, entry: Dict[str, Any], user_email: str) -> Optional[Dict[str, Any]]:
+    desc = str(entry.get("description") or "").strip()
+    code = str(entry.get("item_code") or "").strip()
+    heat = str(entry.get("heat_number") or "").strip()
+    raw_key = str(entry.get("key_norm") or entry.get("key") or desc or code).strip().lower()
+    key_norm = " ".join(raw_key.split())
+    wt = float(entry.get("unit_weight_kg") or 0)
+    if not key_norm or wt <= 0:
+        return None
+    now = now_iso()
+    conn.execute(
+        """
+        INSERT INTO item_weights (key_norm, description, item_code, heat_number, unit_weight_kg, uom, source, updated_by, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (key_norm) DO UPDATE SET
+            description=EXCLUDED.description,
+            item_code=COALESCE(NULLIF(EXCLUDED.item_code, ''), item_weights.item_code),
+            heat_number=COALESCE(NULLIF(EXCLUDED.heat_number, ''), item_weights.heat_number),
+            unit_weight_kg=EXCLUDED.unit_weight_kg,
+            uom=EXCLUDED.uom,
+            source=EXCLUDED.source,
+            updated_by=EXCLUDED.updated_by,
+            updated_at=EXCLUDED.updated_at
+        """,
+        (key_norm, desc, code, heat, wt, str(entry.get("uom") or "PCS"), str(entry.get("source") or "manual"), user_email, now),
+    )
+    return {
+        "key_norm": key_norm,
+        "description": desc,
+        "item_code": code,
+        "heat_number": heat,
+        "unit_weight_kg": wt,
+        "uom": str(entry.get("uom") or "PCS"),
+        "source": str(entry.get("source") or "manual"),
+        "updated_by": user_email,
+        "updated_at": now,
+    }
+
+
+@app.get("/api/item-weights")
+def list_item_weights(user: Dict[str, Any] = Depends(get_current_user)):
+    with db_read() as conn:
+        rows = [dict(r) for r in conn.execute("SELECT * FROM item_weights ORDER BY updated_at DESC").fetchall()]
+    return {"success": True, "weights": rows}
+
+
+@app.post("/api/item-weights")
+def upsert_item_weight_endpoint(
+    body: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_roles("super_admin", "admin_inventory", "sales_team", "storekeeper", "dispatch_team")),
+):
+    with db_transaction() as conn:
+        saved = _upsert_weight_row(conn, body, user["email"])
+        if not saved:
+            raise HTTPException(status_code=400, detail="Valid description/key and positive unit_weight_kg required.")
+    return {"success": True, "weight": saved}
+
+
+@app.post("/api/item-weights/bulk")
+def bulk_upsert_item_weights_endpoint(
+    body: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_roles("super_admin", "admin_inventory", "sales_team", "storekeeper", "dispatch_team")),
+):
+    entries = body.get("weights") or []
+    saved_rows: List[Dict[str, Any]] = []
+    with db_transaction() as conn:
+        for entry in entries:
+            saved = _upsert_weight_row(conn, entry, user["email"])
+            if saved:
+                saved_rows.append(saved)
+    return {"success": True, "count": len(saved_rows), "weights": saved_rows}
 
 
 @app.post("/api/stock/lots")

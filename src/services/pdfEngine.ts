@@ -3,7 +3,7 @@
 
 import { PDFDocument, rgb, StandardFonts, degrees, decodePDFRawStream, PDFRawStream } from 'pdf-lib'
 import JSZip from 'jszip'
-import { getUploadedCertificateBytes, getAuthenticCertificateBytes } from './zipExtractor'
+import { getUploadedCertificateBytes, getAuthenticCertificateBytes, isValidPdfBytes, safeFetchPdfBytes, resolveBackendMtcBytes } from './zipExtractor'
 import { SalesOrder } from '../types'
 import { autoDetectMake, autoDetectSupplier, autoDetectHSCode, autoDetectCountryOfOrigin } from './sourcingEngine'
 import { db } from './db'
@@ -128,9 +128,9 @@ export async function createSampleMillCertificate(
     })
 
     const chemHeaders = 'C%     Si%    Mn%    P%     S%     Cr%     Ni%     Mo%     N%'
-    const chemValues  = '0.018  0.42   1.45   0.028  0.002  16.85   10.20   2.08    0.045'
+    const chemValues = '0.018  0.42   1.45   0.028  0.002  16.85   10.20   2.08    0.045'
     page.drawText(chemHeaders, { x: 40, y: height - 295, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) })
-    page.drawText(chemValues,  { x: 40, y: height - 310, size: 8, font: fontMono, color: rgb(0.1, 0.1, 0.1) })
+    page.drawText(chemValues, { x: 40, y: height - 310, size: 8, font: fontMono, color: rgb(0.1, 0.1, 0.1) })
 
     page.drawText('Tensile Strength: 585 MPa  |  Yield Strength: 275 MPa  |  Elongation: 52%  |  Hardness: 165 HBW', {
       x: 40,
@@ -773,6 +773,9 @@ export async function stampMTCDocument(
   options: StampOptions,
   withStamp: boolean = true
 ): Promise<Uint8Array> {
+  if (!isValidPdfBytes(pdfBytes)) {
+    throw new Error('Selected certificate is not a valid PDF document.')
+  }
   const pdfDoc = await PDFDocument.load(pdfBytes)
   if (!withStamp) {
     return await pdfDoc.save()
@@ -1151,11 +1154,11 @@ export async function mergeSalesOrderMTCPackage(
   for (let idx = 0; idx < allocatedCertificates.length; idx++) {
     const certItem = allocatedCertificates[idx]
     const certRef = (certItem as any).certRef || ''
-    
+
     // Retrieve real certificate bytes from MTC document cache
-    let realBytes = getUploadedCertificateBytes(certItem.heatNumber) || 
-                    (certRef ? getUploadedCertificateBytes(certRef) : null) ||
-                    (certItem.lCode ? getUploadedCertificateBytes(certItem.lCode) : null)
+    let realBytes = getUploadedCertificateBytes(certItem.heatNumber) ||
+      (certRef ? getUploadedCertificateBytes(certRef) : null) ||
+      (certItem.lCode ? getUploadedCertificateBytes(certItem.lCode) : null)
 
     // Check database MTCs if not in local memory cache
     if (!realBytes) {
@@ -1170,23 +1173,17 @@ export async function mergeSalesOrderMTCPackage(
 
       if (matched) {
         realBytes = getUploadedCertificateBytes(matched.certificate_reference) ||
-                    getUploadedCertificateBytes(matched.heat_number) ||
-                    getUploadedCertificateBytes(matched.original_file_path)
+          getUploadedCertificateBytes(matched.heat_number) ||
+          getUploadedCertificateBytes(matched.original_file_path)
 
         if (!realBytes && matched.original_file_path) {
           const p = matched.original_file_path
-          if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('blob:') || p.startsWith('data:')) {
-            try {
-              const resp = await fetch(p)
-              if (resp.ok) {
-                const ab = await resp.arrayBuffer()
-                const b = new Uint8Array(ab)
-                if (b.length > 500) realBytes = b
-              }
-            } catch (e) {
-              console.warn('Could not fetch cloud certificate:', p, e)
-            }
+          if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('blob:') || p.startsWith('data:') || p.startsWith('/')) {
+            realBytes = await safeFetchPdfBytes(p)
           }
+        }
+        if (!realBytes) {
+          realBytes = await resolveBackendMtcBytes(matched.original_file_path || matched.certificate_reference, matched.heat_number)
         }
       }
     }
@@ -1199,20 +1196,24 @@ export async function mergeSalesOrderMTCPackage(
       }
     }
 
-    if (realBytes) {
-      const stampedBytes = await stampMTCDocument(realBytes, {
-        poNo: poNumber,
-        itemNo: certItem.itemNo || `${idx + 1}`,
-        qty: certItem.qty,
-        sign: 'MSG/QC-04',
-        dateStr: new Date().toISOString().substring(0, 10).toUpperCase(),
-        heatNo: certItem.heatNumber,
-        certificateRef: certRef,
-      }, true)
+    if (realBytes && isValidPdfBytes(realBytes)) {
+      try {
+        const stampedBytes = await stampMTCDocument(realBytes, {
+          poNo: poNumber,
+          itemNo: certItem.itemNo || `${idx + 1}`,
+          qty: certItem.qty,
+          sign: 'MSG/QC-04',
+          dateStr: new Date().toISOString().substring(0, 10).toUpperCase(),
+          heatNo: certItem.heatNumber,
+          certificateRef: certRef,
+        }, true)
 
-      const certDoc = await PDFDocument.load(stampedBytes)
-      const copiedPages = await mergedPdf.copyPages(certDoc, certDoc.getPageIndices())
-      copiedPages.forEach(p => mergedPdf.addPage(p))
+        const certDoc = await PDFDocument.load(stampedBytes)
+        const copiedPages = await mergedPdf.copyPages(certDoc, certDoc.getPageIndices())
+        copiedPages.forEach(p => mergedPdf.addPage(p))
+      } catch (mergeErr) {
+        console.warn('Skipping invalid PDF during SO package merge:', certRef || certItem.heatNumber, mergeErr)
+      }
     }
   }
 

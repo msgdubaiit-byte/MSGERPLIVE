@@ -55,8 +55,7 @@ import { NavTabId } from '../common/Sidebar'
 import { UserRole, Supplier, UserProfile } from '../../types'
 import { VipAdminCustomizerModal, ALL_ERP_MODULES, ModuleItemDef } from '../admin/VipAdminCustomizerModal'
 import {
-  getStoredSupabaseConfig,
-  saveSupabaseConfig,
+  getSupabaseEnvConfig,
   testSupabaseConnection,
   isSupabaseConfigured
 } from '../../services/supabase'
@@ -349,23 +348,21 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
     })
   }, [users, userSearchQuery, userFilterRole])
 
-  // Supabase Cloud Configuration State
-  const [supabaseUrl, setSupabaseUrl] = useState(() => getStoredSupabaseConfig().url)
-  const [supabaseKey, setSupabaseKey] = useState(() => getStoredSupabaseConfig().key)
+  // Supabase Cloud Environment State (configured via .env, read-only in UI)
+  const supabaseEnvUrl = getSupabaseEnvConfig().url
   const [isSupabaseOnline, setIsSupabaseOnline] = useState(() => isSupabaseConfigured())
   const [isTestingSupabase, setIsTestingSupabase] = useState(false)
   const [isSyncingSupabase, setIsSyncingSupabase] = useState(false)
   const [supabaseTestMsg, setSupabaseTestMsg] = useState<string | null>(null)
 
-  const handleSaveAndTestSupabase = async () => {
+  const handleTestSupabase = async () => {
     setIsTestingSupabase(true)
-    saveSupabaseConfig(supabaseUrl, supabaseKey)
-    const res = await testSupabaseConnection(supabaseUrl, supabaseKey)
+    const res = await testSupabaseConnection()
     setIsTestingSupabase(false)
     setSupabaseTestMsg(res.message)
     setIsSupabaseOnline(res.success)
     if (res.success) {
-      setStatusNotice('Supabase credentials verified & saved! Connected to PostgreSQL & Storage.')
+      setStatusNotice('Supabase environment credentials verified! Connected to PostgreSQL & Storage.')
     } else {
       setStatusNotice('Supabase connection notice: ' + res.message)
     }
@@ -374,7 +371,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
 
   const handlePushAllToSupabase = async () => {
     setIsSyncingSupabase(true)
-    saveSupabaseConfig(supabaseUrl, supabaseKey)
     const res = await db.syncToSupabase()
     setIsSyncingSupabase(false)
     setStatusNotice(res.message)
@@ -383,7 +379,6 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
 
   const handlePullAllFromSupabase = async () => {
     setIsSyncingSupabase(true)
-    saveSupabaseConfig(supabaseUrl, supabaseKey)
     const res = await db.pullFromSupabase()
     setIsSyncingSupabase(false)
     setStatusNotice(res.message)
@@ -2141,12 +2136,12 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
             </div>
           </div>
 
-          {/* Supabase Connection Setup Box */}
+          {/* Supabase Environment Status Box (read-only, configured via .env) */}
           <div className="p-5 rounded-2xl border border-emerald-200 bg-emerald-50/40 space-y-4 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="font-extrabold text-emerald-950 flex items-center space-x-2">
                 <Server className="h-4 w-4 text-emerald-700" />
-                <span>Supabase Project Credentials</span>
+                <span>Environment-Managed Cloud &amp; Database Credentials (.env)</span>
               </div>
               <button
                 type="button"
@@ -2159,59 +2154,35 @@ export const ITSystemConfigConsole: React.FC<ITSystemConfigConsoleProps> = ({ on
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Supabase Project URL *
-                </label>
-                <input
-                  type="text"
-                  value={supabaseUrl}
-                  onChange={e => setSupabaseUrl(e.target.value)}
-                  placeholder="https://your-project-id.supabase.co"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono text-xs focus:ring-2 focus:ring-emerald-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Found in Supabase Dashboard &rarr; Project Settings &rarr; API &rarr; Project URL
-                </span>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Supabase Anon / Public API Key *
-                </label>
-                <input
-                  type="password"
-                  value={supabaseKey}
-                  onChange={e => setSupabaseKey(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono text-xs focus:ring-2 focus:ring-emerald-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Found in Supabase Dashboard &rarr; Project Settings &rarr; API &rarr; Project API Keys (anon public)
-                </span>
+            <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5 text-[11px]">
+              <p className="text-slate-600">
+                PostgreSQL (<code className="bg-slate-100 px-1 rounded font-mono">DATABASE_URL</code>), Supabase, and Cloudinary credentials are configured strictly through environment variables (<code className="bg-slate-100 px-1 rounded font-mono">.env</code> / server environment) rather than editable UI fields.
+              </p>
+              <div className="font-mono text-slate-800">
+                <span className="font-sans font-semibold text-slate-600 mr-2">Supabase Endpoint:</span>
+                <span>{supabaseEnvUrl || 'Not set in .env'}</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+            <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
               <div className="text-[11px] text-slate-600 font-medium">
                 {supabaseTestMsg ? (
                   <span className={`font-bold ${isSupabaseOnline ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {supabaseTestMsg}
                   </span>
                 ) : (
-                  <span>Click &quot;Save &amp; Test Connection&quot; to verify PostgreSQL and MTC Storage access.</span>
+                  <span>Click &quot;Test Connection&quot; to verify .env PostgreSQL and MTC Storage access.</span>
                 )}
               </div>
 
               <button
                 type="button"
-                onClick={handleSaveAndTestSupabase}
+                onClick={handleTestSupabase}
                 disabled={isTestingSupabase}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer shadow-sm flex items-center space-x-1.5"
               >
                 {isTestingSupabase ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                <span>{isTestingSupabase ? 'Connecting...' : 'Save &amp; Test Connection'}</span>
+                <span>{isTestingSupabase ? 'Connecting...' : 'Test Connection'}</span>
               </button>
             </div>
           </div>

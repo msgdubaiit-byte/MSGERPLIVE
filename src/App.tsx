@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Minimize2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { Navbar } from './components/common/Navbar'
 import { Sidebar, NavTabId } from './components/common/Sidebar'
@@ -34,7 +35,18 @@ const MainApp: React.FC = () => {
   const { isAuthenticated, currentUser, canAccessModule, isLoadingSession } = useAuth()
   const [activeTab, setActiveTab] = useState<NavTabId>('solo_hub')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [dbVersion, setDbVersion] = useState(0)
+
+  // Allow Esc key to exit app-level full-screen mode
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isFullscreen])
 
   // Reactive listener to DB changes across the app
   useEffect(() => {
@@ -104,26 +116,43 @@ const MainApp: React.FC = () => {
 
   return (
     <div className="h-screen flex overflow-hidden bg-[#F7F8FA] text-slate-900 font-sans">
-      {/* Left Zoho-style Navigation Rail */}
-      <Sidebar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        collapsed={sidebarCollapsed}
-      />
+      {/* Left Zoho-style Navigation Rail (hidden in full-screen mode) */}
+      {!isFullscreen && (
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+        />
+      )}
 
       {/* Right Workspace Column */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar
-          onSearchSelect={handleGlobalSearchSelect}
-          onOpenSettings={() => setActiveTab('settings')}
-          onOpenGuide={() => setIsOnboardingModalOpen(true)}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed(c => !c)}
-        />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {!isFullscreen ? (
+          <Navbar
+            onSearchSelect={handleGlobalSearchSelect}
+            onOpenSettings={() => setActiveTab('settings')}
+            onOpenGuide={() => setIsOnboardingModalOpen(true)}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(f => !f)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(false)}
+            title="Exit Full-Screen Mode (Esc)"
+            className="fixed top-2.5 right-3 z-40 bg-slate-900/85 hover:bg-slate-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded-md shadow-md flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Minimize2 className="h-3.5 w-3.5" />
+            <span>Exit Full Screen</span>
+          </button>
+        )}
 
         {/* Main Content Area */}
-        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 lg:p-6">
-          <div className="max-w-[1440px] mx-auto w-full min-w-0">
+        <main className={`flex-1 min-w-0 overflow-y-auto overflow-x-hidden ${isFullscreen ? 'p-3 pb-16' : 'p-4 sm:p-5 lg:p-6 pb-16'}`}>
+          <div className={`${(isFullscreen || sidebarCollapsed) ? 'max-w-full' : 'max-w-[1440px]'} mx-auto w-full min-w-0`}>
             {activeTab === 'solo_hub' && (
               <CentralizedSoloHub
                 onNavigateTab={(tab) => setActiveTab(tab)}

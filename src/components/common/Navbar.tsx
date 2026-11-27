@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ShieldCheck,
   User,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
@@ -23,6 +25,8 @@ interface NavbarProps {
   onOpenGuide?: () => void
   sidebarCollapsed?: boolean
   onToggleSidebar?: () => void
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -31,6 +35,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenGuide,
   sidebarCollapsed,
   onToggleSidebar,
+  isFullscreen,
+  onToggleFullscreen,
 }) => {
   const { currentUser, currentRole, logout } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
@@ -226,6 +232,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="p-2 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <HelpCircle className="h-4 w-4" />
+          </button>
+        )}
+
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? 'Exit Full-Screen Mode (Esc)' : 'Enable Full-Screen Workspace Mode'}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Enable full screen'}
+            className="p-2 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
         )}
 

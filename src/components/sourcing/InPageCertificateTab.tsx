@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Package,
   Sparkles,
+  X,
 } from 'lucide-react'
 import { PDFDocument } from 'pdf-lib'
 import { SourcingWorksheetData, SourcingLineItem } from '../../services/sourcingEngine'
@@ -32,6 +33,10 @@ import {
   getVaultManifest,
   detectHeatNumberFromFilename,
   extractCertificatesFromZip,
+  safeFetchPdfBytes,
+  resolveBackendMtcBytes,
+  hasSelectedHeatNumber,
+  hasAvailableMtcForItem,
   ManifestCertificate
 } from '../../services/zipExtractor'
 import { db } from '../../services/db'
@@ -73,8 +78,25 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
   const [inspectorName, setInspectorName] = useState('Alex Turner / MSG QA-04')
   const [stampDate, setStampDate] = useState(() => new Date().toISOString().substring(0, 10))
 
-  // Live PDF Preview
+  // Vault manifest for synchronous MTC availability checks
+  const [vaultManifest, setVaultManifest] = useState<ManifestCertificate[]>([])
+  useEffect(() => {
+    getVaultManifest()
+      .then(list => {
+        if (Array.isArray(list)) setVaultManifest(list)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (activeItemId) setSelectedId(activeItemId)
+  }, [activeItemId])
+
+  // Live PDF Preview (pop-up modal triggered by Preview button)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
+  const previewUrlRef = useRef<string | null>(null)
+  const previewReqIdRef = useRef(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
   const [isPackaging, setIsPackaging] = useState(false)
@@ -84,64 +106,79 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
   const itemFileInputRef = useRef<HTMLInputElement>(null)
   const [targetUploadItemId, setTargetUploadItemId] = useState<string | null>(null)
 
-  // Check if an item has an uploaded MTC in vault or database
-  const hasCertificate = useCallback((it: SourcingLineItem): boolean => {
-    const certRef = it.certificate_number
-    const heat = it.heat_number
-    if (certRef && getUploadedCertificateBytes(certRef)) return true
-    if (heat && getUploadedCertificateBytes(heat)) return true
-    // Also check db MTCs
-    const dbMtc = db.getMTCs().find(m =>
-      (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
-      (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
-    )
-    if (dbMtc) return true
-    return false
+  const hasHeatNumber = useCallback((it?: SourcingLineItem | null): boolean => {
+    return hasSelectedHeatNumber(it?.heat_number)
   }, [])
 
-  // Retrieve raw PDF bytes for an item
+  // Check if an item has a selected heat number AND an authentic MTC available in cache, vault manifest, stored_files, or db
+  const hasCertificate = useCallback((it?: SourcingLineItem | null): boolean => {
+    return hasAvailableMtcForItem(it, vaultManifest, db.getStoredFiles(), db.getMTCs())
+  }, [vaultManifest])
+
+  // Retrieve raw PDF bytes for an item (strictly tied to the item's heat/certificate ref)
   const getItemCertBytes = useCallback(async (it: SourcingLineItem): Promise<Uint8Array | null> => {
+    if (!hasHeatNumber(it)) return null
+
     const certRef = it.certificate_number
     const heat = it.heat_number
 
-    // 1. Authentic Certificate from Cache or Bulk Zip Vault (338 authentic certificates)
-    const authCert = await getAuthenticCertificateBytes(certRef, heat, it.description)
+    // 1. Authentic Certificate from Cache or Bulk Zip Vault (matched by certRef or heat only)
+    const authCert = await getAuthenticCertificateBytes(certRef, heat)
     if (authCert) {
-      if ((!it.certificate_number || it.certificate_number === 'MTC-REF') && authCert.fileName) {
-        onApply(it.id, {
-          heat_number: authCert.heatNumber || it.heat_number,
-          certificate_number: authCert.fileName,
-        })
-      }
       return authCert.bytes
     }
 
-    // 2. Database MTC check
+    // 2. Backend / Database MTC check
     const dbMtc = db.getMTCs().find(m =>
       (heat && m.heat_number.toUpperCase() === heat.toUpperCase()) ||
       (certRef && m.certificate_reference.toUpperCase() === certRef.toUpperCase())
     )
-    if (dbMtc && (dbMtc as any).file_data_url) {
-      try {
-        const res = await fetch((dbMtc as any).file_data_url)
-        const buf = await res.arrayBuffer()
-        return new Uint8Array(buf)
-      } catch (e) {
-        console.warn('Could not fetch dbMtc file_data_url:', e)
+    if (dbMtc) {
+      const directUrl = (dbMtc as any).file_data_url || dbMtc.original_file_path
+      if (directUrl) {
+        const fetched = await safeFetchPdfBytes(directUrl)
+        if (fetched) return fetched
       }
+    }
+
+    // 3. Backend stored_files fallback (/api/mtc/resolve)
+    const backendBytes = await resolveBackendMtcBytes(
+      (certRef && certRef !== 'MTC-REF') ? certRef : dbMtc?.original_file_path || dbMtc?.certificate_reference,
+      heat || dbMtc?.heat_number
+    )
+    if (backendBytes) {
+      const fileName = (certRef && certRef !== 'MTC-REF') ? certRef : `MTC-${heat}.pdf`
+      registerUploadedCertificate(fileName, backendBytes, fileName, heat)
+      return backendBytes
     }
 
     // Never generate fake certificates: return null if authentic document is not yet attached
     return null
-  }, [onApply])
+  }, [hasHeatNumber])
 
   // Render Live Preview for the currently selected item
   const handleRenderPreview = useCallback(async () => {
-    if (!currentItem) return
+    const reqId = ++previewReqIdRef.current
+    if (!currentItem || !hasCertificate(currentItem)) {
+      if (previewUrlRef.current) {
+        window.URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+      }
+      setPreviewPdfUrl(null)
+      setIsGenerating(false)
+      return
+    }
+
     setIsGenerating(true)
     try {
       const rawBytes = await getItemCertBytes(currentItem)
+      if (reqId !== previewReqIdRef.current) return
+
       if (!rawBytes) {
+        if (previewUrlRef.current) {
+          window.URL.revokeObjectURL(previewUrlRef.current)
+          previewUrlRef.current = null
+        }
         setPreviewPdfUrl(null)
         return
       }
@@ -164,23 +201,48 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
           true
         )
       }
+      if (reqId !== previewReqIdRef.current) return
 
       const blob = new Blob([finalBytes as any], { type: 'application/pdf' })
       const url = window.URL.createObjectURL(blob)
-      if (previewPdfUrl) {
-        window.URL.revokeObjectURL(previewPdfUrl)
+      if (previewUrlRef.current) {
+        window.URL.revokeObjectURL(previewUrlRef.current)
       }
+      previewUrlRef.current = url
       setPreviewPdfUrl(url)
     } catch (err: any) {
-      console.error('Error rendering live certificate preview:', err)
+      if (reqId === previewReqIdRef.current) {
+        console.error('Error rendering live certificate preview:', err)
+        setPreviewPdfUrl(null)
+      }
     } finally {
-      setIsGenerating(false)
+      if (reqId === previewReqIdRef.current) {
+        setIsGenerating(false)
+      }
     }
-  }, [currentItem, getItemCertBytes, applyStamp, inspectorName, stampDate, worksheetData.po_number, previewPdfUrl])
+  }, [currentItem, hasCertificate, getItemCertBytes, applyStamp, inspectorName, stampDate, worksheetData.po_number])
 
   useEffect(() => {
+    if (!isPreviewOpen) return
     handleRenderPreview()
-  }, [selectedId, applyStamp, inspectorName, stampDate])
+  }, [isPreviewOpen, handleRenderPreview])
+
+  useEffect(() => {
+    if (!isPreviewOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsPreviewOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isPreviewOpen])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        window.URL.revokeObjectURL(previewUrlRef.current)
+      }
+    }
+  }, [])
 
   // Single Item Upload Handler
   const handleItemFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,6 +361,14 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
   // Single Item Download Stamped MTC
   const handleDownloadSingle = async (it: SourcingLineItem) => {
+    if (!hasCertificate(it)) {
+      alert(
+        !hasHeatNumber(it)
+          ? 'Please select a Heat Number for this item before downloading its MTC.'
+          : 'No authentic MTC certificate is available for this item.'
+      )
+      return
+    }
     try {
       const rawBytes = await getItemCertBytes(it)
       if (!rawBytes) {
@@ -346,29 +416,33 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
       for (const it of displayItems) {
         const rawBytes = await getItemCertBytes(it)
         if (rawBytes) {
-          let stampedBytes = rawBytes
-          if (applyStamp) {
-            stampedBytes = await stampMTCDocument(
-              rawBytes,
-              {
-                poNo: it.supplier_po_number || worksheetData.po_number || 'PO-MSG',
-                itemNo: it.client_po_item_no || String(it.sl_no),
-                qty: `${it.qty} ${it.uom}`,
-                sign: inspectorName,
-                dateStr: stampDate,
-                make: it.make,
-                heatNo: it.heat_number,
-                certificateRef: it.certificate_number,
-                description: it.description,
-              },
-              true
-            )
-          }
+          try {
+            let stampedBytes = rawBytes
+            if (applyStamp) {
+              stampedBytes = await stampMTCDocument(
+                rawBytes,
+                {
+                  poNo: it.supplier_po_number || worksheetData.po_number || 'PO-MSG',
+                  itemNo: it.client_po_item_no || String(it.sl_no),
+                  qty: `${it.qty} ${it.uom}`,
+                  sign: inspectorName,
+                  dateStr: stampDate,
+                  make: it.make,
+                  heatNo: it.heat_number,
+                  certificateRef: it.certificate_number,
+                  description: it.description,
+                },
+                true
+              )
+            }
 
-          const docToMerge = await PDFDocument.load(stampedBytes)
-          const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
-          pages.forEach(p => mergedPdf.addPage(p))
-          includedCount++
+            const docToMerge = await PDFDocument.load(stampedBytes)
+            const pages = await mergedPdf.copyPages(docToMerge, docToMerge.getPageIndices())
+            pages.forEach(p => mergedPdf.addPage(p))
+            includedCount++
+          } catch (itemErr) {
+            console.warn('Skipping unreadable MTC PDF during merge:', it.heat_number || it.certificate_number, itemErr)
+          }
         }
       }
 
@@ -442,6 +516,8 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
   }
 
   const attachedCount = displayItems.filter(it => hasCertificate(it)).length
+  const currentHasHeat = hasHeatNumber(currentItem)
+  const currentHasMtc = hasCertificate(currentItem)
 
   return (
     <div className="space-y-5">
@@ -530,9 +606,9 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
           <button
             onClick={handleDownloadAllZip}
-            disabled={isPackaging || items.length === 0}
-            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
-            title="Download all attached certificates for this PO bundled in a .zip archive"
+            disabled={isPackaging || attachedCount === 0}
+            className="bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
+            title={attachedCount === 0 ? 'Attach or select Heat Numbers with available MTCs first' : 'Download all attached certificates for this PO bundled in a .zip archive'}
           >
             <Archive className="h-3.5 w-3.5 text-slate-500" />
             <span>Download All (.zip)</span>
@@ -540,9 +616,9 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
           <button
             onClick={handleDownloadAllMerged}
-            disabled={isPackaging || items.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
-            title="Download all attached certificates for this PO merged into a single PDF document"
+            disabled={isPackaging || attachedCount === 0}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+            title={attachedCount === 0 ? 'Attach or select Heat Numbers with available MTCs first' : 'Download all attached certificates for this PO merged into a single PDF document'}
           >
             <Download className="h-3.5 w-3.5" />
             <span>{isPackaging ? 'Packaging...' : 'Download Complete MTC (.pdf)'}</span>
@@ -592,21 +668,18 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
           <div className="flex items-center space-x-1.5">
             <span className="text-slate-500">Status:</span>
-            <span className={`px-2.5 py-0.5 rounded-full font-medium text-[11px] border tabular-nums ${
-              attachedCount === displayItems.length
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}>
+            <span className={`px-2.5 py-0.5 rounded-full font-medium text-[11px] border tabular-nums ${attachedCount === displayItems.length
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
               {attachedCount} of {displayItems.length} Attached
             </span>
           </div>
         </div>
       </div>
 
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Column: Line Items Table with Direct Upload & Preview Buttons */}
-        <div className="lg:col-span-7 space-y-4">
+      {/* Main Full-Width Line Items Table */}
+      <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-white border-b border-slate-200 flex justify-between items-center">
               <h2 className="font-semibold text-xs uppercase tracking-wider text-slate-700 flex items-center space-x-2">
@@ -614,7 +687,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 <span>PO Line Items &amp; Attached MTC Certificates</span>
               </h2>
               <span className="text-xs text-slate-500">
-                Click any line to preview stamp
+                Click the Preview icon on any line to inspect stamped MTC
               </span>
             </div>
 
@@ -635,15 +708,18 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {displayItems.map(it => {
                     const isSelected = it.id === selectedId
+                    const rowHasHeat = hasHeatNumber(it)
                     const isAttached = hasCertificate(it)
+                    const disabledActionReason = !rowHasHeat
+                      ? 'Select a Heat Number first'
+                      : 'No MTC certificate available for this item'
 
                     return (
                       <tr
                         key={it.id}
                         onClick={() => setSelectedId(it.id)}
-                        className={`transition-colors cursor-pointer ${
-                          isSelected ? 'bg-blue-50/60 border-l-4 border-blue-600' : 'hover:bg-slate-50'
-                        }`}
+                        className={`transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/60 border-l-4 border-blue-600' : 'hover:bg-slate-50'
+                          }`}
                       >
                         {/* SL */}
                         <td className="p-2.5 text-center font-bold text-slate-700">
@@ -675,13 +751,16 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                           <HeatNumberCombobox
                             value={it.heat_number || ''}
                             description={it.description}
-                            extraLots={db.getLots()}
+                            extraLots={db.getMasterStockView()}
                             placeholder="Heat #"
                             onChange={(heat, meta) => {
+                              const trimmedHeat = heat.trim()
+                              setSelectedId(it.id)
                               onApply(it.id, {
                                 heat_number: heat,
-                                certificate_number: meta?.fileName || it.certificate_number || `MTC-${heat}`,
-                                ...(meta?.isBenkan ? { make: 'BENKAN THAILAND CORP', country_of_origin: 'Thailand' } : {})
+                                certificate_number: !trimmedHeat ? '' : (meta?.fileName || ''),
+                                ...(meta?.make ? { make: meta.make } : meta?.isBenkan ? { make: 'BENKAN THAILAND CORP' } : {}),
+                                ...(meta?.countryOfOrigin ? { country_of_origin: meta.countryOfOrigin } : meta?.isBenkan ? { country_of_origin: 'Thailand' } : {}),
                               })
                             }}
                           />
@@ -698,6 +777,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                               <Check className="h-3 w-3" />
                               <span>Attached</span>
+                            </span>
+                          ) : !rowHasHeat ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                              <span>No Heat #</span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -716,7 +799,7 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                                 setTargetUploadItemId(it.id)
                                 itemFileInputRef.current?.click()
                               }}
-                              className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                               title={isAttached ? 'Replace uploaded PDF certificate' : 'Upload supplier MTC PDF for this line'}
                             >
                               <Upload className="h-3.5 w-3.5" />
@@ -725,12 +808,13 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                             {/* Preview */}
                             <button
                               type="button"
+                              disabled={!isAttached}
                               onClick={() => {
                                 setSelectedId(it.id)
-                                handleRenderPreview()
+                                setIsPreviewOpen(true)
                               }}
-                              className="p-1 rounded text-blue-600 hover:bg-blue-50 transition-colors"
-                              title="Preview certificate with MSG True-Copy stamp"
+                              className="p-1 rounded text-blue-600 hover:bg-blue-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title={isAttached ? 'Preview certificate with MSG True-Copy stamp' : disabledActionReason}
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </button>
@@ -738,9 +822,10 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                             {/* Download Stamped */}
                             <button
                               type="button"
+                              disabled={!isAttached}
                               onClick={() => handleDownloadSingle(it)}
-                              className="p-1 rounded text-emerald-700 hover:bg-emerald-50 transition-colors"
-                              title="Download stamped certificate (.pdf)"
+                              className="p-1 rounded text-emerald-700 hover:bg-emerald-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title={isAttached ? 'Download stamped certificate (.pdf)' : disabledActionReason}
                             >
                               <Download className="h-3.5 w-3.5" />
                             </button>
@@ -794,11 +879,21 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
               </div>
             )}
           </div>
-        </div>
+      </div>
 
-        {/* Right Column: Live Embedded PDF Preview of Active Item */}
-        <div className="lg:col-span-5 sticky top-6">
-          <div className="bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden flex flex-col h-[750px]">
+      {/* Live Stamped Certificate Preview Popup Modal (opens only on Preview button click) */}
+      {isPreviewOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsPreviewOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Live Stamped Certificate Preview"
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col w-full max-w-4xl h-[85vh]"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center space-x-2">
                 <Eye className="h-4 w-4 text-blue-600" />
@@ -806,16 +901,28 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
                   Live Stamped Certificate Preview
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleRenderPreview}
-                disabled={isGenerating}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1 cursor-pointer"
-                title="Refresh preview"
-              >
-                <RefreshCw className={`h-3 w-3 ${isGenerating ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={handleRenderPreview}
+                  disabled={isGenerating || !currentItem || !currentHasMtc}
+                  className="text-xs text-blue-600 hover:text-blue-700 disabled:text-slate-400 disabled:cursor-not-allowed font-medium flex items-center space-x-1 cursor-pointer"
+                  title={!currentHasHeat ? 'Select a Heat Number first' : !currentHasMtc ? 'No MTC certificate available' : 'Refresh preview'}
+                >
+                  <RefreshCw className={`h-3 w-3 ${isGenerating ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 flex items-center space-x-1 transition-colors cursor-pointer"
+                  aria-label="Close preview"
+                  title="Close preview"
+                >
+                  <X className="h-4 w-4" />
+                  <span>Close</span>
+                </button>
+              </div>
             </div>
 
             {/* Selected item metadata bar */}
@@ -860,17 +967,22 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
               ) : (
                 <div className="text-center p-6 text-slate-500 text-xs flex flex-col items-center">
                   <FileCheck2 className="h-10 w-10 text-slate-400 mb-2" />
-                  <p className="font-semibold text-slate-700">No Authentic Certificate Attached</p>
+                  <p className="font-semibold text-slate-700">
+                    {!currentHasHeat ? 'No Heat Number Selected' : 'No Authentic Certificate Attached'}
+                  </p>
                   <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-                    No certificate found for this item in the bulk ZIP vault. Upload the authentic supplier PDF or click &quot;Auto-Link Vault&quot;.
+                    {!currentHasHeat
+                      ? 'Select a Heat Number for this line item or upload a supplier PDF to preview and download its MTC.'
+                      : `No certificate found for Heat "${currentItem?.heat_number}" in the vault. Upload the authentic supplier PDF or select another Heat Number.`}
                   </p>
                   <button
                     type="button"
+                    disabled={!currentItem}
                     onClick={() => {
                       setTargetUploadItemId(currentItem?.id || null)
                       itemFileInputRef.current?.click()
                     }}
-                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1 cursor-pointer"
+                    className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1 cursor-pointer"
                   >
                     <Upload className="h-3 w-3" />
                     <span>Upload Authentic PDF</span>
@@ -881,21 +993,31 @@ export const InPageCertificateTab: React.FC<InPageCertificateTabProps> = ({
 
             {/* Footer with Direct Download */}
             <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-              <span className="text-[11px] text-slate-500 font-mono truncate max-w-[220px]" title={currentItem?.certificate_number}>
-                {currentItem?.certificate_number || 'No file attached'}
+              <span className="text-[11px] text-slate-500 font-mono truncate max-w-[320px]" title={currentItem?.certificate_number}>
+                {currentHasMtc ? (currentItem?.certificate_number || `MTC-${currentItem?.heat_number}.pdf`) : 'No MTC available'}
               </span>
-              <button
-                onClick={() => currentItem && handleDownloadSingle(currentItem)}
-                disabled={isGenerating || !currentItem}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Download Stamped MTC</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => currentItem && handleDownloadSingle(currentItem)}
+                  disabled={isGenerating || !currentItem || !currentHasMtc}
+                  title={!currentHasHeat ? 'Select a Heat Number first' : !currentHasMtc ? 'No MTC certificate available for this item' : 'Download stamped MTC (.pdf)'}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download Stamped MTC</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

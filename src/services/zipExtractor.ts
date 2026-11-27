@@ -8,8 +8,18 @@ import {
   getVaultManifest,
   getAllCachedCertificates,
   extractTextAndHeatsFromPDFBytes,
+  isValidPdfBytes,
+  encodeStaticAssetUrl,
+  safeFetchPdfBytes,
+  resolveBackendMtcBytes,
+  hasSelectedHeatNumber,
+  hasAvailableMtcForItem,
+  extractNormalizedSize,
+  getAllVaultHeatOptions,
   StoredCertificateEntry,
-  ManifestCertificate
+  ManifestCertificate,
+  VaultHeatOption,
+  ExtraLotOptionInput
 } from './certificateVault'
 
 export {
@@ -19,9 +29,17 @@ export {
   getAuthenticCertificateBytes,
   getVaultManifest,
   getAllCachedCertificates,
-  extractTextAndHeatsFromPDFBytes
+  extractTextAndHeatsFromPDFBytes,
+  isValidPdfBytes,
+  encodeStaticAssetUrl,
+  safeFetchPdfBytes,
+  resolveBackendMtcBytes,
+  hasSelectedHeatNumber,
+  hasAvailableMtcForItem,
+  extractNormalizedSize,
+  getAllVaultHeatOptions
 }
-export type { StoredCertificateEntry, ManifestCertificate }
+export type { StoredCertificateEntry, ManifestCertificate, VaultHeatOption, ExtraLotOptionInput }
 
 export interface ExtractedCertificate {
   id: string

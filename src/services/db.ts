@@ -31,6 +31,7 @@ import {
   pullAllTablesFromSupabase,
   subscribeToRealtimeChanges
 } from './supabase'
+import * as XLSX from 'xlsx'
 import { autoDetectHSCode, autoDetectMake, autoDetectCountryOfOrigin, setSourcingDraftsCache } from './sourcingEngine'
 import { setLOCDraftsCache } from './locEngine'
 import { uploadToCloudinary, isCloudinaryConfigured } from './cloudinary'
@@ -250,12 +251,23 @@ class DBService {
   private importJobs: ExcelImportJob[] = []
   private storedFiles: any[] = []
   private users: UserProfile[] = []
+  private itemWeights: Record<string, {
+    key_norm: string
+    description: string
+    item_code?: string
+    heat_number?: string
+    unit_weight_kg: number
+    uom?: string
+    source: 'manual' | 'certificate_excel'
+    updated_at: string
+  }> = {}
   private systemConfig: SystemCustomConfig = defaultSystemCustomConfig
 
   private listeners: (() => void)[] = []
   private autoSyncTimer: any = null
   private syncTimeout: any = null
   private isPullingCloud: boolean = false
+  private activeRefreshPromise: Promise<boolean> | null = null
   private lastLocalWriteTime: number = 0
   private realtimeDebounceTimer: any = null
   private mutationChain: Promise<void> = Promise.resolve()
@@ -311,6 +323,7 @@ class DBService {
     this.users = loadFromStorage('users', initialUsers)
     this.systemConfig = loadFromStorage('systemConfig', defaultSystemCustomConfig)
     this.suppliers = loadFromStorage('suppliers', initialSuppliers)
+    this.itemWeights = loadFromStorage('itemWeights', {})
   }
 
   public subscribe(listener: () => void) {
@@ -672,6 +685,184 @@ class DBService {
     return { success: true, message: 'Line reservations released.' }
   }
 
+  private getActiveLineAllocations(order: SalesOrder, lineId: string) {
+    return (order.allocations || []).filter(
+      a => (a.sales_order_item_id === lineId || (a as any).so_item_id === lineId) && a.allocation_status !== 'Released'
+    )
+  }
+
+  private findLotsForHeat(heatNumber: string) {
+    const targetHeat = (heatNumber || '').trim().toUpperCase()
+    if (!targetHeat || targetHeat === '-' || targetHeat === 'N/A' || targetHeat === 'PENDING') return []
+    return this.lots
+      .filter(l => (l.heat_number || '').trim().toUpperCase() === targetHeat)
+      .map(lot => ({
+        lot,
+        balance: this.balances.find(b => b.stock_lot_id === lot.id)
+      }))
+      .sort((a, b) => {
+        const dateA = a.lot.stock_receipt_date || '9999-12-31'
+        const dateB = b.lot.stock_receipt_date || '9999-12-31'
+        if (dateA !== dateB) return dateA.localeCompare(dateB)
+        return (a.lot.yom || 2024) - (b.lot.yom || 2024)
+      })
+  }
+
+  public getAvailableStockQtyForHeat(heatNumber: string): number {
+    return this.findLotsForHeat(heatNumber).reduce(
+      (sum, entry) => sum + Math.max(0, Number(entry.balance?.available_qty || 0)),
+      0
+    )
+  }
+
+  // Apply (deduct) stock quantity for a single worksheet line item against its selected heat number
+  public applyLineHeatAllocation(
+    orderId: string,
+    lineId: string,
+    heatNumber: string,
+    requiredQty: number,
+    userEmail: string
+  ): { success: boolean; alreadyApplied?: boolean; deductedQty: number; remainingAvailable: number; message: string } {
+    const order = this.orders.find(o => o.id === orderId)
+    if (!order) {
+      return { success: false, deductedQty: 0, remainingAvailable: 0, message: 'Sales Order not found.' }
+    }
+
+    const orderItem = order.items.find(i => i.id === lineId) || order.items.find(i => i.item_id === lineId)
+    if (!orderItem) {
+      return { success: false, deductedQty: 0, remainingAvailable: 0, message: 'Order line not found.' }
+    }
+
+    const trimmedHeat = (heatNumber || '').trim()
+    const normalizedHeat = trimmedHeat.toUpperCase()
+    if (!trimmedHeat || normalizedHeat === '-' || normalizedHeat === 'N/A' || normalizedHeat === 'PENDING') {
+      return { success: false, deductedQty: 0, remainingAvailable: 0, message: `Please select a valid Heat Number for Item ${orderItem.client_po_item_no || orderItem.item_code}.` }
+    }
+
+    const qtyNeeded = Number(requiredQty)
+    if (!Number.isFinite(qtyNeeded) || qtyNeeded <= 0) {
+      return { success: false, deductedQty: 0, remainingAvailable: this.getAvailableStockQtyForHeat(trimmedHeat), message: `Quantity must be greater than 0 for Heat ${trimmedHeat}.` }
+    }
+
+    const activeAllocs = this.getActiveLineAllocations(order, orderItem.id)
+    const activeQty = activeAllocs.reduce((sum, a) => sum + Number(a.allocated_qty || 0), 0)
+    const matchesSameHeat =
+      activeAllocs.length > 0 &&
+      activeAllocs.every(a => (a.heat_number || '').trim().toUpperCase() === normalizedHeat)
+
+    // Already applied for the exact same heat and quantity -> prevent duplicate deduction
+    if (matchesSameHeat && Math.abs(activeQty - qtyNeeded) < 1e-6) {
+      orderItem.heat_number = trimmedHeat
+      orderItem.required_qty = qtyNeeded
+      orderItem.allocated_qty = qtyNeeded
+      if (orderItem.line_status !== 'Approved' && orderItem.line_status !== 'Dispatched') {
+        orderItem.line_status = 'Allocated'
+      }
+      this.saveAll()
+      this.notify()
+      return {
+        success: true,
+        alreadyApplied: true,
+        deductedQty: 0,
+        remainingAvailable: this.getAvailableStockQtyForHeat(trimmedHeat),
+        message: `Heat ${trimmedHeat} (${qtyNeeded} PCS) is already applied to this line.`
+      }
+    }
+
+    const heatLots = this.findLotsForHeat(trimmedHeat)
+    if (heatLots.length === 0) {
+      return {
+        success: false,
+        deductedQty: 0,
+        remainingAvailable: 0,
+        message: `No Master Stock lot found for Heat ${trimmedHeat}.`
+      }
+    }
+
+    const currentAvail = heatLots.reduce((sum, x) => sum + Math.max(0, Number(x.balance?.available_qty || 0)), 0)
+    const reusableOnTargetHeat = activeAllocs
+      .filter(a => (a.heat_number || '').trim().toUpperCase() === normalizedHeat)
+      .reduce((sum, a) => sum + Number(a.allocated_qty || 0), 0)
+
+    if (currentAvail + reusableOnTargetHeat < qtyNeeded) {
+      return {
+        success: false,
+        deductedQty: 0,
+        remainingAvailable: currentAvail,
+        message: `Insufficient remaining stock in Heat ${trimmedHeat}. Requested: ${qtyNeeded} PCS, Available: ${currentAvail + reusableOnTargetHeat} PCS.`
+      }
+    }
+
+    // Release prior allocation on this line before applying updated heat/qty
+    if (activeQty > 0) {
+      this.deallocateLine(order.id, orderItem.id, userEmail)
+    }
+
+    orderItem.required_qty = qtyNeeded
+    orderItem.heat_number = trimmedHeat
+
+    let remaining = qtyNeeded
+    const refreshedLots = this.findLotsForHeat(trimmedHeat).filter(x => (x.balance?.available_qty || 0) > 0)
+    for (const entry of refreshedLots) {
+      if (remaining <= 0) break
+      const avail = Number(entry.balance?.available_qty || 0)
+      const take = Math.min(remaining, avail)
+      if (take <= 0) continue
+      const allocRes = this.allocateManual(order.id, orderItem.id, entry.lot.id, take, userEmail)
+      if (!allocRes.success) {
+        return {
+          success: false,
+          deductedQty: qtyNeeded - remaining,
+          remainingAvailable: this.getAvailableStockQtyForHeat(trimmedHeat),
+          message: allocRes.message
+        }
+      }
+      remaining -= take
+    }
+
+    // Ensure heat_number keeps exact selected lot casing
+    orderItem.heat_number = trimmedHeat
+    const remainingAfter = this.getAvailableStockQtyForHeat(trimmedHeat)
+    this.saveAll()
+    this.notify()
+
+    return {
+      success: true,
+      alreadyApplied: false,
+      deductedQty: qtyNeeded,
+      remainingAvailable: remainingAfter,
+      message: `Applied ${qtyNeeded} PCS from Heat ${trimmedHeat} (${remainingAfter} PCS remaining).`
+    }
+  }
+
+  public applyWorksheetStockBatch(
+    orderId: string,
+    entries: Array<{ lineId: string; heatNumber: string; qty: number }>,
+    userEmail: string
+  ) {
+    let appliedCount = 0
+    let alreadyCount = 0
+    const errors: string[] = []
+
+    for (const entry of entries) {
+      const res = this.applyLineHeatAllocation(orderId, entry.lineId, entry.heatNumber, entry.qty, userEmail)
+      if (!res.success) {
+        errors.push(res.message)
+      } else if (res.alreadyApplied) {
+        alreadyCount++
+      } else {
+        appliedCount++
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      appliedCount,
+      alreadyCount,
+      errors
+    }
+  }
+
   // Submit Order for Storekeeper Physical Approval
   public submitForApproval(orderId: string, userEmail: string) {
     const order = this.orders.find(o => o.id === orderId)
@@ -696,9 +887,36 @@ class DBService {
     if (!order) return { success: false, message: 'Order not found' }
 
     if (status === 'Approved') {
+      // Deduct stock quantities for any pending items with a selected heat number upon approval
+      for (const it of order.items) {
+        const heat = (it.heat_number || '').trim()
+        const isLocal = Boolean(
+          (it as any).is_local ||
+          (it as any).purchase_type === 'local_purchase' ||
+          ((it as any).supplier_name || '').trim().toUpperCase() === 'LOCAL'
+        )
+        if (!isLocal && heat && heat !== '-' && heat.toUpperCase() !== 'N/A' && heat.toUpperCase() !== 'PENDING') {
+          const activeQty = this.getActiveLineAllocations(order, it.id).reduce(
+            (sum, a) => sum + Number(a.allocated_qty || 0),
+            0
+          )
+          const hasMatchingLot = this.findLotsForHeat(heat).length > 0
+          if (hasMatchingLot && activeQty < it.required_qty) {
+            const allocRes = this.applyLineHeatAllocation(order.id, it.id, heat, it.required_qty, approverName)
+            if (!allocRes.success) {
+              return { success: false, message: allocRes.message }
+            }
+          }
+        }
+      }
       order.status = 'Approved'
       order.approved_by = approverName
       order.store_remarks = remarks
+      for (const it of order.items) {
+        if (it.line_status === 'Allocated') {
+          it.line_status = 'Approved'
+        }
+      }
     } else if (status === 'Rejected') {
       order.status = 'Draft'
       order.store_remarks = `Rejected: ${remarks}`
@@ -1161,17 +1379,12 @@ class DBService {
 
       // Check if heat number was specified in the PDF / form
       const specifiedHeat = item.heat_number?.trim()
-      if (specifiedHeat) {
-        // Find or create matching stock lot with this heat number
-        let lot = this.lots.find(l => 
+      if (specifiedHeat && isLocal) {
+        // Only local-purchase lines auto-register their newly procured batch; stock items stay un-deducted until Apply / Approve
+        let lot = this.lots.find(l =>
           l.heat_number.toUpperCase() === specifiedHeat.toUpperCase() &&
           (l.item_code.toLowerCase() === itemCode.toLowerCase() || l.item_id === itemId)
         )
-
-        // If not found by item code, find by heat number directly
-        if (!lot) {
-          lot = this.lots.find(l => l.heat_number.toUpperCase() === specifiedHeat.toUpperCase())
-        }
 
         if (!lot) {
           const newLotId = 'LOT-' + Date.now().toString().slice(-4) + '-' + (idx + 1)
@@ -1183,12 +1396,12 @@ class DBService {
             item_description: item.item_description?.trim() || itm?.item_description || `Oilfield Material ${itemCode}`,
             heat_number: specifiedHeat,
             yom: 2026,
-            original_qty: item.required_qty + 20,
-            received_qty: item.required_qty + 20,
+            original_qty: item.required_qty,
+            received_qty: item.required_qty,
             purchase_type: purchaseType,
             l_code: lCode,
-            supplier_name: item.supplier_name || (isLocal ? 'Local UAE Supplier' : ''),
-            warehouse_location: item.location || 'LN: BB10',
+            supplier_name: item.supplier_name || 'Local UAE Supplier',
+            warehouse_location: item.location || 'LOCAL-LP-BAY',
             stock_receipt_date: new Date().toISOString().substring(0, 10),
             mtc_ref: `MTC-${specifiedHeat}.pdf`,
             created_at: new Date().toISOString(),
@@ -1197,125 +1410,46 @@ class DBService {
           this.lots.push(newLot)
           lot = newLot
 
-          if (isLocal) {
-            this.localPurchases.unshift({
-              id: 'LP-' + Date.now().toString().slice(-4) + '-' + (idx + 1),
-              l_code: lCode || itemCode,
-              item_id: itemId,
-              item_code: itemCode,
-              stock_lot_id: newLotId,
-              supplier_name: item.supplier_name || 'Local UAE Supplier',
-              purchase_reference: orderData.po_number || 'LPO-LOCAL',
-              purchase_date: new Date().toISOString().substring(0, 10),
-              received_qty: item.required_qty + 20,
-              yom: 2026,
-              supplier_mtc_uploaded: true,
-              created_by: orderData.userEmail || 'System Auto-Link',
-              created_at: new Date().toISOString()
-            })
-          }
+          this.localPurchases.unshift({
+            id: 'LP-' + Date.now().toString().slice(-4) + '-' + (idx + 1),
+            l_code: lCode || itemCode,
+            item_id: itemId,
+            item_code: itemCode,
+            stock_lot_id: newLotId,
+            supplier_name: item.supplier_name || 'Local UAE Supplier',
+            purchase_reference: orderData.po_number || 'LPO-LOCAL',
+            purchase_date: new Date().toISOString().substring(0, 10),
+            received_qty: item.required_qty,
+            yom: 2026,
+            supplier_mtc_uploaded: true,
+            created_by: orderData.userEmail || 'System Auto-Link',
+            created_at: new Date().toISOString()
+          })
 
-          // Create balance with stock
           this.balances.push({
             id: 'BAL-' + newLotId,
             stock_lot_id: newLotId,
-            physical_qty: item.required_qty + 20,
-            reserved_qty: 0,
-            available_qty: item.required_qty + 20,
+            physical_qty: item.required_qty,
+            reserved_qty: item.required_qty,
+            available_qty: 0,
             dispatched_qty: 0,
             updated_at: new Date().toISOString()
           })
 
-          // Auto-create verified MTC certificate for this heat number
-          const newCert: MTCCertificate = {
-            id: 'MTC-' + specifiedHeat,
-            item_id: itemId,
-            item_code: itemCode,
-            stock_lot_id: newLotId,
-            heat_number: specifiedHeat,
-            certificate_reference: `MTC-${specifiedHeat}.pdf`,
-            original_file_path: '/sample-mtc.pdf',
-            purchase_type: 'regular',
-            supplier_name: 'BENKAN THAILAND',
-            upload_date: new Date().toISOString().substring(0, 10),
-            uploaded_by: orderData.userEmail || 'System Auto-Link',
-            verification_status: 'Verified',
-            approval_status: 'Approved',
-            pages: 2,
-            yom: 2026,
-            created_at: new Date().toISOString()
-          }
-          this.mtcs.unshift(newCert)
-        }
-
-        const validLot = lot as StockLot
-        // Allocate from this lot and reduce available balance
-        const bal = this.balances.find(b => b.stock_lot_id === validLot.id)
-        if (bal) {
-          const qtyToAllocate = Math.min(item.required_qty, bal.available_qty > 0 ? bal.available_qty : item.required_qty)
-          if (bal.available_qty < qtyToAllocate) {
-            bal.physical_qty += qtyToAllocate
-            bal.available_qty += qtyToAllocate
-          }
-          bal.reserved_qty += qtyToAllocate
-          bal.available_qty -= qtyToAllocate
-          bal.updated_at = new Date().toISOString()
-
-          allocatedQty = qtyToAllocate
+          allocatedQty = item.required_qty
           lineStatus = 'Allocated'
-
-          let matchedMtc = this.mtcs.find(m => m.heat_number.toUpperCase() === specifiedHeat.toUpperCase())
-          if (!matchedMtc && specifiedHeat && !specifiedHeat.startsWith('LOT-')) {
-            matchedMtc = {
-              id: 'MTC-' + specifiedHeat,
-              item_id: itemId,
-              item_code: itemCode,
-              stock_lot_id: validLot.id,
-              heat_number: specifiedHeat,
-              certificate_reference: `MTC-${specifiedHeat}.pdf`,
-              original_file_path: '/sample-mtc.pdf',
-              purchase_type: 'regular',
-              supplier_name: (item as any).supplier_name || 'BENKAN THAILAND',
-              upload_date: new Date().toISOString().substring(0, 10),
-              uploaded_by: orderData.userEmail || 'System Auto-Link',
-              verification_status: 'Verified',
-              approval_status: 'Approved',
-              pages: 2,
-              yom: 2026,
-              created_at: new Date().toISOString()
-            }
-            this.mtcs.unshift(matchedMtc)
-          }
-
           allocations.push({
             id: 'ALC-' + Date.now() + '-' + idx + '-' + Math.floor(Math.random() * 1000),
             sales_order_item_id: soItemId,
             sales_order_id: orderId,
-            stock_lot_id: validLot.id,
+            stock_lot_id: lot.id,
             heat_number: specifiedHeat,
-            mtc_certificate_id: matchedMtc?.id,
-            allocated_qty: qtyToAllocate,
+            allocated_qty: item.required_qty,
             released_qty: 0,
             dispatched_qty: 0,
             allocation_status: 'Allocated',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
-          })
-
-          this.movements.unshift({
-            id: 'MOV-' + Date.now() + '-' + idx,
-            stock_lot_id: validLot.id,
-            item_code: itemCode,
-            heat_number: specifiedHeat,
-            movement_type: 'Reservation',
-            quantity: qtyToAllocate,
-            reference_type: 'SalesOrder',
-            reference_id: soNumber,
-            previous_balance: bal.available_qty + qtyToAllocate,
-            new_balance: bal.available_qty,
-            performed_by: orderData.userEmail,
-            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-            remarks: `Direct Heat Assignment: ${specifiedHeat} reserved for ${soNumber} (${qtyToAllocate} PCS)`
           })
         }
       }
@@ -1481,7 +1615,15 @@ class DBService {
         const resolvedCode = upItem.item_code || existing?.item_code || fallbackItem?.item_code || `ITEM-${resolvedPosition}`
         const resolvedItemId = existing?.item_id || fallbackItem?.item_id || `CAT-${resolvedPosition}`
 
+        const reqQty = upItem.required_qty !== undefined ? upItem.required_qty : (existing?.required_qty || 1)
+        const activeLineAllocs = (order.allocations || []).filter(
+          a => (a.sales_order_item_id === resolvedId || (a as any).so_item_id === resolvedId) && a.allocation_status !== 'Released'
+        )
+        const realAllocatedQty = activeLineAllocs.reduce((sum, a) => sum + Number(a.allocated_qty || 0), 0)
+
         const mergedItem: SalesOrderItem = {
+          ...(existing || {}),
+          ...(upItem as any),
           id: resolvedId,
           sales_order_id: order.id,
           item_id: resolvedItemId,
@@ -1489,8 +1631,8 @@ class DBService {
           item_description: upItem.item_description !== undefined ? upItem.item_description : (existing?.item_description || ''),
           client_po_item_no: upItem.client_po_item_no !== undefined ? upItem.client_po_item_no : (existing?.client_po_item_no || String(resolvedPosition)),
           position: resolvedPosition,
-          required_qty: upItem.required_qty !== undefined ? upItem.required_qty : (existing?.required_qty || 1),
-          allocated_qty: upItem.heat_number ? (upItem.required_qty || existing?.required_qty || 1) : (existing?.allocated_qty || 0),
+          required_qty: reqQty,
+          allocated_qty: realAllocatedQty,
           dispatched_qty: existing?.dispatched_qty || 0,
           uom: upItem.uom !== undefined ? upItem.uom : (existing?.uom || 'EA'),
           heat_number: upItem.heat_number !== undefined ? upItem.heat_number : (existing?.heat_number || ''),
@@ -1507,14 +1649,11 @@ class DBService {
           hs_code: upItem.hs_code !== undefined ? upItem.hs_code : (existing?.hs_code || autoDetectHSCode(upItem.item_description || existing?.item_description || '', resolvedCode)),
           country_of_origin: upItem.country_of_origin !== undefined ? upItem.country_of_origin : (existing?.country_of_origin || ''),
           unit_price: upItem.unit_price !== undefined ? upItem.unit_price : (existing?.unit_price ?? 0),
-          line_status: upItem.heat_number ? 'Allocated' : (existing?.line_status || 'Pending'),
-        }
-
-        // Synchronize matching allocation with updated heat and quantity
-        const alloc = order.allocations?.find(a => (a.sales_order_item_id || a.so_item_id) === mergedItem.id)
-        if (alloc) {
-          if (mergedItem.heat_number) alloc.heat_number = mergedItem.heat_number
-          if (mergedItem.required_qty) alloc.allocated_qty = mergedItem.required_qty
+          line_status: existing?.line_status === 'Dispatched'
+            ? 'Dispatched'
+            : existing?.line_status === 'Approved'
+              ? 'Approved'
+              : (realAllocatedQty >= reqQty && reqQty > 0 ? 'Allocated' : 'Pending'),
         }
 
         return mergedItem
@@ -1967,6 +2106,7 @@ class DBService {
     saveToStorage('importJobs', this.importJobs)
     saveToStorage('users', this.users)
     saveToStorage('suppliers', this.suppliers)
+    saveToStorage('itemWeights', this.itemWeights)
   }
 
   private saveAll() {
@@ -2676,54 +2816,71 @@ class DBService {
   }
 
   public async refreshFromBackend(): Promise<boolean> {
+    if (this.activeRefreshPromise) return this.activeRefreshPromise
     if (this.isPullingCloud) return false
     this.isPullingCloud = true
-    try {
-      const res = await apiGet<{ success: boolean; data: any }>('/api/bootstrap')
-      if (!res?.success || !res.data) return false
-      const d = res.data
-      if (Array.isArray(d.suppliers)) this.suppliers = d.suppliers
-      if (Array.isArray(d.customers)) this.customers = d.customers
-      if (Array.isArray(d.items)) this.items = d.items
-      if (Array.isArray(d.lots)) this.lots = d.lots
-      if (Array.isArray(d.balances)) this.balances = d.balances
-      if (Array.isArray(d.orders)) this.orders = d.orders
-      if (Array.isArray(d.mtcs)) this.mtcs = d.mtcs
-      if (Array.isArray(d.localPurchases)) this.localPurchases = d.localPurchases
-      if (Array.isArray(d.movements)) this.movements = d.movements
-      if (Array.isArray(d.approvals)) this.approvals = d.approvals
-      if (Array.isArray(d.dispatches)) this.dispatches = d.dispatches
-      if (Array.isArray(d.returns)) this.returns = d.returns
-      if (Array.isArray(d.adjustments)) this.adjustments = d.adjustments
-      if (Array.isArray(d.audits)) this.audits = d.audits
-      if (Array.isArray(d.importJobs)) this.importJobs = d.importJobs
-      if (Array.isArray(d.storedFiles)) this.storedFiles = d.storedFiles
-      if (Array.isArray(d.users) && d.users.length > 0) this.users = d.users
-      if (d.systemConfig) {
-        this.systemConfig = { ...this.systemConfig, ...d.systemConfig }
-        saveToStorage('systemConfig', this.systemConfig)
-      }
-      if (Array.isArray(d.sourcingDrafts)) setSourcingDraftsCache(d.sourcingDrafts)
-      if (Array.isArray(d.locDrafts)) setLOCDraftsCache(d.locDrafts)
-      if (d.activeOrderId) {
-        const hasRecentLocalActive =
-          Boolean(this.pendingActiveOrderId) || Date.now() - this.lastActiveOrderWriteTime < 8000
-        if (!hasRecentLocalActive || d.activeOrderId === this.pendingActiveOrderId) {
-          saveToStorage('active_so_id', d.activeOrderId)
-          if (d.activeOrderId === this.pendingActiveOrderId) {
-            this.pendingActiveOrderId = ''
+    const run = (async (): Promise<boolean> => {
+      try {
+        const res = await apiGet<{ success: boolean; data: any }>('/api/bootstrap')
+        if (!res?.success || !res.data) return false
+        const d = res.data
+        if (Array.isArray(d.suppliers)) this.suppliers = d.suppliers
+        if (Array.isArray(d.customers)) this.customers = d.customers
+        if (Array.isArray(d.items)) this.items = d.items
+        if (Array.isArray(d.lots)) this.lots = d.lots
+        if (Array.isArray(d.balances)) this.balances = d.balances
+        if (Array.isArray(d.orders)) this.orders = d.orders
+        if (Array.isArray(d.mtcs)) this.mtcs = d.mtcs
+        if (Array.isArray(d.localPurchases)) this.localPurchases = d.localPurchases
+        if (Array.isArray(d.movements)) this.movements = d.movements
+        if (Array.isArray(d.approvals)) this.approvals = d.approvals
+        if (Array.isArray(d.dispatches)) this.dispatches = d.dispatches
+        if (Array.isArray(d.returns)) this.returns = d.returns
+        if (Array.isArray(d.adjustments)) this.adjustments = d.adjustments
+        if (Array.isArray(d.audits)) this.audits = d.audits
+        if (Array.isArray(d.importJobs)) this.importJobs = d.importJobs
+        if (Array.isArray(d.storedFiles)) this.storedFiles = d.storedFiles
+        if (Array.isArray(d.users) && d.users.length > 0) this.users = d.users
+        if (d.systemConfig) {
+          this.systemConfig = { ...this.systemConfig, ...d.systemConfig }
+          saveToStorage('systemConfig', this.systemConfig)
+        }
+        if (Array.isArray(d.sourcingDrafts)) setSourcingDraftsCache(d.sourcingDrafts)
+        if (Array.isArray(d.locDrafts)) setLOCDraftsCache(d.locDrafts)
+        if (Array.isArray(d.itemWeights)) {
+          const mergedWeights = { ...this.itemWeights }
+          d.itemWeights.forEach((w: any) => {
+            if (w?.key_norm && Number(w.unit_weight_kg) > 0) {
+              mergedWeights[w.key_norm] = w
+            }
+          })
+          this.itemWeights = mergedWeights
+          saveToStorage('itemWeights', this.itemWeights)
+        }
+        if (d.activeOrderId) {
+          const hasRecentLocalActive =
+            Boolean(this.pendingActiveOrderId) || Date.now() - this.lastActiveOrderWriteTime < 8000
+          if (!hasRecentLocalActive || d.activeOrderId === this.pendingActiveOrderId) {
+            saveToStorage('active_so_id', d.activeOrderId)
+            if (d.activeOrderId === this.pendingActiveOrderId) {
+              this.pendingActiveOrderId = ''
+            }
           }
         }
-      }
 
-      this.saveLocalStorageOnly()
-      this.notify()
-      return true
-    } catch {
-      return false
-    } finally {
-      this.isPullingCloud = false
-    }
+        this.saveLocalStorageOnly()
+        this.notify()
+        return true
+      } catch {
+        return false
+      } finally {
+        this.isPullingCloud = false
+        this.activeRefreshPromise = null
+      }
+    })()
+
+    this.activeRefreshPromise = run
+    return run
   }
 
   private lastSyncError: string | null = null
@@ -2913,6 +3070,146 @@ class DBService {
 
   public getStoredFiles(): any[] {
     return [...this.storedFiles]
+  }
+
+  public normalizeItemWeightKey(raw: string): string {
+    return String(raw || '')
+      .toLowerCase()
+      .replace(/["'`]/g, 'inch')
+      .replace(/[^a-z0-9.]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ')
+  }
+
+  public getItemWeights() {
+    return Object.values(this.itemWeights)
+  }
+
+  public getRecordedItemWeight(
+    description?: string,
+    itemCode?: string,
+    heatNumber?: string
+  ): { unit_weight_kg: number; source: 'manual' | 'certificate_excel' } | null {
+    const descKey = this.normalizeItemWeightKey(description || '')
+    const codeKey = itemCode ? `code:${this.normalizeItemWeightKey(itemCode)}` : ''
+    const heatKey = heatNumber ? `heat:${this.normalizeItemWeightKey(heatNumber)}` : ''
+
+    const candidates = [descKey, codeKey, heatKey].filter(Boolean)
+    for (const k of candidates) {
+      const rec = this.itemWeights[k]
+      if (rec && Number(rec.unit_weight_kg) > 0) {
+        return { unit_weight_kg: Number(rec.unit_weight_kg), source: rec.source || 'manual' }
+      }
+    }
+    return null
+  }
+
+  public saveRecordedItemWeight(
+    description: string,
+    unitWeightKg: number,
+    opts?: {
+      itemCode?: string
+      heatNumber?: string
+      uom?: string
+      source?: 'manual' | 'certificate_excel'
+      userEmail?: string
+    }
+  ) {
+    const weight = Math.round(Number(unitWeightKg || 0) * 1000) / 1000
+    if (weight <= 0) return null
+    const descKey = this.normalizeItemWeightKey(description)
+    const codeKey = opts?.itemCode ? `code:${this.normalizeItemWeightKey(opts.itemCode)}` : ''
+    const heatKey = opts?.heatNumber ? `heat:${this.normalizeItemWeightKey(opts.heatNumber)}` : ''
+    const primaryKey = descKey || codeKey || heatKey
+    if (!primaryKey) return null
+
+    const now = new Date().toISOString()
+    const record = {
+      key_norm: primaryKey,
+      description: (description || '').trim(),
+      item_code: opts?.itemCode?.trim(),
+      heat_number: opts?.heatNumber?.trim(),
+      unit_weight_kg: weight,
+      uom: opts?.uom || 'PCS',
+      source: opts?.source || 'manual',
+      updated_at: now
+    }
+
+    this.itemWeights[primaryKey] = record
+    if (codeKey) this.itemWeights[codeKey] = { ...record, key_norm: codeKey }
+    if (heatKey) this.itemWeights[heatKey] = { ...record, key_norm: heatKey }
+
+    saveToStorage('itemWeights', this.itemWeights)
+    this.notify()
+    this.backendMutation(() => apiPost('/api/item-weights', record))
+    return record
+  }
+
+  public importWeightsFromExcelBuffer(
+    buffer: ArrayBuffer,
+    userEmail: string = 'sales@msgoilfield.ae'
+  ): { count: number; entries: Array<{ description: string; heatNumber?: string; unitWeightKg: number }> } {
+    const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
+    const entries: Array<{ description: string; heatNumber?: string; unitWeightKg: number }> = []
+    const bulkPayload: any[] = []
+
+    wb.SheetNames.forEach(sheetName => {
+      const ws = wb.Sheets[sheetName]
+      if (!ws) return
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' })
+      rows.forEach(row => {
+        const keys = Object.keys(row)
+        const findCol = (patterns: RegExp[]) =>
+          keys.find(k => patterns.some(p => p.test(k.trim().toLowerCase())))
+
+        const weightCol = findCol([/unit[\s_-]*w(eigh)?t/, /^w(eigh)?t(\s*\(kg\))?$/, /net[\s_-]*w(eigh)?t/, /kg/])
+        if (!weightCol) return
+        const rawWt = parseFloat(String(row[weightCol] || '').replace(/[^0-9.]/g, ''))
+        if (!Number.isFinite(rawWt) || rawWt <= 0) return
+
+        const descCol = findCol([/desc/, /item[\s_-]*name/, /material/, /product/])
+        const codeCol = findCol([/item[\s_-]*code/, /part[\s_-]*no/, /^code$/])
+        const heatCol = findCol([/heat/, /cast/, /batch/])
+
+        const desc = descCol ? String(row[descCol] || '').trim() : ''
+        const itemCode = codeCol ? String(row[codeCol] || '').trim() : ''
+        const heatNo = heatCol ? String(row[heatCol] || '').trim() : ''
+        if (!desc && !itemCode && !heatNo) return
+
+        const weight = Math.round(rawWt * 1000) / 1000
+        entries.push({ description: desc || itemCode || heatNo, heatNumber: heatNo || undefined, unitWeightKg: weight })
+
+        const now = new Date().toISOString()
+        const keysToSave = [
+          desc ? this.normalizeItemWeightKey(desc) : '',
+          itemCode ? `code:${this.normalizeItemWeightKey(itemCode)}` : '',
+          heatNo ? `heat:${this.normalizeItemWeightKey(heatNo)}` : ''
+        ].filter(Boolean)
+
+        keysToSave.forEach(k => {
+          const rec = {
+            key_norm: k,
+            description: desc,
+            item_code: itemCode,
+            heat_number: heatNo,
+            unit_weight_kg: weight,
+            uom: 'PCS',
+            source: 'certificate_excel' as const,
+            updated_at: now
+          }
+          this.itemWeights[k] = rec
+          bulkPayload.push(rec)
+        })
+      })
+    })
+
+    if (bulkPayload.length > 0) {
+      saveToStorage('itemWeights', this.itemWeights)
+      this.logAudit(userEmail, 'Import Certificate Excel Weights', 'CIPL Logistics', `${entries.length} weights`)
+      this.notify()
+      this.backendMutation(() => apiPost('/api/item-weights/bulk', { weights: bulkPayload }))
+    }
+    return { count: entries.length, entries }
   }
 
   public setActiveOrderId(id: string): void {

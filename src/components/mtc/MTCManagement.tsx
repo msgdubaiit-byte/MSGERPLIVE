@@ -35,6 +35,8 @@ import {
   registerUploadedCertificate,
   getAuthenticCertificateBytes,
   getVaultManifest,
+  safeFetchPdfBytes,
+  resolveBackendMtcBytes,
   ManifestCertificate,
 } from '../../services/certificateVault'
 import { BulkCertificateUploadModal } from './BulkCertificateUploadModal'
@@ -67,7 +69,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
   useEffect(() => {
     getVaultManifest().then(items => {
       if (Array.isArray(items)) setVaultManifest(items)
-    }).catch(() => {})
+    }).catch(() => { })
   }, [])
 
   const mtcs = db.getMTCs()
@@ -167,30 +169,17 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     if (cached) return cached
 
     if (vf.url) {
-      try {
-        const resp = await fetch(vf.url)
-        if (resp.ok) {
-          const bytes = new Uint8Array(await resp.arrayBuffer())
-          if (bytes.length > 50) return bytes
-        }
-      } catch {}
+      const fetched = await safeFetchPdfBytes(vf.url)
+      if (fetched) return fetched
     }
 
-    try {
-      const params = new URLSearchParams()
-      if (vf.fileName) params.set('doc_name', vf.fileName)
-      if (vf.heatNumber && vf.heatNumber !== '-') params.set('heat_number', vf.heatNumber)
-      const r = await fetch(`/api/mtc/resolve?${params.toString()}`)
-      if (r.ok) {
-        const bytes = new Uint8Array(await r.arrayBuffer())
-        if (bytes.length > 50) return bytes
-      }
-    } catch {}
+    const backendBytes = await resolveBackendMtcBytes(vf.fileName, vf.heatNumber !== '-' ? vf.heatNumber : undefined)
+    if (backendBytes) return backendBytes
 
     try {
       const found = await getAuthenticCertificateBytes(vf.fileName, vf.heatNumber !== '-' ? vf.heatNumber : undefined)
       if (found?.bytes && found.bytes.length > 50) return found.bytes
-    } catch {}
+    } catch { }
 
     return null
   }
@@ -206,30 +195,16 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
     if (cached) return cached
 
     if (m.original_file_path && m.original_file_path !== '/sample-mtc.pdf' && (m.original_file_path.startsWith('/') || m.original_file_path.startsWith('blob:') || m.original_file_path.startsWith('http'))) {
-      try {
-        const resp = await fetch(m.original_file_path)
-        if (resp.ok) {
-          const buf = await resp.arrayBuffer()
-          const bytes = new Uint8Array(buf)
-          if (bytes.length > 50) return bytes
-        }
-      } catch (e) {
-        console.warn('Could not fetch path:', m.original_file_path, e)
-      }
+      const fetched = await safeFetchPdfBytes(m.original_file_path)
+      if (fetched) return fetched
     }
 
     // Resolve from backend stored_files (/api/mtc/resolve)
-    try {
-      const params = new URLSearchParams()
-      if (m.original_file_path && m.original_file_path !== '/sample-mtc.pdf') params.set('doc_name', m.original_file_path)
-      else if (m.certificate_reference) params.set('doc_name', m.certificate_reference)
-      if (m.heat_number) params.set('heat_number', m.heat_number)
-      const r = await fetch(`/api/mtc/resolve?${params.toString()}`)
-      if (r.ok) {
-        const bytes = new Uint8Array(await r.arrayBuffer())
-        if (bytes.length > 50) return bytes
-      }
-    } catch {}
+    const backendBytes = await resolveBackendMtcBytes(
+      m.original_file_path && m.original_file_path !== '/sample-mtc.pdf' ? m.original_file_path : m.certificate_reference,
+      m.heat_number
+    )
+    if (backendBytes) return backendBytes
 
     // Resolve from uploaded manifest vault (/certificates/manifest.json - 338 real supplier PDFs)
     try {
@@ -239,7 +214,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
         m.item_code
       )
       if (found?.bytes && found.bytes.length > 50) return found.bytes
-    } catch {}
+    } catch { }
 
     // Fallback: Generate full authentic 2-page EN 10204 3.1 Mill Test Certificate receipt
     try {
@@ -423,32 +398,32 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
       // Collect certificates for all allocated heats or order line items
       const allocatedCerts = (order.allocations && order.allocations.length > 0)
         ? order.allocations.map(alloc => {
-            const lot = masterStock.find(s => s.id === alloc.stock_lot_id)
-            const orderItem = order.items?.find(i => i.id === (alloc.sales_order_item_id || alloc.so_item_id) || i.item_code === (lot?.item_code || alloc.item_code))
-            const itemNo = orderItem?.client_po_item_no || (orderItem?.position ? String(orderItem.position) : undefined)
-            const certRef = alloc.mtc_certificate_id || orderItem?.certificate_number || (lot as any)?.certificate_number || lot?.mtc_ref || ''
-            return {
-              itemCode: lot?.item_code || alloc.item_code || orderItem?.item_code || '',
-              heatNumber: alloc.heat_number,
-              yom: lot?.yom || 2026,
-              lCode: lot?.l_code,
-              qty: alloc.allocated_qty,
-              isLocal: lot?.purchase_type === 'local_purchase',
-              pages: 2,
-              itemNo: itemNo || '',
-              certRef,
-            }
-          })
-        : order.items.map((item, idx) => ({
-            itemCode: item.item_code,
-            heatNumber: item.heat_number || (idx === 0 ? 'EY7' : '67M01M085'),
-            yom: 2026,
-            qty: item.allocated_qty || item.required_qty || 1,
-            isLocal: Boolean(item.is_local),
+          const lot = masterStock.find(s => s.id === alloc.stock_lot_id)
+          const orderItem = order.items?.find(i => i.id === (alloc.sales_order_item_id || alloc.so_item_id) || i.item_code === (lot?.item_code || alloc.item_code))
+          const itemNo = orderItem?.client_po_item_no || (orderItem?.position ? String(orderItem.position) : undefined)
+          const certRef = alloc.mtc_certificate_id || orderItem?.certificate_number || (lot as any)?.certificate_number || lot?.mtc_ref || ''
+          return {
+            itemCode: lot?.item_code || alloc.item_code || orderItem?.item_code || '',
+            heatNumber: alloc.heat_number,
+            yom: lot?.yom || 2026,
+            lCode: lot?.l_code,
+            qty: alloc.allocated_qty,
+            isLocal: lot?.purchase_type === 'local_purchase',
             pages: 2,
-            itemNo: item.client_po_item_no || (item.position ? String(item.position) : `${idx + 1}`),
-            certRef: item.certificate_number || '',
-          }))
+            itemNo: itemNo || '',
+            certRef,
+          }
+        })
+        : order.items.map((item, idx) => ({
+          itemCode: item.item_code,
+          heatNumber: item.heat_number || (idx === 0 ? 'EY7' : '67M01M085'),
+          yom: 2026,
+          qty: item.allocated_qty || item.required_qty || 1,
+          isLocal: Boolean(item.is_local),
+          pages: 2,
+          itemNo: item.client_po_item_no || (item.position ? String(item.position) : `${idx + 1}`),
+          certRef: item.certificate_number || '',
+        }))
 
       const pdfBytes = await mergeSalesOrderMTCPackage(
         order.so_number,
@@ -584,7 +559,7 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
             const upJson = await upResp.json()
             persistentUrl = upJson.file?.cloudUrl || upJson.file?.url || persistentUrl
           }
-        } catch {}
+        } catch { }
       }
 
       registerUploadedCertificate(singleMtcFile.name, fileData, singleMtcFile.name, cleanHeat)
@@ -977,9 +952,8 @@ export const MTCManagement: React.FC<MTCManagementProps> = ({ onPreviewMTC }) =>
                   return (
                     <tr
                       key={vf.id}
-                      className={`transition-colors ${
-                        isSelected ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50'
-                      }`}
+                      className={`transition-colors ${isSelected ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50'
+                        }`}
                     >
                       <td className="p-2.5 text-center">
                         <input

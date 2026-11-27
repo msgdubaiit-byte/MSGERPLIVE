@@ -24,6 +24,8 @@ import {
   Crown,
   Zap,
   Cpu,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
@@ -56,6 +58,7 @@ interface SidebarProps {
   activeTab: NavTabId
   onTabChange: (tab: NavTabId) => void
   collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 interface NavItemDef {
@@ -70,7 +73,7 @@ interface NavGroupDef {
   items: NavItemDef[]
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collapsed = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collapsed = false, onToggleCollapse }) => {
   const { canAccessModule, currentUser } = useAuth()
   const [isVipModalOpen, setIsVipModalOpen] = useState(false)
   const orders = db.getOrders()
@@ -134,27 +137,39 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collap
 
   return (
     <aside
-      className={`${
-        collapsed ? 'w-16' : 'w-56 lg:w-60'
-      } bg-[#1F2437] text-slate-300 flex flex-col border-r border-slate-800 shrink-0 transition-all duration-200`}
+      className={`${collapsed ? 'w-16' : 'w-56 lg:w-60'
+        } bg-[#1F2437] text-slate-300 flex flex-col border-r border-slate-800 shrink-0 transition-all duration-200`}
     >
       {/* Brand Bar */}
-      <div className="h-14 px-3.5 border-b border-white/10 flex items-center gap-2.5 shrink-0">
-        <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center shrink-0">
-          <img
-            src="/logo.png"
-            alt="MSG"
-            className="h-6 w-auto object-contain"
-            onError={(e) => {
-              ;(e.target as HTMLElement).style.display = 'none'
-            }}
-          />
-        </div>
+      <div className={`h-14 border-b border-white/10 flex items-center gap-2 shrink-0 ${collapsed ? 'px-2 justify-center' : 'px-3 justify-between'}`}>
         {!collapsed && (
-          <div className="min-w-0">
-            <div className="text-xs font-bold tracking-wide text-white truncate">MSG Oilfield ERP</div>
-            <div className="text-[10px] text-slate-400 truncate">Inventory &amp; Traceability</div>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center shrink-0">
+              <img
+                src="/logo.png"
+                alt="MSG"
+                className="h-6 w-auto object-contain"
+                onError={(e) => {
+                  ; (e.target as HTMLElement).style.display = 'none'
+                }}
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold tracking-wide text-white truncate">MSG Oilfield ERP</div>
+              <div className="text-[10px] text-slate-400 truncate">Inventory &amp; Traceability</div>
+            </div>
           </div>
+        )}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         )}
       </div>
 
@@ -182,11 +197,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collap
                       type="button"
                       title={collapsed ? item.label : undefined}
                       onClick={() => onTabChange(item.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs transition-colors cursor-pointer ${
-                        isActive
-                          ? 'bg-blue-600 text-white font-semibold'
-                          : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium'
-                      }`}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs transition-colors cursor-pointer ${isActive
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium'
+                        }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
@@ -194,9 +208,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collap
                       </div>
                       {!collapsed && item.badge !== undefined && item.badge > 0 && (
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums shrink-0 ${
-                            isActive ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-300'
-                          }`}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums shrink-0 ${isActive ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-300'
+                            }`}
                         >
                           {item.badge}
                         </span>

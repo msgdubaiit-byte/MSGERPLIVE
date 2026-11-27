@@ -1,14 +1,15 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
-  getStoredSupabaseConfig,
-  saveSupabaseConfig,
+  getSupabaseEnvConfig,
+  isSupabaseConfigured,
   testSupabaseConnection,
 } from '../../services/supabase'
 import {
-  getStoredCloudinaryConfig,
-  saveCloudinaryConfig,
+  getCloudinaryEnvConfig,
+  isCloudinaryConfigured,
   testCloudinaryConnection,
 } from '../../services/cloudinary'
+import { apiGet } from '../../services/api'
 import { db } from '../../services/db'
 import {
   Database,
@@ -21,52 +22,51 @@ import {
   FileCode,
   Cloud,
   UploadCloud,
-  ExternalLink,
 } from 'lucide-react'
 
+interface EnvHealthStatus {
+  databaseConfigured?: boolean
+  supabaseConfigured?: boolean
+  cloudinaryConfigured?: boolean
+  cloudinaryCloudName?: string
+  cloudinaryFolder?: string
+}
+
 export const SettingsView: React.FC = () => {
-  const currentConfig = getStoredSupabaseConfig()
-  const [supabaseUrl, setSupabaseUrl] = useState(currentConfig.url)
-  const [supabaseKey, setSupabaseKey] = useState(currentConfig.key)
+  const supabaseEnv = getSupabaseEnvConfig()
+  const cloudinaryEnv = getCloudinaryEnvConfig()
+  const [healthStatus, setHealthStatus] = useState<EnvHealthStatus | null>(null)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [copiedSQL, setCopiedSQL] = useState(false)
 
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault()
-    saveSupabaseConfig(supabaseUrl.trim(), supabaseKey.trim())
-    alert('Supabase configuration saved! The application client has been re-initialized.')
-  }
+  useEffect(() => {
+    let active = true
+    apiGet<EnvHealthStatus>('/api/health')
+      .then((res) => {
+        if (active) setHealthStatus(res)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleTestConnection = async () => {
     setIsTesting(true)
     setTestResult(null)
-    const res = await testSupabaseConnection(supabaseUrl.trim(), supabaseKey.trim())
+    const res = await testSupabaseConnection()
     setTestResult(res)
     setIsTesting(false)
   }
 
-  const currentCloudinary = getStoredCloudinaryConfig()
-  const [cloudinaryCloudName, setCloudinaryCloudName] = useState(currentCloudinary.cloudName)
-  const [cloudinaryPreset, setCloudinaryPreset] = useState(currentCloudinary.uploadPreset)
-  const [cloudinaryFolder, setCloudinaryFolder] = useState(currentCloudinary.folder)
   const [cloudinaryTestResult, setCloudinaryTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isTestingCloudinary, setIsTestingCloudinary] = useState(false)
-
-  const handleSaveCloudinary = (e: React.FormEvent) => {
-    e.preventDefault()
-    saveCloudinaryConfig({
-      cloudName: cloudinaryCloudName.trim(),
-      uploadPreset: (cloudinaryPreset || '').trim(),
-      folder: cloudinaryFolder.trim() || 'msg-oilfield-erp'
-    })
-    alert('Cloudinary CDN storage configuration saved! Universal file upload is active.')
-  }
 
   const handleTestCloudinary = async () => {
     setIsTestingCloudinary(true)
     setCloudinaryTestResult(null)
-    const res = await testCloudinaryConnection(cloudinaryCloudName.trim(), (cloudinaryPreset || '').trim())
+    const res = await testCloudinaryConnection()
     setCloudinaryTestResult(res)
     setIsTestingCloudinary(false)
   }
@@ -211,59 +211,49 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
         </button>
       </div>
 
-      {/* Supabase Connection Setup */}
+      {/* Environment-Managed Database & Cloud Storage */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-5 space-y-4 text-xs">
-          <h2 className="font-semibold uppercase tracking-wider text-slate-700 pb-2 border-b border-slate-100 flex items-center space-x-2">
-            <KeyRound className="h-4 w-4 text-blue-600" />
-            <span>Supabase Connection Settings</span>
-          </h2>
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+            <h2 className="font-semibold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+              <KeyRound className="h-4 w-4 text-blue-600" />
+              <span>PostgreSQL &amp; Supabase Environment</span>
+            </h2>
+            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded text-[10px] uppercase flex items-center gap-1">
+              <Shield className="h-3 w-3" />
+              <span>Managed via .env</span>
+            </span>
+          </div>
 
-          <form onSubmit={handleSaveConfig} className="space-y-3.5">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Supabase Project URL *</label>
-              <input
-                type="text"
-                required
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-                placeholder="https://your-project.supabase.co"
-                className="w-full border border-slate-300 rounded-md p-2 font-mono text-slate-900"
-              />
-            </div>
+          <p className="text-slate-600 text-[11px] leading-relaxed">
+            Database and Supabase credentials are loaded directly from server &amp; build environment variables (<code className="bg-slate-100 px-1 rounded font-mono">DATABASE_URL</code>, <code className="bg-slate-100 px-1 rounded font-mono">VITE_SUPABASE_URL</code>, <code className="bg-slate-100 px-1 rounded font-mono">VITE_SUPABASE_ANON_KEY</code>) and cannot be edited or stored in browser storage.
+          </p>
 
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Supabase Public Anon Key *</label>
-              <textarea
-                rows={3}
-                required
-                value={supabaseKey}
-                onChange={(e) => setSupabaseKey(e.target.value)}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                className="w-full border border-slate-300 rounded-md p-2 font-mono text-slate-900"
-              />
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Never expose your service_role key. Use only the public anon key for frontend clients.
-              </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-2 font-mono text-[11px]">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-sans text-slate-600 font-medium">Backend PostgreSQL (`DATABASE_URL`):</span>
+              <span className={healthStatus?.databaseConfigured ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
+                {healthStatus ? (healthStatus.databaseConfigured ? 'Configured (.env)' : 'Not configured') : 'Checking...'}
+              </span>
             </div>
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-sans text-slate-600 font-medium">Supabase Realtime (`VITE_SUPABASE_URL`):</span>
+              <span className="text-slate-900 truncate max-w-[230px]" title={supabaseEnv.url || 'Not set'}>
+                {isSupabaseConfigured() ? supabaseEnv.url : 'Not set in .env'}
+              </span>
+            </div>
+          </div>
 
-            <div className="flex items-center space-x-2 pt-2">
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-xs transition-colors"
-              >
-                Save Configuration
-              </button>
-              <button
-                type="button"
-                onClick={handleTestConnection}
-                disabled={isTesting}
-                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold py-2 px-4 rounded-md flex items-center space-x-1.5 transition-colors"
-              >
-                <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
-              </button>
-            </div>
-          </form>
+          <div className="flex items-center space-x-2 pt-1">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={isTesting}
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold py-2 px-4 rounded-md flex items-center space-x-1.5 transition-colors cursor-pointer"
+            >
+              <span>{isTesting ? 'Testing...' : 'Test Supabase Connection'}</span>
+            </button>
+          </div>
 
           {testResult && (
             <div className={`p-3 rounded-lg border text-xs flex items-center space-x-2 ${
@@ -275,81 +265,54 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
           )}
         </div>
 
-        {/* Cloudinary Universal Storage Configuration */}
+        {/* Cloudinary Universal Storage Status */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4 text-xs">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
             <h2 className="font-bold uppercase tracking-wider text-slate-800 flex items-center space-x-2">
               <Cloud className="h-4 w-4 text-sky-600" />
-              <span>Cloudinary Universal Storage (Bulk Excels & MTC Certificates)</span>
+              <span>Cloudinary Universal Storage (.env)</span>
             </h2>
             <span className="bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
-              High-Speed CDN
+              Server-Signed CDN
             </span>
           </div>
 
           <p className="text-slate-600 text-[11px] leading-relaxed">
-            Direct CDN storage for bulk Excel files, MTC PDFs, and ZIP archives. Automatically provides permanent, high-speed public CDN URLs without database storage limits or SQL bucket permission hurdles.
+            Uploads are signed on the backend using server environment variables (<code className="bg-slate-100 px-1 rounded font-mono">CLOUDINARY_CLOUD_NAME</code>, <code className="bg-slate-100 px-1 rounded font-mono">CLOUDINARY_API_KEY</code>, <code className="bg-slate-100 px-1 rounded font-mono">CLOUDINARY_API_SECRET</code>). API secrets are never editable or stored in the browser.
           </p>
 
-          <form onSubmit={handleSaveCloudinary} className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Cloudinary Cloud Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={cloudinaryCloudName}
-                  onChange={(e) => setCloudinaryCloudName(e.target.value)}
-                  placeholder="e.g. dxyz12345 or msg-oilfield"
-                  className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Unsigned Upload Preset *</label>
-                <input
-                  type="text"
-                  required
-                  value={cloudinaryPreset}
-                  onChange={(e) => setCloudinaryPreset(e.target.value)}
-                  placeholder="e.g. msg_erp_preset or ml_default"
-                  className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
-                />
-              </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-2 font-mono text-[11px]">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-sans text-slate-600 font-medium">Backend Signing Status:</span>
+              <span className={healthStatus?.cloudinaryConfigured || isCloudinaryConfigured() ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                {healthStatus ? (healthStatus.cloudinaryConfigured ? 'Configured (.env)' : 'Not configured') : (isCloudinaryConfigured() ? 'Env detected' : 'Checking...')}
+              </span>
             </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Target Storage Folder</label>
-              <input
-                type="text"
-                value={cloudinaryFolder}
-                onChange={(e) => setCloudinaryFolder(e.target.value)}
-                placeholder="msg-oilfield-erp"
-                className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
-              />
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                Subfolders <code className="bg-slate-100 px-1 rounded">/mtcs</code> and <code className="bg-slate-100 px-1 rounded">/excels</code> are created automatically.
-              </p>
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-sans text-slate-600 font-medium">Cloud Name:</span>
+              <span className="text-slate-900">
+                {healthStatus?.cloudinaryCloudName || cloudinaryEnv.cloudName || 'Not set'}
+              </span>
             </div>
-
-            <div className="flex items-center space-x-2 pt-2">
-              <button
-                type="submit"
-                className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg shadow"
-              >
-                Save Cloudinary Settings
-              </button>
-              <button
-                type="button"
-                onClick={handleTestCloudinary}
-                disabled={isTestingCloudinary}
-                className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center space-x-1.5"
-              >
-                <UploadCloud className="h-4 w-4" />
-                <span>{isTestingCloudinary ? 'Pinging CDN...' : 'Test CDN Connection'}</span>
-              </button>
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-sans text-slate-600 font-medium">Storage Folder:</span>
+              <span className="text-slate-900">
+                {healthStatus?.cloudinaryFolder || cloudinaryEnv.folder}
+              </span>
             </div>
-          </form>
+          </div>
+
+          <div className="flex items-center space-x-2 pt-1">
+            <button
+              type="button"
+              onClick={handleTestCloudinary}
+              disabled={isTestingCloudinary}
+              className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center space-x-1.5 cursor-pointer"
+            >
+              <UploadCloud className="h-4 w-4" />
+              <span>{isTestingCloudinary ? 'Pinging CDN...' : 'Test CDN Connection'}</span>
+            </button>
+          </div>
 
           {cloudinaryTestResult && (
             <div className={`p-3 rounded-lg border text-xs flex items-center space-x-2 ${
@@ -359,17 +322,6 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
               <span>{cloudinaryTestResult.message}</span>
             </div>
           )}
-
-          <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg text-sky-950 text-[11px] space-y-1">
-            <strong>How to get your Cloudinary details (1 minute):</strong>
-            <ol className="list-decimal list-inside space-y-0.5 text-slate-700 mt-1">
-              <li>Sign in to your free account at <a href="https://cloudinary.com" target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline inline-flex items-center">cloudinary.com <ExternalLink className="h-3 w-3 ml-0.5" /></a>.</li>
-              <li>Your <strong>Cloud Name</strong> is shown on the top-left of the Dashboard.</li>
-              <li>Go to <strong>Settings</strong> (Gear Icon) &rarr; <strong>Upload</strong> &rarr; scroll down to <strong>Upload presets</strong>.</li>
-              <li>Click <strong>Add upload preset</strong>, change <strong>Signing Mode</strong> to <strong>Unsigned</strong>, and click <strong>Save</strong>.</li>
-              <li>Paste the Cloud Name and Preset Name above!</li>
-            </ol>
-          </div>
         </div>
 
         {/* Database Migration & SQL Deployment */}

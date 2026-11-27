@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FileCheck2, Download, ExternalLink, Printer, ShieldCheck, AlertTriangle, FileX } from 'lucide-react'
 import { stampMTCDocument, downloadPDFBlob, createSampleMillCertificate } from '../../services/pdfEngine'
 import { getUploadedCertificateBytes } from '../../services/zipExtractor'
-import { getAuthenticCertificateBytes } from '../../services/certificateVault'
+import { getAuthenticCertificateBytes, safeFetchPdfBytes, resolveBackendMtcBytes } from '../../services/certificateVault'
 import { db } from '../../services/db'
 
 interface PDFPreviewModalProps {
@@ -36,7 +36,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
 
         // 1. Check existing MTCs registered in database
         const mtcs = db.getMTCs()
-        const foundMtc = mtcs.find(m => 
+        const foundMtc = mtcs.find(m =>
           (m.certificate_reference && m.certificate_reference.toLowerCase() === docName?.toLowerCase()) ||
           (m.original_file_path && m.original_file_path.toLowerCase() === docName?.toLowerCase()) ||
           (m.heat_number && m.heat_number.toLowerCase() === heatNumber?.toLowerCase())
@@ -45,9 +45,9 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
         // 2. Try to load exact original certificate bytes uploaded from the ZIP archive / memory cache
         if (foundMtc) {
           resolvedFileName = foundMtc.certificate_reference || foundMtc.original_file_path
-          const cached = getUploadedCertificateBytes(foundMtc.original_file_path) || 
-                         getUploadedCertificateBytes(foundMtc.certificate_reference) || 
-                         getUploadedCertificateBytes(foundMtc.heat_number)
+          const cached = getUploadedCertificateBytes(foundMtc.original_file_path) ||
+            getUploadedCertificateBytes(foundMtc.certificate_reference) ||
+            getUploadedCertificateBytes(foundMtc.heat_number)
           if (cached) uploadedBytesFound = cached
         }
 
@@ -68,41 +68,16 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ docName, itemC
         )
 
         if (!uploadedBytesFound && isValidPath(foundMtc?.original_file_path) && foundMtc!.original_file_path !== '/sample-mtc.pdf') {
-          try {
-            const resp = await fetch(foundMtc!.original_file_path)
-            if (resp.ok) {
-              const ab = await resp.arrayBuffer()
-              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
-            }
-          } catch (e) {
-            console.warn('Could not fetch mtc path', e)
-          }
+          uploadedBytesFound = await safeFetchPdfBytes(foundMtc!.original_file_path)
         }
 
         if (!uploadedBytesFound && isValidPath(docName) && docName !== '/sample-mtc.pdf') {
-          try {
-            const resp = await fetch(docName)
-            if (resp.ok) {
-              const ab = await resp.arrayBuffer()
-              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
-            }
-          } catch (e) {
-            console.warn('Could not fetch docName', e)
-          }
+          uploadedBytesFound = await safeFetchPdfBytes(docName)
         }
 
         // 3b. Resolve from backend authentic certificate vault (/api/mtc/resolve)
         if (!uploadedBytesFound && (docName || heatNumber)) {
-          try {
-            const params = new URLSearchParams()
-            if (docName && docName !== '/sample-mtc.pdf') params.set('doc_name', docName)
-            if (heatNumber) params.set('heat_number', heatNumber)
-            const resp = await fetch(`/api/mtc/resolve?${params.toString()}`)
-            if (resp.ok) {
-              const ab = await resp.arrayBuffer()
-              if (ab.byteLength > 50) uploadedBytesFound = new Uint8Array(ab)
-            }
-          } catch {}
+          uploadedBytesFound = await resolveBackendMtcBytes(docName, heatNumber)
         }
 
         // 3c. Resolve from bundled/uploaded vault manifest (/certificates/manifest.json - 338 real supplier PDFs)
