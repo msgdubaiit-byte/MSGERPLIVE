@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard,
@@ -26,6 +26,8 @@ import {
   Cpu,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { db } from '../../services/db'
 import { VipAdminCustomizerModal } from '../admin/VipAdminCustomizerModal'
@@ -135,6 +137,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collap
     },
   ]
 
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const activeGroup = navGroups.find((g) => g.items.some((it) => it.id === activeTab && canAccessModule(it.id)))
+    const firstVisibleGroup = navGroups.find((g) => g.items.some((it) => canAccessModule(it.id)))
+    const defaultOpenTitle = activeGroup?.title || firstVisibleGroup?.title || navGroups[0]?.title
+    return Object.fromEntries(navGroups.map((g) => [g.title, g.title === defaultOpenTitle]))
+  })
+
+  // Keep the group containing the active tab expanded when navigated programmatically
+  useEffect(() => {
+    const activeGroup = navGroups.find((g) => g.items.some((it) => it.id === activeTab))
+    if (activeGroup && !openGroups[activeGroup.title]) {
+      setOpenGroups((prev) => ({ ...prev, [activeGroup.title]: true }))
+    }
+  }, [activeTab])
+
+  const toggleGroup = (title: string) => {
+    setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }))
+  }
+
   return (
     <aside
       className={`${collapsed ? 'w-16' : 'w-56 lg:w-60'
@@ -173,51 +194,78 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, collap
         )}
       </div>
 
-      {/* Grouped Zoho-style Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      {/* Collapsible Grouped Navigation */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-2.5">
         {navGroups.map((group) => {
           const visibleItems = group.items.filter((it) => canAccessModule(it.id))
           if (visibleItems.length === 0) return null
 
+          const isGroupOpen = collapsed || Boolean(openGroups[group.title])
+          const groupBadgeTotal = visibleItems.reduce((sum, it) => sum + (it.badge || 0), 0)
+          const hasActiveItem = visibleItems.some((it) => it.id === activeTab)
+
           return (
-            <div key={group.title}>
+            <div key={group.title} className={!collapsed ? 'border-b border-white/5 pb-1.5 last:border-b-0' : ''}>
               {!collapsed && (
-                <div className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400/80">
-                  {group.title}
+                <button
+                  type="button"
+                  aria-expanded={isGroupOpen}
+                  onClick={() => toggleGroup(group.title)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 mb-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
+                    hasActiveItem && !isGroupOpen
+                      ? 'text-blue-300 bg-white/5'
+                      : 'text-slate-400/90 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <span className="truncate">{group.title}</span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {!isGroupOpen && groupBadgeTotal > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full font-semibold tabular-nums bg-amber-500/20 text-amber-300">
+                        {groupBadgeTotal}
+                      </span>
+                    )}
+                    {isGroupOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                    )}
+                  </span>
+                </button>
+              )}
+              {isGroupOpen && (
+                <div className="space-y-0.5">
+                  {visibleItems.map((item) => {
+                    const Icon = item.icon
+                    const isActive = activeTab === item.id
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        title={collapsed ? item.label : undefined}
+                        onClick={() => onTabChange(item.id)}
+                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs transition-colors cursor-pointer ${isActive
+                          ? 'bg-blue-600 text-white font-semibold'
+                          : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                          {!collapsed && <span className="truncate">{item.label}</span>}
+                        </div>
+                        {!collapsed && item.badge !== undefined && item.badge > 0 && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums shrink-0 ${isActive ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-300'
+                              }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
-              <div className="space-y-0.5">
-                {visibleItems.map((item) => {
-                  const Icon = item.icon
-                  const isActive = activeTab === item.id
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      title={collapsed ? item.label : undefined}
-                      onClick={() => onTabChange(item.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs transition-colors cursor-pointer ${isActive
-                        ? 'bg-blue-600 text-white font-semibold'
-                        : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium'
-                        }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                        {!collapsed && <span className="truncate">{item.label}</span>}
-                      </div>
-                      {!collapsed && item.badge !== undefined && item.badge > 0 && (
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums shrink-0 ${isActive ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-300'
-                            }`}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
             </div>
           )
         })}

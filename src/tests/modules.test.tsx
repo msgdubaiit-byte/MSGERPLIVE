@@ -143,7 +143,15 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
       expect(screen.getByRole('navigation')).toBeInTheDocument()
     })
 
-    const navButtons = screen.getByRole('navigation').querySelectorAll('button')
+    const nav = screen.getByRole('navigation')
+    // By default only the active/first group (Workspace) is expanded; expand any collapsed groups
+    const collapsedHeaders = nav.querySelectorAll('button[aria-expanded="false"]')
+    expect(collapsedHeaders.length).toBeGreaterThanOrEqual(4)
+    for (const hdr of Array.from(collapsedHeaders)) {
+      fireEvent.click(hdr)
+    }
+
+    const navButtons = nav.querySelectorAll('button:not([aria-expanded])')
     expect(navButtons.length).toBeGreaterThanOrEqual(15)
 
     // Navigate through every visible sidebar module button
@@ -879,7 +887,12 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
     fireEvent.click(screen.getByRole('button', { name: /Exit Full Screen/i }))
     expect(screen.getByText('MSG Oilfield ERP')).toBeInTheDocument()
 
-    // Navigate to Sourcing & CIPL and toggle worksheet full-screen mode
+    // Expand Sales & Fulfillment dropdown, navigate to Sourcing & CIPL, and toggle worksheet full-screen mode
+    const salesGroupBtn = screen.getByRole('button', { name: /Sales & Fulfillment/i })
+    expect(salesGroupBtn).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(salesGroupBtn)
+    expect(salesGroupBtn).toHaveAttribute('aria-expanded', 'true')
+
     fireEvent.click(screen.getByRole('button', { name: /Sourcing & CIPL/i }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Full screen worksheet/i })).toBeInTheDocument()
@@ -889,6 +902,22 @@ describe('All 22 UI Modules, Auth Shell & Interactive Modals', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Exit sheet full screen/i }))
     expect(screen.getByRole('button', { name: /Full screen worksheet/i })).toBeInTheDocument()
+
+    // Collapsible dropdown groups on the left sidebar: non-active groups start collapsed
+    const workspaceGroupBtn = screen.getByRole('button', { name: /^Workspace$/i })
+    expect(workspaceGroupBtn).toHaveAttribute('aria-expanded', 'true')
+
+    const inventoryGroupBtn = screen.getByRole('button', { name: /^Inventory$/i })
+    expect(inventoryGroupBtn).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: /Item Master/i })).not.toBeInTheDocument()
+
+    fireEvent.click(inventoryGroupBtn)
+    expect(inventoryGroupBtn).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /Item Master/i })).toBeInTheDocument()
+
+    fireEvent.click(inventoryGroupBtn)
+    expect(inventoryGroupBtn).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: /Item Master/i })).not.toBeInTheDocument()
 
     unmount()
   })

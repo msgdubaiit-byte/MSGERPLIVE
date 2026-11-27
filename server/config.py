@@ -6,9 +6,13 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
 
-# Load .env from project root or server dir
+# Load .env (and .env.local fallback), ignoring Vercel CLI "[SENSITIVE]" placeholders
 load_dotenv(ROOT_DIR / ".env")
 load_dotenv(BASE_DIR / ".env")
+load_dotenv(ROOT_DIR / ".env.local")
+for _env_key, _env_val in list(os.environ.items()):
+    if _env_val.strip() == "[SENSITIVE]":
+        os.environ.pop(_env_key, None)
 
 
 def _writable_dir(preferred: Path, fallback_name: str) -> Path:
